@@ -1,0 +1,21 @@
+html,
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100%;
+  overflow: hidden;
+  background: #7fcaf3;
+  color: #22324a;
+  font-family:
+    Inter, ui-rounded, "SF Pro Rounded", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+#game {
+  width: 100vw;
+  height: 100vh;
+}
+
+canvas {
+  display: block;
+}

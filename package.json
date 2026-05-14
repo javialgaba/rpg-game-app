@@ -1,0 +1,16 @@
+{
+  "name": "fairy-guild-defense",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "vite --host 127.0.0.1"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0",
+    "vite": "^8.0.13"
+  },
+  "devDependencies": {}
+}
