@@ -35,6 +35,8 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 | Pick level-up bonus | `1`, `2`, or `3` on the level-up screen |
 | Restart after game over | `R` |
 
+On touch devices, the game shows a landscape-first mobile overlay with a left joystick and right-side action buttons for Sword, Bow, Spell, Repair Kit, Use, and Inventory. Bow and Spell auto-target nearby enemies on mobile. Portrait phones show a rotate hint.
+
 ## Progression
 
 The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. When all enemies in the current level are defeated, gameplay pauses and a level-up screen appears.

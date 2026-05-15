@@ -4,6 +4,11 @@ body {
   min-width: 320px;
   min-height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   background: #7fcaf3;
   color: #22324a;
   font-family:
@@ -14,8 +19,16 @@ body {
 #game {
   width: 100vw;
   height: 100vh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 canvas {
   display: block;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }

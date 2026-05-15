@@ -154,6 +154,19 @@ const COLORS = {
   uiInk: '#25324a',
 };
 
+type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'use' | 'inventory';
+
+interface TouchControlsState {
+  container: Phaser.GameObjects.Container;
+  joystickBase: Phaser.GameObjects.Arc;
+  joystickThumb: Phaser.GameObjects.Arc;
+  joystickVector: { x: number; y: number };
+  joystickPointerId: number | null;
+  joystickCenter: { x: number; y: number };
+  buttons: Record<TouchActionKey, Phaser.GameObjects.Container>;
+  portraitOverlay: Phaser.GameObjects.Container;
+}
+
 class FairyGuildScene extends Phaser.Scene {
   [key: string]: any;
 
@@ -192,6 +205,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelTimers = [];
     this.lastRepairAt = 0;
     this.repairModeIndicator = null;
+    this.touchControls = null;
+    this.touchControlsEnabled = false;
+    this.controlsHint = null;
   }
 
   preload() {
@@ -225,6 +241,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.createPlayer();
     this.createControls();
     this.createHud();
+    this.createTouchControls();
     this.createUpgrades();
     this.createPhaseOverlays();
     this.spawnInitialChests();
@@ -279,6 +296,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelTimers = [];
     this.lastRepairAt = 0;
     this.repairModeIndicator = null;
+    this.touchControls = null;
+    this.touchControlsEnabled = false;
+    this.controlsHint = null;
   }
 
   update(time, delta) {
@@ -296,6 +316,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateEffects(dt);
     this.updateDepths();
     this.updateRepairModeIndicator(time);
+    this.updateTouchControls();
     this.updateHud();
   }
 
@@ -855,8 +876,12 @@ class FairyGuildScene extends Phaser.Scene {
       six: Phaser.Input.Keyboard.KeyCodes.SIX,
       restart: Phaser.Input.Keyboard.KeyCodes.R,
     });
+    this.input.addPointer(5);
     this.input.on('pointerdown', (pointer) => {
       this.ensureAudio();
+      if (this.touchControlsEnabled) {
+        return;
+      }
       if (this.state.phase === 'playing' && pointer.leftButtonDown()) {
         if (this.state.repairMode) {this.tryRepairBuilding();}
         else {this.fireBow(this.time.now);}
@@ -880,6 +905,276 @@ class FairyGuildScene extends Phaser.Scene {
     });
     this.keys.restart.on('down', () => {
       if (this.state.phase === 'gameOver') {this.scene.restart();}
+    });
+  }
+
+  isTouchDevice() {
+    const forceTouchControls = import.meta.env.DEV && new URLSearchParams(window.location.search).has('touchControls');
+    const hasTouchInput = this.sys.game.device.input.touch || navigator.maxTouchPoints > 0;
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    return forceTouchControls || hasTouchInput || coarsePointer;
+  }
+
+  createTouchControls() {
+    this.touchControlsEnabled = this.isTouchDevice();
+    if (!this.touchControlsEnabled) {
+      return;
+    }
+
+    this.controlsHint?.setVisible(false);
+    const container = this.add.container(0, 0).setDepth(7700);
+    const joystickCenter = { x: 132, y: HEIGHT - 118 };
+    const joystickZone = this.add.zone(joystickCenter.x, joystickCenter.y, 190, 190)
+      .setOrigin(0.5)
+      .setInteractive();
+    const joystickBase = this.add.circle(joystickCenter.x, joystickCenter.y, 58, 0x132a3d, 0.34)
+      .setStrokeStyle(4, 0xf8ffe3, 0.42);
+    const joystickThumb = this.add.circle(joystickCenter.x, joystickCenter.y, 25, 0xfff4c8, 0.74)
+      .setStrokeStyle(3, 0x6abbd7, 0.78);
+    const buttons = {} as Record<TouchActionKey, Phaser.GameObjects.Container>;
+
+    [
+      ['melee', WIDTH - 230, HEIGHT - 124, 'Sword', 'swordIconTexture', 0xf2bf52],
+      ['bow', WIDTH - 150, HEIGHT - 170, 'Bow', 'bowIconTexture', 0x8fd56c],
+      ['spell', WIDTH - 70, HEIGHT - 124, 'Spell', 'spellIconTexture', 0x75d8ff],
+      ['use', WIDTH - 230, HEIGHT - 64, 'Use', 'chestTexture', 0xffcf75],
+      ['repair', WIDTH - 150, HEIGHT - 64, 'Fix', 'repairTool', 0x9fe9bf],
+      ['inventory', WIDTH - 70, HEIGHT - 64, 'Bag', null, 0xd7b9ff],
+    ].forEach(([action, x, y, label, icon, color]) => {
+      buttons[action as TouchActionKey] = this.createTouchActionButton(
+        action as TouchActionKey,
+        x as number,
+        y as number,
+        label as string,
+        icon as string | null,
+        color as number,
+      );
+    });
+
+    const portraitOverlay = this.createPortraitOverlay();
+    container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons)]);
+    this.uiLayer.add([container, portraitOverlay]);
+    this.touchControls = {
+      container,
+      joystickBase,
+      joystickThumb,
+      joystickVector: { x: 0, y: 0 },
+      joystickPointerId: null,
+      joystickCenter,
+      buttons,
+      portraitOverlay,
+    } as TouchControlsState;
+
+    joystickZone.on('pointerdown', (pointer) => {
+      if (this.state.phase !== 'playing') {
+        return;
+      }
+      this.ensureAudio();
+      this.touchControls.joystickPointerId = pointer.id;
+      this.updateJoystickFromPointer(pointer);
+    });
+    this.input.on('pointermove', (pointer) => this.updateJoystickFromPointer(pointer));
+    this.input.on('pointerup', (pointer) => this.releaseJoystick(pointer));
+    this.input.on('pointerupoutside', (pointer) => this.releaseJoystick(pointer));
+    this.updateTouchControls();
+  }
+
+  createTouchActionButton(
+    action: TouchActionKey,
+    x: number,
+    y: number,
+    label: string,
+    icon: string | null,
+    color: number,
+  ) {
+    const button = this.add.container(x, y);
+    const hit = this.add.zone(0, 0, 72, 72)
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    const bg = this.add.circle(0, 0, 31, 0x24364a, 0.72)
+      .setStrokeStyle(3, color, 0.92);
+    const shine = this.add.circle(-8, -9, 8, 0xffffff, 0.2);
+    const labelText = this.add.text(0, 27, label, {
+      ...this.uiTextStyle(10, '#ffffff'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    const glyph = icon
+      ? this.add.image(0, -4, icon).setDisplaySize(action === 'repair' ? 34 : 30, action === 'repair' ? 34 : 30)
+      : this.add.text(0, -5, 'I', {
+        ...this.uiTextStyle(24, '#fff0b8'),
+        strokeThickness: 4,
+      }).setOrigin(0.5);
+    hit.on('pointerdown', () => {
+      this.ensureAudio();
+      this.pulseTouchButton(button);
+      this.handleTouchAction(action);
+    });
+    button.add([hit, bg, shine, glyph, labelText]);
+    return button;
+  }
+
+  createPortraitOverlay() {
+    const overlay = this.add.container(0, 0).setDepth(7950).setVisible(false);
+    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x17344f, 0.76);
+    const panel = this.add.graphics();
+    panel.fillStyle(0xfff7df, 0.96);
+    panel.lineStyle(4, 0xffd36d, 0.86);
+    panel.fillRoundedRect(WIDTH / 2 - 270, HEIGHT / 2 - 92, 540, 184, 10);
+    panel.strokeRoundedRect(WIDTH / 2 - 270, HEIGHT / 2 - 92, 540, 184, 10);
+    const title = this.add.text(WIDTH / 2, HEIGHT / 2 - 28, 'Turn your device sideways', {
+      ...this.uiTextStyle(30, '#714617'),
+      strokeThickness: 4,
+    }).setOrigin(0.5);
+    const helper = this.add.text(WIDTH / 2, HEIGHT / 2 + 32, 'Fairy Guild Defense plays best in landscape.', this.uiTextStyle(17, '#31503b'))
+      .setOrigin(0.5);
+    overlay.add([shade, panel, title, helper]);
+    return overlay;
+  }
+
+  updateJoystickFromPointer(pointer) {
+    if (!this.touchControls || pointer.id !== this.touchControls.joystickPointerId) {
+      return;
+    }
+    const radius = 58;
+    const center = this.touchControls.joystickCenter;
+    const dx = pointer.x - center.x;
+    const dy = pointer.y - center.y;
+    const distance = Math.min(radius, Math.hypot(dx, dy));
+    const angle = Math.atan2(dy, dx);
+    const thumbX = distance > 0 ? Math.cos(angle) * distance : 0;
+    const thumbY = distance > 0 ? Math.sin(angle) * distance : 0;
+    this.touchControls.joystickThumb.setPosition(center.x + thumbX, center.y + thumbY);
+    this.touchControls.joystickVector = {
+      x: thumbX / radius,
+      y: thumbY / radius,
+    };
+  }
+
+  releaseJoystick(pointer) {
+    if (!this.touchControls || pointer.id !== this.touchControls.joystickPointerId) {
+      return;
+    }
+    this.touchControls.joystickPointerId = null;
+    this.touchControls.joystickVector = { x: 0, y: 0 };
+    this.touchControls.joystickThumb.setPosition(
+      this.touchControls.joystickCenter.x,
+      this.touchControls.joystickCenter.y,
+    );
+  }
+
+  updateTouchControls() {
+    if (!this.touchControls) {
+      return;
+    }
+    this.updatePortraitHint();
+    this.setTouchControlsVisible(this.state.phase === 'playing' && !this.isPortraitLayout());
+  }
+
+  setTouchControlsVisible(visible: boolean) {
+    if (!this.touchControls) {
+      return;
+    }
+    this.touchControls.container.setVisible(this.touchControlsEnabled && visible);
+  }
+
+  updatePortraitHint() {
+    if (!this.touchControls) {
+      return;
+    }
+    this.touchControls.portraitOverlay.setVisible(this.touchControlsEnabled && this.isPortraitLayout());
+  }
+
+  isPortraitLayout() {
+    return window.innerHeight > window.innerWidth;
+  }
+
+  getMovementVector() {
+    let dx = 0;
+    let dy = 0;
+    if (this.keys.left.isDown || this.keys.a.isDown) {
+      dx -= 1;
+    }
+    if (this.keys.right.isDown || this.keys.d.isDown) {
+      dx += 1;
+    }
+    if (this.keys.up.isDown || this.keys.w.isDown) {
+      dy -= 1;
+    }
+    if (this.keys.down.isDown || this.keys.s.isDown) {
+      dy += 1;
+    }
+    if (this.touchControls?.container.visible) {
+      dx += this.touchControls.joystickVector.x;
+      dy += this.touchControls.joystickVector.y;
+    }
+    const len = Math.hypot(dx, dy);
+    if (len > 1) {
+      dx /= len;
+      dy /= len;
+    }
+    return { x: dx, y: dy };
+  }
+
+  getAutoTargetIso(maxRange: number) {
+    let bestEnemy = null;
+    let bestDistance = Infinity;
+    this.enemies.forEach((enemy) => {
+      if (enemy.retreating || enemy.defeated) {
+        return;
+      }
+      const distance = Phaser.Math.Distance.Between(this.player.iso.x, this.player.iso.y, enemy.iso.x, enemy.iso.y);
+      if (distance <= maxRange && distance < bestDistance) {
+        bestEnemy = enemy;
+        bestDistance = distance;
+      }
+    });
+    if (bestEnemy) {
+      return { x: bestEnemy.iso.x, y: bestEnemy.iso.y };
+    }
+    return this.clampIso({
+      x: this.player.iso.x + this.player.facing.x * maxRange,
+      y: this.player.iso.y + this.player.facing.y * maxRange,
+    }, 0.8);
+  }
+
+  handleTouchAction(action: TouchActionKey) {
+    if (this.state.phase !== 'playing') {
+      return;
+    }
+    const now = this.time.now;
+    if (action === 'melee') {
+      if (this.state.repairMode) {
+        this.tryRepairBuilding();
+      } else {
+        this.swingSword(now);
+      }
+    } else if (action === 'bow') {
+      this.setRepairMode(false, false);
+      this.fireBow(now, this.getAutoTargetIso(7.2));
+    } else if (action === 'spell') {
+      this.setRepairMode(false, false);
+      this.castSpell(now, this.getAutoTargetIso(4.2));
+    } else if (action === 'repair') {
+      this.toggleRepairMode();
+    } else if (action === 'use') {
+      if (this.state.repairMode) {
+        this.tryRepairBuilding();
+      } else {
+        this.tryOpenChest();
+      }
+    } else if (action === 'inventory') {
+      this.toggleInventory();
+    }
+  }
+
+  pulseTouchButton(button: Phaser.GameObjects.Container) {
+    this.tweens.add({
+      targets: button,
+      scale: 0.9,
+      yoyo: true,
+      duration: 80,
+      ease: 'Sine.easeOut',
+      onComplete: () => button.setScale(1),
     });
   }
 
@@ -1032,18 +1327,12 @@ class FairyGuildScene extends Phaser.Scene {
 
   updatePlayer(dt, time) {
     if (this.state.health <= 0) {return;}
-    let dx = 0;
-    let dy = 0;
-    if (this.keys.left.isDown || this.keys.a.isDown) {dx -= 1;}
-    if (this.keys.right.isDown || this.keys.d.isDown) {dx += 1;}
-    if (this.keys.up.isDown || this.keys.w.isDown) {dy -= 1;}
-    if (this.keys.down.isDown || this.keys.s.isDown) {dy += 1;}
+    const movement = this.getMovementVector();
+    const dx = movement.x;
+    const dy = movement.y;
 
     const moving = dx !== 0 || dy !== 0;
     if (moving) {
-      const len = Math.hypot(dx, dy);
-      dx /= len;
-      dy /= len;
       this.player.facing = { x: dx, y: dy };
       this.player.iso.x += dx * this.playerStats.speed * dt;
       this.player.iso.y += dy * this.playerStats.speed * dt;
@@ -1102,7 +1391,7 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
-  fireBow(time) {
+  fireBow(time, targetIso = this.lastPointerIso) {
     if (time - this.player.lastBow < this.playerStats.bowCooldown) {return;}
     this.ensureAudio();
     this.player.lastBow = time;
@@ -1112,7 +1401,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.sprite.play('hero-special', true);
     this.playTone('bow');
     const startIso = { x: this.player.iso.x, y: this.player.iso.y };
-    const target = this.lastPointerIso;
+    const target = targetIso;
     let vx = target.x - startIso.x;
     let vy = target.y - startIso.y;
     const len = Math.max(0.01, Math.hypot(vx, vy));
@@ -1138,7 +1427,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.fxLayer.add(arrow);
   }
 
-  castSpell(time) {
+  castSpell(time, targetIso = this.lastPointerIso) {
     if (time - this.player.lastSpell < 780 || this.state.mana < this.playerStats.spellCost) {
       if (this.state.mana < this.playerStats.spellCost) {
         this.addGuildNote('Mana is refilling with sparkles.');
@@ -1154,8 +1443,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.sprite.play('hero-special', true);
     this.playTone('level');
     const center = {
-      x: Phaser.Math.Clamp(this.lastPointerIso.x, this.player.iso.x - 4.2, this.player.iso.x + 4.2),
-      y: Phaser.Math.Clamp(this.lastPointerIso.y, this.player.iso.y - 4.2, this.player.iso.y + 4.2),
+      x: Phaser.Math.Clamp(targetIso.x, this.player.iso.x - 4.2, this.player.iso.x + 4.2),
+      y: Phaser.Math.Clamp(targetIso.y, this.player.iso.y - 4.2, this.player.iso.y + 4.2),
     };
     const p = this.isoToScreen(center.x, center.y, 16);
     this.spawnSpellBloom(p.x, p.y - 8, 1 + this.playerStats.spellPower * 0.08);
@@ -2446,6 +2735,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   createControlsHint() {
     const hint = this.add.container(18, HEIGHT - 58).setDepth(6000);
+    this.controlsHint = hint;
     const bg = this.add.graphics();
     bg.fillStyle(0x22324a, 0.62);
     bg.fillRoundedRect(0, 0, 792, 38, 8);

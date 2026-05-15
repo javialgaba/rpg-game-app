@@ -111,6 +111,7 @@ Use a colorful isometric cartoon style. The game should feel magical, cozy, adve
 - T to toggle the Repair Kit
 - Space, mouse click, or E to repair nearby damaged buildings while the Repair Kit is active
 - I to open inventory
+- On touch devices, use a left virtual joystick and right action buttons for Sword, Bow, Spell, Repair Kit, Use, and Inventory. Mobile play is landscape-first with a portrait rotate hint.
 
 ## Technical Requirements
 
@@ -128,6 +129,7 @@ The final result should feel like a small, cheerful Zelda-like village defense R
 - The hero starts with 3 hearts. Each level-up grants `Heart +1` and one selected damage bonus: melee, range, or magic.
 - Buildings persist their damage across levels. Pressing `T` toggles the standalone Repair Kit tool; while it is active, pressing `Space`, mouse click, or `E` near a damaged building spends 6 gold and restores 14 HP. Non-castle buildings remain damaged at 0 HP until repaired, and they become targetable again once their HP rises above 0. Castle HP reaching 0 still triggers game over immediately.
 - The hero reaching 0 hearts also triggers game over, with a restart screen.
+- Touch support is Phaser-owned and composable: touch-capable devices show a left joystick, compact action buttons, auto-targeted mobile bow/spell actions, and a portrait rotate hint. Desktop keyboard and mouse controls remain unchanged.
 - Enemy spawning is data-driven with top-level `ENEMY_ARCHETYPES` and `ENEMY_VARIANTS` configs in `src/main.ts`. Archetypes use monster sheet rows for blobs, sprites, mushrooms, lizards, and acorn critters; variants add tint, scale, and stat multipliers for normal, bright, and elder enemies.
 - TypeScript checks run through `npm run typecheck`, and ESLint runs through `npm run lint` with curly-brace enforcement and arrow-callback preference.
 - The level-up and game-over screens use generated textless UI art from `public/assets/level-up-ui.png` and `public/assets/game-over-ui.png`, with all functional text rendered in Phaser.
