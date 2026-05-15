@@ -21,6 +21,125 @@ const PLAYER_BASE = {
 
 const LEVEL_UP_CARD_XS = [-210, 0, 210];
 const LEVEL_UP_MAX_PIPS = 5;
+const REPAIR_COST = 6;
+const REPAIR_AMOUNT = 14;
+const REPAIR_RANGE = 1.35;
+const REPAIR_COOLDOWN = 650;
+
+const ENEMY_ARCHETYPES = [
+  {
+    key: 'blob',
+    label: 'forest blob',
+    row: 0,
+    unlockLevel: 1,
+    weight: 4,
+    hp: 2,
+    speed: 0.76,
+    buildingDamage: 4,
+    contactDamage: 1,
+    size: 52,
+    rewardGold: [6, 13],
+    rewardXp: 13,
+  },
+  {
+    key: 'sprite',
+    label: 'leafy sprite',
+    row: 1,
+    unlockLevel: 1,
+    weight: 3,
+    hp: 2,
+    speed: 0.88,
+    buildingDamage: 3,
+    contactDamage: 1,
+    size: 50,
+    rewardGold: [7, 14],
+    rewardXp: 14,
+  },
+  {
+    key: 'mushroom',
+    label: 'mushroom sprite',
+    row: 2,
+    unlockLevel: 1,
+    weight: 3,
+    hp: 3,
+    speed: 0.68,
+    buildingDamage: 5,
+    contactDamage: 1,
+    size: 60,
+    rewardGold: [8, 16],
+    rewardXp: 16,
+  },
+  {
+    key: 'lizard',
+    label: 'leafy lizard',
+    row: 3,
+    unlockLevel: 2,
+    weight: 2,
+    hp: 3,
+    speed: 0.96,
+    buildingDamage: 4,
+    contactDamage: 1,
+    size: 58,
+    rewardGold: [9, 17],
+    rewardXp: 18,
+  },
+  {
+    key: 'acorn',
+    label: 'acorn critter',
+    row: 4,
+    unlockLevel: 3,
+    weight: 2,
+    hp: 4,
+    speed: 0.78,
+    buildingDamage: 6,
+    contactDamage: 1,
+    size: 62,
+    rewardGold: [10, 20],
+    rewardXp: 20,
+  },
+];
+
+const ENEMY_VARIANTS = [
+  {
+    key: 'normal',
+    label: '',
+    unlockLevel: 1,
+    weight: 7,
+    tint: null,
+    scale: 1,
+    hp: 1,
+    speed: 1,
+    buildingDamage: 1,
+    contactDamage: 1,
+    reward: 1,
+  },
+  {
+    key: 'bright',
+    label: 'bright',
+    unlockLevel: 2,
+    weight: 3,
+    tint: 0xd9ff8f,
+    scale: 1.08,
+    hp: 1.25,
+    speed: 1.08,
+    buildingDamage: 1.12,
+    contactDamage: 1,
+    reward: 1.22,
+  },
+  {
+    key: 'elder',
+    label: 'elder',
+    unlockLevel: 4,
+    weight: 2,
+    tint: 0xffc878,
+    scale: 1.22,
+    hp: 1.65,
+    speed: 0.92,
+    buildingDamage: 1.45,
+    contactDamage: 1,
+    reward: 1.55,
+  },
+];
 
 const COLORS = {
   skyTop: 0x8bd6ff,
@@ -36,6 +155,8 @@ const COLORS = {
 };
 
 class FairyGuildScene extends Phaser.Scene {
+  [key: string]: any;
+
   constructor() {
     super('fairy-guild');
     this.player = null;
@@ -49,11 +170,11 @@ class FairyGuildScene extends Phaser.Scene {
       phase: 'countdown',
       villageSafety: 100,
       equipped: 'Wooden Sword',
+      repairMode: false,
       spell: 'Sparkle Burst',
       inventoryOpen: false,
       gameOverReason: '',
     };
-    this.keys = {};
     this.keys = {};
     this.enemies = [];
     this.projectiles = [];
@@ -69,6 +190,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelEnemiesRemaining = 0;
     this.levelClearQueued = false;
     this.levelTimers = [];
+    this.lastRepairAt = 0;
+    this.repairModeIndicator = null;
   }
 
   preload() {
@@ -77,6 +200,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('gameOverUI', '/assets/game-over-ui.png');
     this.load.image('statusPanelUI', '/assets/status-panel-ui.png');
     this.load.image('guildNotesUI', '/assets/guild-notes-ui-transparent.png');
+    this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
     this.load.image('worldSheet', '/assets/world-ui-sheet.png');
@@ -134,6 +258,7 @@ class FairyGuildScene extends Phaser.Scene {
       phase: 'countdown',
       villageSafety: 100,
       equipped: 'Wooden Sword',
+      repairMode: false,
       spell: 'Sparkle Burst',
       inventoryOpen: false,
       gameOverReason: '',
@@ -152,6 +277,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelEnemiesRemaining = 0;
     this.levelClearQueued = false;
     this.levelTimers = [];
+    this.lastRepairAt = 0;
+    this.repairModeIndicator = null;
   }
 
   update(time, delta) {
@@ -168,6 +295,7 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.updateEffects(dt);
     this.updateDepths();
+    this.updateRepairModeIndicator(time);
     this.updateHud();
   }
 
@@ -177,7 +305,7 @@ class FairyGuildScene extends Phaser.Scene {
     for (let row = 0; row < rows; row += 1) {
       for (let col = 0; col < cols; col += 1) {
         const frameName = `${prefix}-${row}-${col}`;
-        if (texture.has(frameName)) continue;
+        if (texture.has(frameName)) {continue;}
         const x = Math.round((image.width / cols) * col);
         const y = Math.round((image.height / rows) * row);
         const nextX = Math.round((image.width / cols) * (col + 1));
@@ -209,10 +337,10 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createGeneratedTextures() {
-    const g = this.make.graphics({ x: 0, y: 0, add: false });
+    const g = this.make.graphics({ x: 0, y: 0, add: false } as any);
     const make = (key, width, height, draw) => {
       g.clear();
-      if (this.textures.exists(key)) this.textures.remove(key);
+      if (this.textures.exists(key)) {this.textures.remove(key);}
       draw(g, width, height);
       g.generateTexture(key, width, height);
     };
@@ -617,7 +745,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createProps() {
-    const props = [
+    const props: Array<[string, number, number, number, number]> = [
       ['wellTexture', 6.1, 8.8, 44, 52], ['lampTexture', 8.8, 5.8, 26, 54], ['signTexture', 3.7, 9.7, 38, 46],
       ['lampTexture', 10.8, 4.8, 26, 54], ['wellTexture', 12.1, 9.3, 42, 46], ['signTexture', 2.9, 3.2, 38, 46],
     ];
@@ -717,6 +845,7 @@ class FairyGuildScene extends Phaser.Scene {
       spell: Phaser.Input.Keyboard.KeyCodes.Q,
       spellAlt: Phaser.Input.Keyboard.KeyCodes.R,
       interact: Phaser.Input.Keyboard.KeyCodes.E,
+      repair: Phaser.Input.Keyboard.KeyCodes.T,
       inventory: Phaser.Input.Keyboard.KeyCodes.I,
       one: Phaser.Input.Keyboard.KeyCodes.ONE,
       two: Phaser.Input.Keyboard.KeyCodes.TWO,
@@ -729,12 +858,17 @@ class FairyGuildScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer) => {
       this.ensureAudio();
       if (this.state.phase === 'playing' && pointer.leftButtonDown()) {
-        this.fireBow(this.time.now);
+        if (this.state.repairMode) {this.tryRepairBuilding();}
+        else {this.fireBow(this.time.now);}
       }
     });
     this.input.keyboard.on('keydown', () => this.ensureAudio());
     this.keys.inventory.on('down', () => this.toggleInventory());
-    this.keys.interact.on('down', () => this.tryOpenChest());
+    this.keys.repair.on('down', () => this.toggleRepairMode());
+    this.keys.interact.on('down', () => {
+      if (this.state.repairMode) {this.tryRepairBuilding();}
+      else {this.tryOpenChest();}
+    });
     [this.keys.one, this.keys.two, this.keys.three, this.keys.four, this.keys.five, this.keys.six].forEach((key, index) => {
       key.on('down', () => {
         if (this.state.phase === 'levelUp' && index < 3) {
@@ -745,7 +879,7 @@ class FairyGuildScene extends Phaser.Scene {
       });
     });
     this.keys.restart.on('down', () => {
-      if (this.state.phase === 'gameOver') this.scene.restart();
+      if (this.state.phase === 'gameOver') {this.scene.restart();}
     });
   }
 
@@ -753,43 +887,143 @@ class FairyGuildScene extends Phaser.Scene {
     this.audio = {
       context: null,
       ready: false,
+      masterGain: null,
+      sfxGain: null,
+      musicGain: null,
+      musicTimer: null,
+      musicStep: 0,
+      musicSoftened: false,
     };
   }
 
   ensureAudio() {
-    if (this.audio.ready) return;
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) {return;}
     this.audio.context = this.audio.context || new AudioContext();
+    const ctx = this.audio.context;
+    if (!this.audio.masterGain) {
+      this.audio.masterGain = ctx.createGain();
+      this.audio.masterGain.gain.value = 0.82;
+      this.audio.masterGain.connect(ctx.destination);
+
+      this.audio.sfxGain = ctx.createGain();
+      this.audio.sfxGain.gain.value = 0.8;
+      this.audio.sfxGain.connect(this.audio.masterGain);
+
+      this.audio.musicGain = ctx.createGain();
+      this.audio.musicGain.gain.value = 0.028;
+      this.audio.musicGain.connect(this.audio.masterGain);
+    }
     if (this.audio.context.state === 'suspended') {
       this.audio.context.resume();
     }
     this.audio.ready = true;
+    this.startVillageTheme();
   }
 
   playTone(type = 'sparkle') {
-    if (!this.audio.ready || !this.audio.context) return;
+    if (!this.audio.ready || !this.audio.context) {return;}
     const ctx = this.audio.context;
     const now = ctx.currentTime;
+    const motifs = {
+      sparkle: [
+        { freq: 740, endFreq: 1080, delay: 0, duration: 0.09, wave: 'triangle', gain: 0.038 },
+        { freq: 980, endFreq: 1320, delay: 0.045, duration: 0.11, wave: 'sine', gain: 0.026 },
+      ],
+      chest: [
+        { freq: 660, endFreq: 880, delay: 0, duration: 0.12, wave: 'triangle', gain: 0.045 },
+        { freq: 880, endFreq: 1175, delay: 0.09, duration: 0.14, wave: 'triangle', gain: 0.052 },
+        { freq: 1320, endFreq: 1760, delay: 0.2, duration: 0.18, wave: 'sine', gain: 0.035 },
+      ],
+      hit: [
+        { freq: 330, endFreq: 220, delay: 0, duration: 0.08, wave: 'square', gain: 0.022 },
+        { freq: 520, endFreq: 390, delay: 0.025, duration: 0.08, wave: 'triangle', gain: 0.018 },
+      ],
+      daze: [
+        { freq: 520, endFreq: 610, delay: 0, duration: 0.1, wave: 'sine', gain: 0.026 },
+        { freq: 430, endFreq: 510, delay: 0.1, duration: 0.12, wave: 'sine', gain: 0.023 },
+      ],
+      level: [
+        { freq: 523, endFreq: 523, delay: 0, duration: 0.1, wave: 'triangle', gain: 0.045 },
+        { freq: 659, endFreq: 659, delay: 0.1, duration: 0.12, wave: 'triangle', gain: 0.05 },
+        { freq: 784, endFreq: 988, delay: 0.22, duration: 0.22, wave: 'sine', gain: 0.055 },
+      ],
+      bow: [
+        { freq: 540, endFreq: 840, delay: 0, duration: 0.06, wave: 'triangle', gain: 0.03 },
+        { freq: 260, endFreq: 180, delay: 0.015, duration: 0.1, wave: 'sine', gain: 0.017 },
+      ],
+      repair: [
+        { freq: 440, endFreq: 587, delay: 0, duration: 0.1, wave: 'triangle', gain: 0.04 },
+        { freq: 587, endFreq: 740, delay: 0.1, duration: 0.12, wave: 'triangle', gain: 0.038 },
+        { freq: 880, endFreq: 1175, delay: 0.21, duration: 0.16, wave: 'sine', gain: 0.028 },
+      ],
+      gameOver: [
+        { freq: 392, endFreq: 330, delay: 0, duration: 0.2, wave: 'triangle', gain: 0.038 },
+        { freq: 330, endFreq: 262, delay: 0.18, duration: 0.28, wave: 'sine', gain: 0.034 },
+        { freq: 262, endFreq: 220, delay: 0.43, duration: 0.36, wave: 'sine', gain: 0.026 },
+      ],
+    };
+    (motifs[type] || motifs.sparkle).forEach((note) => this.playAudioNote(note, now, this.audio.sfxGain));
+  }
+
+  playAudioNote(note, baseTime, destination) {
+    const ctx = this.audio.context;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    const profile = {
-      sparkle: [740, 0.08, 'triangle', 0.045],
-      chest: [980, 0.18, 'sine', 0.06],
-      hit: [360, 0.07, 'square', 0.025],
-      level: [620, 0.22, 'triangle', 0.07],
-      bow: [520, 0.06, 'triangle', 0.032],
-    }[type] || [620, 0.1, 'sine', 0.04];
-    osc.type = profile[2];
-    osc.frequency.setValueAtTime(profile[0], now);
-    osc.frequency.exponentialRampToValueAtTime(profile[0] * 1.42, now + profile[1]);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(profile[3], now + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + profile[1] + 0.035);
+    const start = baseTime + (note.delay || 0);
+    const duration = note.duration || 0.12;
+    osc.type = note.wave || 'sine';
+    osc.frequency.setValueAtTime(note.freq, start);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, note.endFreq || note.freq), start + duration);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(note.gain || 0.03, start + 0.014);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration + 0.045);
     osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + profile[1] + 0.055);
+    gain.connect(destination || this.audio.sfxGain || ctx.destination);
+    osc.start(start);
+    osc.stop(start + duration + 0.07);
+  }
+
+  startVillageTheme() {
+    if (!this.audio.ready || this.audio.musicTimer) {return;}
+    this.scheduleVillageTheme();
+    this.audio.musicTimer = this.time.addEvent({
+      delay: 3200,
+      loop: true,
+      callback: () => this.scheduleVillageTheme(),
+    });
+  }
+
+  scheduleVillageTheme() {
+    if (!this.audio.ready || !this.audio.context || !this.audio.musicGain) {return;}
+    const ctx = this.audio.context;
+    const now = ctx.currentTime;
+    const chords = [
+      [392, 523, 659],
+      [440, 554, 659],
+      [349, 523, 698],
+      [392, 494, 659],
+    ];
+    const chord = chords[this.audio.musicStep % chords.length];
+    const baseGain = this.audio.musicSoftened ? 0.008 : 0.018;
+    chord.forEach((freq, index) => {
+      this.playAudioNote({
+        freq,
+        endFreq: freq * 1.005,
+        delay: index * 0.42,
+        duration: 1.05,
+        wave: index === 0 ? 'sine' : 'triangle',
+        gain: baseGain * (index === 0 ? 0.78 : 1),
+      }, now, this.audio.musicGain);
+    });
+    this.audio.musicStep += 1;
+  }
+
+  setMusicSoftened(softened) {
+    this.audio.musicSoftened = softened;
+    if (!this.audio.musicGain || !this.audio.context) {return;}
+    const target = softened ? 0.012 : 0.028;
+    this.audio.musicGain.gain.setTargetAtTime(target, this.audio.context.currentTime, 0.18);
   }
 
   updatePointerIso() {
@@ -797,13 +1031,13 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updatePlayer(dt, time) {
-    if (this.state.health <= 0) return;
+    if (this.state.health <= 0) {return;}
     let dx = 0;
     let dy = 0;
-    if (this.keys.left.isDown || this.keys.a.isDown) dx -= 1;
-    if (this.keys.right.isDown || this.keys.d.isDown) dx += 1;
-    if (this.keys.up.isDown || this.keys.w.isDown) dy -= 1;
-    if (this.keys.down.isDown || this.keys.s.isDown) dy += 1;
+    if (this.keys.left.isDown || this.keys.a.isDown) {dx -= 1;}
+    if (this.keys.right.isDown || this.keys.d.isDown) {dx += 1;}
+    if (this.keys.up.isDown || this.keys.w.isDown) {dy -= 1;}
+    if (this.keys.down.isDown || this.keys.s.isDown) {dy += 1;}
 
     const moving = dx !== 0 || dy !== 0;
     if (moving) {
@@ -816,8 +1050,10 @@ class FairyGuildScene extends Phaser.Scene {
       this.clampIso(this.player.iso, 1.2);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keys.melee)) {
-      this.swingSword(time);
+    const meleePressed = Phaser.Input.Keyboard.JustDown(this.keys.melee);
+    if (meleePressed) {
+      if (this.state.repairMode) {this.tryRepairBuilding();}
+      else {this.swingSword(time);}
     }
     if (Phaser.Input.Keyboard.JustDown(this.keys.bow)) {
       this.fireBow(time);
@@ -841,10 +1077,11 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   swingSword(time) {
-    if (time - this.player.lastAttack < 430) return;
+    if (time - this.player.lastAttack < 430) {return;}
     this.ensureAudio();
     this.player.lastAttack = time;
     this.player.actionLockUntil = time + 300;
+    this.setRepairMode(false, false);
     this.state.equipped = 'Wooden Sword';
     this.player.sprite.play('hero-melee', true);
     this.playTone('sparkle');
@@ -866,10 +1103,11 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   fireBow(time) {
-    if (time - this.player.lastBow < this.playerStats.bowCooldown) return;
+    if (time - this.player.lastBow < this.playerStats.bowCooldown) {return;}
     this.ensureAudio();
     this.player.lastBow = time;
     this.player.actionLockUntil = time + 260;
+    this.setRepairMode(false, false);
     this.state.equipped = 'Guild Bow';
     this.player.sprite.play('hero-special', true);
     this.playTone('bow');
@@ -911,6 +1149,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.lastSpell = time;
     this.state.mana -= this.playerStats.spellCost;
     this.player.actionLockUntil = time + 430;
+    this.setRepairMode(false, false);
     this.state.equipped = 'Sparkle Spell';
     this.player.sprite.play('hero-special', true);
     this.playTone('level');
@@ -1006,10 +1245,10 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   buyUpgrade(index) {
-    if (this.state.phase !== 'playing') return;
-    if (!this.state.inventoryOpen) return;
+    if (this.state.phase !== 'playing') {return;}
+    if (!this.state.inventoryOpen) {return;}
     const upgrade = this.upgrades[index];
-    if (!upgrade) return;
+    if (!upgrade) {return;}
     const price = upgrade.cost + upgrade.level * 25;
     if (this.state.gold < price) {
       this.addGuildNote(`${upgrade.name} needs ${price} gold.`);
@@ -1054,7 +1293,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   updateChests(time) {
     this.chests.forEach((chest) => {
-      if (chest.opened) return;
+      if (chest.opened) {return;}
       const p = this.isoToScreen(chest.iso.x, chest.iso.y, 10 + Math.sin(time / 450 + chest.bob) * 2.5);
       chest.sprite.setPosition(p.x, p.y);
       chest.glow.setPosition(p.x, p.y - 20);
@@ -1062,7 +1301,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   tryOpenChest() {
-    if (this.state.phase !== 'playing') return;
+    if (this.state.phase !== 'playing') {return;}
     const chest = this.chests.find((candidate) => !candidate.opened && Phaser.Math.Distance.Between(
       candidate.iso.x,
       candidate.iso.y,
@@ -1099,11 +1338,201 @@ class FairyGuildScene extends Phaser.Scene {
         { x: 13.2, y: Phaser.Math.Between(2, 12) },
       ]);
       this.time.delayedCall(2200, () => {
-        if (this.state.phase !== 'playing') return;
+        if (this.state.phase !== 'playing') {return;}
         this.spawnChest(edge.x, edge.y, Phaser.Math.RND.pick(['gold', 'gold', 'xp', 'mana', 'heart', 'buff']));
         this.addGuildNote('A chest appeared near the old oak!');
       });
     }
+  }
+
+  toggleRepairMode() {
+    if (this.state.phase !== 'playing') {return;}
+    this.ensureAudio();
+    this.setRepairMode(!this.state.repairMode);
+  }
+
+  setRepairMode(enabled, announce = true) {
+    if (enabled && this.state.phase !== 'playing') {return;}
+    if (this.state.repairMode === enabled) {
+      if (enabled) {this.state.equipped = 'Repair Kit';}
+      if (enabled) {this.showRepairModeIndicator();}
+      else {this.hideRepairModeIndicator();}
+      return;
+    }
+    this.state.repairMode = enabled;
+    if (enabled) {
+      this.state.inventoryOpen = false;
+      this.inventoryPanel?.setVisible(false);
+      this.state.equipped = 'Repair Kit';
+      this.showRepairModeIndicator();
+      if (announce) {this.addGuildNote('Repair Kit ready. Space/click/E near a damaged building.');}
+      this.playTone('sparkle');
+    } else {
+      this.hideRepairModeIndicator();
+      if (this.state.equipped === 'Repair Kit') {
+        this.state.equipped = 'Wooden Sword';
+        if (announce) {this.addGuildNote('Repair Kit tucked away.');}
+      }
+    }
+  }
+
+  showRepairModeIndicator() {
+    if (!this.player?.sprite) {return;}
+    if (this.repairModeIndicator) {
+      this.repairModeIndicator.setVisible(true);
+      return;
+    }
+    const indicator = this.add.container(this.player.sprite.x + 34, this.player.sprite.y - 58);
+    const glow = this.add.circle(0, 0, 22, 0xb8ffd5, 0.22)
+      .setStrokeStyle(2, 0xf8ffd7, 0.6);
+    const tool = this.add.image(0, 0, 'repairTool')
+      .setOrigin(0.5)
+      .setDisplaySize(50, 50)
+      .setAngle(-10);
+    indicator.add([glow, tool]);
+    (indicator as any).glow = glow;
+    (indicator as any).tool = tool;
+    this.fxLayer.add(indicator);
+    this.repairModeIndicator = indicator;
+    this.tweens.add({
+      targets: tool,
+      y: -4,
+      angle: 8,
+      yoyo: true,
+      repeat: -1,
+      duration: 820,
+      ease: 'Sine.inOut',
+    });
+    this.tweens.add({
+      targets: glow,
+      scale: 1.18,
+      alpha: 0.34,
+      yoyo: true,
+      repeat: -1,
+      duration: 940,
+      ease: 'Sine.inOut',
+    });
+    this.updateRepairModeIndicator(this.time.now);
+  }
+
+  hideRepairModeIndicator() {
+    if (!this.repairModeIndicator) {return;}
+    this.tweens.killTweensOf([this.repairModeIndicator.tool, this.repairModeIndicator.glow]);
+    this.repairModeIndicator.destroy();
+    this.repairModeIndicator = null;
+  }
+
+  updateRepairModeIndicator(time) {
+    if (!this.repairModeIndicator || !this.player?.sprite) {return;}
+    if (!this.state.repairMode || this.state.phase !== 'playing') {
+      this.hideRepairModeIndicator();
+      return;
+    }
+    const bob = Math.sin(time / 180) * 3;
+    this.repairModeIndicator
+      .setPosition(this.player.sprite.x + 34, this.player.sprite.y - 58 + bob)
+      .setDepth(this.player.sprite.depth + 150);
+  }
+
+  pulseRepairModeIndicator() {
+    if (!this.repairModeIndicator?.tool) {return;}
+    this.tweens.add({
+      targets: this.repairModeIndicator.tool,
+      displayWidth: 62,
+      displayHeight: 62,
+      x: 5,
+      yoyo: true,
+      repeat: 2,
+      duration: 70,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        if (this.repairModeIndicator?.tool) {
+          this.repairModeIndicator.tool.setDisplaySize(50, 50).setX(0);
+        }
+      },
+    });
+  }
+
+  getNearestDamagedBuilding(range = REPAIR_RANGE) {
+    let nearest = null;
+    let nearestDistance = Infinity;
+    this.buildings.forEach((building) => {
+      if (building.hp >= building.max) {return;}
+      if (building.name === 'Castle' && building.hp <= 0) {return;}
+      const distance = Phaser.Math.Distance.Between(
+        building.iso.x,
+        building.iso.y,
+        this.player.iso.x,
+        this.player.iso.y,
+      );
+      if (distance <= range && distance < nearestDistance) {
+        nearest = building;
+        nearestDistance = distance;
+      }
+    });
+    return nearest;
+  }
+
+  tryRepairBuilding() {
+    if (this.state.phase !== 'playing') {return;}
+    this.ensureAudio();
+    if (this.time.now - this.lastRepairAt < REPAIR_COOLDOWN) {return;}
+    const building = this.getNearestDamagedBuilding();
+    if (!building) {
+      this.addGuildNote('No damaged building close enough yet.');
+      this.pulseRepairModeIndicator();
+      this.playTone('hit');
+      return;
+    }
+    if (this.state.gold < REPAIR_COST) {
+      this.addGuildNote(`Repair supplies need ${REPAIR_COST} gold.`);
+      this.pulseRepairModeIndicator();
+      this.playTone('hit');
+      return;
+    }
+    this.lastRepairAt = this.time.now;
+    this.state.gold -= REPAIR_COST;
+    const repaired = Math.min(REPAIR_AMOUNT, building.max - building.hp);
+    building.hp = Math.min(building.max, building.hp + REPAIR_AMOUNT);
+    this.updateBuildingRepairState(building);
+    this.updateVillageSafety();
+    this.spawnRepairToolEffect(building, repaired);
+    this.spawnSparkleBurst(building.sprite.x, building.sprite.y - 22, 0xb8ffd5, 14, 0.82);
+    this.playTone('repair');
+    this.addGuildNote(`${building.name} repaired +${repaired} HP!`);
+  }
+
+  spawnRepairToolEffect(building, amount) {
+    const toolX = (this.player.sprite.x + building.sprite.x) / 2;
+    const toolY = (this.player.sprite.y + building.sprite.y) / 2 - 24;
+    const tool = this.add.image(toolX, toolY, 'repairTool')
+      .setOrigin(0.5)
+      .setDisplaySize(56, 56)
+      .setDepth(building.sprite.depth + 260)
+      .setAngle(-12);
+    const plus = this.add.text(toolX + 34, toolY - 26, `+${amount}`, {
+      ...this.uiTextStyle(15, '#28784a'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    this.fxLayer.add([tool, plus]);
+    this.tweens.add({
+      targets: tool,
+      y: toolY - 20,
+      angle: 18,
+      scale: 1.18,
+      alpha: 0,
+      duration: 620,
+      ease: 'Back.easeOut',
+      onComplete: () => tool.destroy(),
+    });
+    this.tweens.add({
+      targets: plus,
+      y: toolY - 52,
+      alpha: 0,
+      duration: 680,
+      ease: 'Cubic.easeOut',
+      onComplete: () => plus.destroy(),
+    });
   }
 
   grantChestReward(reward) {
@@ -1145,6 +1574,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.clearLevelTimers();
     this.state.phase = 'countdown';
     this.state.inventoryOpen = false;
+    this.setRepairMode(false, false);
+    this.setMusicSoftened(false);
     this.inventoryPanel?.setVisible(false);
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
@@ -1158,14 +1589,14 @@ class FairyGuildScene extends Phaser.Scene {
     sequence.forEach((label, index) => {
       this.addLevelTimer(index * 780, () => {
         this.showCountdownLabel(label);
-        if (label === 'Go!') this.playTone('level');
+        if (label === 'Go!') {this.playTone('level');}
       });
     });
     this.addLevelTimer(sequence.length * 780, () => this.startLevelRound());
   }
 
   showCountdownLabel(label) {
-    if (!this.countdownOverlay) return;
+    if (!this.countdownOverlay) {return;}
     this.countdownLevelText.setText(label.startsWith('Level') ? label : `Level ${this.state.level}`);
     this.countdownNumberText.setText(label.startsWith('Level') ? '' : label);
     this.countdownNumberText.setScale(label === 'Go!' ? 0.82 : 1);
@@ -1180,7 +1611,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   startLevelRound() {
-    if (this.state.phase !== 'countdown') return;
+    if (this.state.phase !== 'countdown') {return;}
     this.state.phase = 'playing';
     this.countdownOverlay?.setVisible(false);
     this.levelClearQueued = false;
@@ -1193,7 +1624,7 @@ class FairyGuildScene extends Phaser.Scene {
 
     for (let i = 0; i < count; i += 1) {
       this.addLevelTimer(560 + i * Math.max(250, 760 - level * 30), () => {
-        if (this.state.phase !== 'playing') return;
+        if (this.state.phase !== 'playing') {return;}
         this.levelSpawnsPending = Math.max(0, this.levelSpawnsPending - 1);
         const spawned = this.spawnEnemy(level);
         if (!spawned) {
@@ -1205,7 +1636,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   checkLevelClear() {
-    if (this.state.phase !== 'playing' || this.levelClearQueued) return;
+    if (this.state.phase !== 'playing' || this.levelClearQueued) {return;}
     if (this.levelSpawnsPending <= 0 && this.levelEnemiesRemaining <= 0) {
       this.levelClearQueued = true;
       this.addLevelTimer(720, () => this.completeLevel());
@@ -1213,9 +1644,10 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   completeLevel() {
-    if (this.state.phase !== 'playing') return;
+    if (this.state.phase !== 'playing') {return;}
     this.state.phase = 'levelUp';
     this.state.inventoryOpen = false;
+    this.setRepairMode(false, false);
     this.inventoryPanel?.setVisible(false);
     this.clearProjectiles();
     this.clearRetreatingEnemies();
@@ -1226,7 +1658,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.showLevelUpScreen();
   }
 
-  getEnemyTarget() {
+  getEnemyTarget(): any {
     const aliveBuildings = this.buildings.filter((building) => building.hp > 0);
     const castle = this.buildings.find((building) => building.name === 'Castle');
     if (!castle || castle.hp <= 0) {
@@ -1237,33 +1669,72 @@ class FairyGuildScene extends Phaser.Scene {
     return Phaser.Math.RND.pick(villageTargets.length > 0 ? villageTargets : [castle]);
   }
 
+  pickWeighted(items) {
+    if (!items.length) {return null;}
+    const total = items.reduce((sum, item) => sum + item.weight, 0);
+    let roll = Phaser.Math.FloatBetween(0, total);
+    for (const item of items) {
+      roll -= item.weight;
+      if (roll <= 0) {return item;}
+    }
+    return items[items.length - 1];
+  }
+
+  getEnemyArchetype(level) {
+    return this.pickWeighted(ENEMY_ARCHETYPES.filter((archetype) => archetype.unlockLevel <= level))
+      || ENEMY_ARCHETYPES[0];
+  }
+
+  getEnemyVariant(level) {
+    return this.pickWeighted(ENEMY_VARIANTS.filter((variant) => variant.unlockLevel <= level))
+      || ENEMY_VARIANTS[0];
+  }
+
+  getEnemyDisplayName(enemy) {
+    return [enemy.variant.label, enemy.archetype.label].filter(Boolean).join(' ');
+  }
+
   spawnEnemy(level) {
-    if (this.state.phase !== 'playing') return false;
+    if (this.state.phase !== 'playing') {return false;}
     const target = this.getEnemyTarget();
-    if (!target) return false;
+    if (!target) {return false;}
     const side = Phaser.Math.Between(0, 3);
     let iso;
-    if (side === 0) iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 1.1 };
-    else if (side === 1) iso = { x: 13.7, y: Phaser.Math.FloatBetween(1.4, 13.3) };
-    else if (side === 2) iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 13.7 };
-    else iso = { x: 1.1, y: Phaser.Math.FloatBetween(1.4, 13.3) };
-    const type = Phaser.Math.Between(0, 4);
+    if (side === 0) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 1.1 };}
+    else if (side === 1) {iso = { x: 13.7, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
+    else if (side === 2) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 13.7 };}
+    else {iso = { x: 1.1, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
+    const archetype = this.getEnemyArchetype(level);
+    const variant = this.getEnemyVariant(level);
     const p = this.isoToScreen(iso.x, iso.y, 16);
-    const size = 52 + (type % 3) * 7 + Math.min(level, 5) * 1.5;
+    const levelBonus = Math.max(0, level - 1);
+    const size = (archetype.size + Math.min(levelBonus, 6) * 1.4) * variant.scale;
+    const maxHp = Math.max(1, Math.round((archetype.hp + Math.floor(levelBonus / 2)) * variant.hp));
+    const speed = Math.min(1.72, (archetype.speed + levelBonus * 0.035) * variant.speed);
+    const buildingDamage = Math.max(1, Math.round((archetype.buildingDamage + Math.floor(levelBonus / 3)) * variant.buildingDamage));
+    const contactDamage = Math.max(1, Math.round(archetype.contactDamage * variant.contactDamage));
     const shadow = this.add.ellipse(p.x, p.y + 13, size * 0.58, size * 0.22, 0x315133, 0.2);
-    const sprite = this.add.sprite(p.x, p.y, 'monsterSheet', `monster-${type % 4}-${Phaser.Math.Between(0, 3)}`)
+    const sprite = this.add.sprite(p.x, p.y, 'monsterSheet', `monster-${archetype.row}-${Phaser.Math.Between(0, 3)}`)
       .setOrigin(0.5, 0.76)
       .setDisplaySize(size, size)
       .setDepth(p.y + 50);
+    if (variant.tint) {sprite.setTint(variant.tint);}
     const enemy = {
-      type,
+      type: archetype.row,
+      archetype,
+      variant,
+      variantTint: variant.tint,
       iso,
       sprite,
       shadow,
       target,
-      hp: 2 + Math.floor(level / 2) + (type === 2 ? 1 : 0),
-      maxHp: 2 + Math.floor(level / 2) + (type === 2 ? 1 : 0),
-      speed: 0.75 + level * 0.035 + type * 0.035,
+      hp: maxHp,
+      maxHp,
+      speed,
+      buildingDamage,
+      contactDamage,
+      rewardGold: archetype.rewardGold.map((value) => Math.round((value + levelBonus) * variant.reward)),
+      rewardXp: Math.round((archetype.rewardXp + levelBonus * 2) * variant.reward),
       touchCooldown: 0,
       heroTouchCooldown: 0,
       dazedUntil: 0,
@@ -1273,8 +1744,10 @@ class FairyGuildScene extends Phaser.Scene {
     };
     this.enemies.push(enemy);
     this.entityLayer.add([shadow, sprite]);
-    if (target.name === 'Bakery' && Phaser.Math.Between(0, 2) === 0) {
+    if (target.name === 'Bakery' && archetype.key === 'mushroom' && Phaser.Math.Between(0, 2) === 0) {
       this.addGuildNote('Mushroom sprites are heading toward the bakery!');
+    } else if (variant.key !== 'normal' && Phaser.Math.Between(0, 5) === 0) {
+      this.addGuildNote(`A ${this.getEnemyDisplayName(enemy)} joins Level ${level}!`);
     }
     return true;
   }
@@ -1283,7 +1756,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.enemies.slice().forEach((enemy) => {
       if (!enemy.retreating && enemy.target.hp <= 0) {
         const nextTarget = this.getEnemyTarget();
-        if (!nextTarget) return;
+        if (!nextTarget) {return;}
         enemy.target = nextTarget;
       }
       const targetIso = enemy.retreating
@@ -1299,13 +1772,13 @@ class FairyGuildScene extends Phaser.Scene {
       }
       if (!enemy.retreating && dist <= 0.45 && time > enemy.touchCooldown) {
         enemy.touchCooldown = time + 1250;
-        this.bumpBuilding(enemy.target, 4 + Math.floor(this.state.level / 3));
+        this.bumpBuilding(enemy.target, enemy.buildingDamage);
         this.playTone('hit');
       }
       const playerDist = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, this.player.iso.x, this.player.iso.y);
       if (!enemy.retreating && playerDist <= 0.58 && time > enemy.heroTouchCooldown) {
         enemy.heroTouchCooldown = time + 1400;
-        this.takePlayerDamage(1, enemy);
+        this.takePlayerDamage(enemy.contactDamage, enemy);
       }
       if (enemy.retreating && dist < 0.55) {
         this.removeEnemy(enemy, false);
@@ -1331,12 +1804,14 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   damageEnemy(enemy, amount, reason) {
-    if (!this.enemies.includes(enemy) || enemy.defeated) return;
+    if (!this.enemies.includes(enemy) || enemy.defeated) {return;}
     enemy.hp -= amount;
     enemy.dazedUntil = Math.max(enemy.dazedUntil, this.time.now + 240);
     enemy.sprite.setTint(reason === 'sparkles' ? 0xbdf6ff : 0xfff3a0);
     this.time.delayedCall(120, () => {
-      if (enemy.sprite?.active) enemy.sprite.clearTint();
+      if (!enemy.sprite?.active || enemy.defeated) {return;}
+      if (enemy.variantTint) {enemy.sprite.setTint(enemy.variantTint);}
+      else {enemy.sprite.clearTint();}
     });
     this.spawnSparkleBurst(enemy.sprite.x, enemy.sprite.y - 18, reason === 'sparkles' ? 0x9be7ff : 0xffed95, 7, 0.56);
     this.playTone('hit');
@@ -1344,11 +1819,12 @@ class FairyGuildScene extends Phaser.Scene {
       enemy.defeated = true;
       this.levelEnemiesRemaining = Math.max(0, this.levelEnemiesRemaining - 1);
       enemy.retreating = true;
-      enemy.sprite.setFrame(`monster-${enemy.type % 4}-${Phaser.Math.Between(4, 7)}`);
+      enemy.sprite.setFrame(`monster-${enemy.archetype.row}-${Phaser.Math.Between(4, 7)}`);
       enemy.sprite.setTint(0xffffff);
       enemy.speed += 0.55;
-      this.gainXp(12 + this.state.level * 3);
-      this.dropReward(enemy.iso.x, enemy.iso.y);
+      this.gainXp(enemy.rewardXp);
+      this.dropReward(enemy.iso.x, enemy.iso.y, enemy);
+      this.playTone('daze');
       this.addGuildNote(Phaser.Math.RND.pick([
         'A forest critter scampered home dazed.',
         'Sparkles solved that little mix-up.',
@@ -1386,7 +1862,7 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
-  dropReward(x, y) {
+  dropReward(x, y, enemy = null) {
     const roll = Phaser.Math.Between(0, 100);
     const type = roll < 58 ? 'gold' : roll < 76 ? 'mana' : roll < 90 ? 'heart' : 'xp';
     const texture = type === 'gold' ? 'coinTexture' : type === 'heart' ? 'heartTexture' : type === 'mana' ? 'manaTexture' : 'xpTexture';
@@ -1395,7 +1871,13 @@ class FairyGuildScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDisplaySize(32, 32)
       .setDepth(p.y + 120);
-    this.pickups.push({ type, iso: { x, y }, sprite, age: 0, value: Phaser.Math.Between(6, 15) });
+    const goldRange = enemy?.rewardGold || [6, 15];
+    const value = type === 'gold'
+      ? Phaser.Math.Between(goldRange[0], goldRange[1])
+      : type === 'xp'
+        ? Math.max(12, Math.round((enemy?.rewardXp || 20) * 0.8))
+        : 1;
+    this.pickups.push({ type, iso: { x, y }, sprite, age: 0, value });
     this.fxLayer.add(sprite);
   }
 
@@ -1416,13 +1898,13 @@ class FairyGuildScene extends Phaser.Scene {
     this.pickups = this.pickups.filter((candidate) => candidate !== pickup);
     if (pickup.type === 'gold') {
       this.state.gold += pickup.value;
-      if (Phaser.Math.Between(0, 4) === 0) this.addGuildNote(`You found ${pickup.value} gold!`);
+      if (Phaser.Math.Between(0, 4) === 0) {this.addGuildNote(`You found ${pickup.value} gold!`);}
     } else if (pickup.type === 'heart') {
       this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
     } else if (pickup.type === 'mana') {
       this.state.mana = Math.min(this.playerStats.maxMana, this.state.mana + 22);
     } else {
-      this.gainXp(20);
+      this.gainXp(pickup.value);
     }
     this.playTone('sparkle');
     this.tweens.add({
@@ -1473,7 +1955,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   bumpBuilding(building, amount) {
-    if (this.state.phase !== 'playing' || building.hp <= 0) return;
+    if (this.state.phase !== 'playing' || building.hp <= 0) {return;}
     building.hp = Math.max(0, building.hp - amount);
     building.underAttackUntil = this.time.now + 650;
     building.sprite.setTint(0xfff0a0);
@@ -1485,16 +1967,15 @@ class FairyGuildScene extends Phaser.Scene {
       repeat: 3,
       duration: 44,
       onComplete: () => {
-        if (building.hp > 0) building.sprite.clearTint();
+        this.updateBuildingRepairState(building);
       },
     });
     this.time.delayedCall(1500, () => {
-      if (building.hp > 0 && this.time.now > building.underAttackUntil) building.repairIcon.setVisible(false);
+      if (this.time.now > building.underAttackUntil) {this.updateBuildingRepairState(building);}
     });
     if (building.hp <= 0) {
       building.hp = 0;
-      building.repairIcon.setVisible(true);
-      building.sprite.setTint(0xffc98c);
+      this.updateBuildingRepairState(building);
       this.state.villageSafety = Math.max(0, this.state.villageSafety - (building.name === 'Castle' ? 100 : 14));
       if (building.name === 'Castle') {
         this.addGuildNote('The castle needs a rescue rest!');
@@ -1504,6 +1985,21 @@ class FairyGuildScene extends Phaser.Scene {
       }
       this.spawnSparkleBurst(building.sprite.x, building.sprite.y - 20, 0xffc785, 13, 0.85);
     }
+  }
+
+  updateBuildingRepairState(building) {
+    if (building.hp <= 0) {
+      building.repairIcon.setVisible(true);
+      building.sprite.setTint(0xffc98c);
+      return;
+    }
+    if (building.hp < building.max) {
+      building.repairIcon.setVisible(true);
+      if (this.time.now > building.underAttackUntil) {building.sprite.clearTint();}
+      return;
+    }
+    building.repairIcon.setVisible(false);
+    building.sprite.clearTint();
   }
 
   updateVillageSafety() {
@@ -1516,7 +2012,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   takePlayerDamage(amount, enemy) {
-    if (this.state.phase !== 'playing' || this.time.now < this.player.invulnerableUntil) return;
+    if (this.state.phase !== 'playing' || this.time.now < this.player.invulnerableUntil) {return;}
     this.state.health = Math.max(0, this.state.health - amount);
     this.player.invulnerableUntil = this.time.now + 1650;
     if (enemy) {
@@ -1535,7 +2031,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   checkFailureState() {
-    if (this.state.phase === 'gameOver') return;
+    if (this.state.phase === 'gameOver') {return;}
     if (this.state.health <= 0) {
       this.enterGameOver('Your hero ran out of hearts!');
       return;
@@ -1547,17 +2043,19 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   enterGameOver(reason) {
-    if (this.state.phase === 'gameOver') return;
+    if (this.state.phase === 'gameOver') {return;}
     this.state.phase = 'gameOver';
     this.state.gameOverReason = reason;
     this.state.inventoryOpen = false;
+    this.setRepairMode(false, false);
     this.inventoryPanel?.setVisible(false);
     this.countdownOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
     this.clearLevelTimers();
     this.clearProjectiles();
     this.showGameOverScreen(reason);
-    this.playTone('hit');
+    this.setMusicSoftened(true);
+    this.playTone('gameOver');
   }
 
   gainXp(amount) {
@@ -1640,7 +2138,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updateDepths() {
-    if (!this.player) return;
+    if (!this.player) {return;}
     this.player.sprite.setDepth(this.player.sprite.y + 80);
     this.player.shadow.setDepth(this.player.sprite.y + 10);
     this.enemies.forEach((enemy) => {
@@ -1852,9 +2350,9 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   chooseLevelUpgrade(index) {
-    if (this.state.phase !== 'levelUp') return;
+    if (this.state.phase !== 'levelUp') {return;}
     const choice = this.levelUpChoices[index];
-    if (!choice) return;
+    if (!choice) {return;}
     this.playerStats.maxHealth += 1;
     this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
     choice.apply();
@@ -1950,12 +2448,12 @@ class FairyGuildScene extends Phaser.Scene {
     const hint = this.add.container(18, HEIGHT - 58).setDepth(6000);
     const bg = this.add.graphics();
     bg.fillStyle(0x22324a, 0.62);
-    bg.fillRoundedRect(0, 0, 632, 38, 8);
+    bg.fillRoundedRect(0, 0, 792, 38, 8);
     const text = this.add.text(
       14,
       10,
-      'WASD/Arrows move   Space sword   Click/F bow   Q/R spell   E chest   I inventory',
-      this.uiTextStyle(14, '#ffffff'),
+      'WASD/Arrows move   Space sword   Click/F bow   Q/R spell   T repair kit   Space/click/E repair   I inventory',
+      this.uiTextStyle(13, '#ffffff'),
     );
     hint.add([bg, text]);
     this.uiLayer.add(hint);
@@ -1968,7 +2466,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   rebuildInventoryPanel() {
-    if (!this.inventoryPanel) return;
+    if (!this.inventoryPanel) {return;}
     this.inventoryPanel.removeAll(true);
     const bg = this.add.graphics();
     bg.fillStyle(0xfff9e8, 0.95);
@@ -1998,7 +2496,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   toggleInventory() {
-    if (this.state.phase !== 'playing') return;
+    if (this.state.phase !== 'playing') {return;}
     this.state.inventoryOpen = !this.state.inventoryOpen;
     this.inventoryPanel.setVisible(this.state.inventoryOpen);
     this.rebuildInventoryPanel();
@@ -2026,7 +2524,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderHearts() {
-    if (this.hud.lastHearts === `${this.state.health}/${this.playerStats.maxHealth}`) return;
+    if (this.hud.lastHearts === `${this.state.health}/${this.playerStats.maxHealth}`) {return;}
     this.hud.lastHearts = `${this.state.health}/${this.playerStats.maxHealth}`;
     this.hud.hearts.removeAll(true);
     for (let i = 0; i < this.playerStats.maxHealth; i += 1) {
@@ -2058,9 +2556,9 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   addGuildNote(message) {
-    if (this.notes[this.notes.length - 1] === message) return;
+    if (this.notes[this.notes.length - 1] === message) {return;}
     this.notes.push(message);
-    if (this.notes.length > 8) this.notes.shift();
+    if (this.notes.length > 8) {this.notes.shift();}
   }
 }
 

@@ -19,6 +19,7 @@ The player controls the hero in real time from an isometric perspective. Charmin
 1. A basic melee weapon, such as a wooden sword or short magical blade.
 2. A bow for ranged attacks.
 3. A simple magical spell that uses mana.
+4. A cheerful repair tool mode for restoring damaged buildings with gold.
 
 Combat should feel playful and arcade-like, with soft impact effects, stars, sparkles, puffs of smoke, and funny reactions. Monsters should disappear, retreat, or become dazed when defeated. Avoid realistic violence.
 
@@ -107,6 +108,8 @@ Use a colorful isometric cartoon style. The game should feel magical, cozy, adve
 - Mouse click or a key for bow attack
 - Another key for spell casting
 - E to open chests or interact
+- T to toggle the Repair Kit
+- Space, mouse click, or E to repair nearby damaged buildings while the Repair Kit is active
 - I to open inventory
 
 ## Technical Requirements
@@ -117,16 +120,21 @@ The final result should feel like a small, cheerful Zelda-like village defense R
 
 ## Current Implementation Notes
 
-- The playable app is implemented in `src/main.js`.
+- The playable app is implemented in TypeScript in `src/main.ts`.
 - Generated image assets are stored under `public/assets/`.
 - The main village board uses `public/assets/village-board.png`.
 - Hero and monster sheets are loaded from `public/assets/hero-sheet.png` and `public/assets/monster-pickup-sheet.png`.
 - The current progression is round-clear based: each level starts with a countdown, spawns a finite enemy round, then pauses for a level-up choice once all enemies are defeated.
 - The hero starts with 3 hearts. Each level-up grants `Heart +1` and one selected damage bonus: melee, range, or magic.
-- Buildings persist their damage across levels. Non-castle buildings remain damaged at 0 HP; castle HP reaching 0 triggers game over.
+- Buildings persist their damage across levels. Pressing `T` toggles the standalone Repair Kit tool; while it is active, pressing `Space`, mouse click, or `E` near a damaged building spends 6 gold and restores 14 HP. Non-castle buildings remain damaged at 0 HP until repaired, and they become targetable again once their HP rises above 0. Castle HP reaching 0 still triggers game over immediately.
 - The hero reaching 0 hearts also triggers game over, with a restart screen.
+- Enemy spawning is data-driven with top-level `ENEMY_ARCHETYPES` and `ENEMY_VARIANTS` configs in `src/main.ts`. Archetypes use monster sheet rows for blobs, sprites, mushrooms, lizards, and acorn critters; variants add tint, scale, and stat multipliers for normal, bright, and elder enemies.
+- TypeScript checks run through `npm run typecheck`, and ESLint runs through `npm run lint` with curly-brace enforcement and arrow-callback preference.
 - The level-up and game-over screens use generated textless UI art from `public/assets/level-up-ui.png` and `public/assets/game-over-ui.png`, with all functional text rendered in Phaser.
 - The level-up screen keeps `public/assets/level-up-ui-source.png` as its chroma-key source and renders each card's colored stage, five-pip progress bars, and hover preview in Phaser so future sprite swaps do not require regenerating the panel art.
 - The level-up sword, range, and magic card icons use cropped generated frames from `public/assets/world-ui-sheet.png` instead of runtime placeholder drawings.
 - The status bar and Guild Notes panel use generated textless UI art from `public/assets/status-panel-ui.png` and `public/assets/guild-notes-ui-transparent.png`, with all functional text rendered in Phaser for readability.
+- Repair tooling uses `public/assets/repair-tool-source.png` as the chroma-key source and `public/assets/repair-tool.png` as the transparent Phaser sprite.
+- Composable asset rule: keep generated UI panels textless and transparent. Do not bake swappable sprites, labels, progress bars, hit areas, live values, or colored card stages into panel art; keep those as Phaser-rendered layers so future iterations can swap individual sprites without regenerating the full UI.
+- Procedural audio remains dependency-free Web Audio, with short motifs for sword hits, bow shots, spells, chests, repairs, level-ups, game-over, enemy daze, and a gentle low-volume village theme that starts after the first user interaction.
 - Some crisp interactive markers and HUD icons are generated at runtime with Phaser graphics for readability.
