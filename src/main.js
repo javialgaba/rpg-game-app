@@ -9,7 +9,7 @@ const MAP_W = 15;
 const MAP_H = 15;
 const ORIGIN = { x: WIDTH / 2, y: 108 };
 const PLAYER_BASE = {
-  maxHealth: 6,
+  maxHealth: 3,
   maxMana: 90,
   speed: 3.15,
   swordPower: 1,
@@ -18,6 +18,9 @@ const PLAYER_BASE = {
   bowCooldown: 560,
   spellCost: 28,
 };
+
+const LEVEL_UP_CARD_XS = [-210, 0, 210];
+const LEVEL_UP_MAX_PIPS = 5;
 
 const COLORS = {
   skyTop: 0x8bd6ff,
@@ -43,13 +46,14 @@ class FairyGuildScene extends Phaser.Scene {
       gold: 0,
       xp: 0,
       level: 1,
-      wave: 0,
+      phase: 'countdown',
       villageSafety: 100,
       equipped: 'Wooden Sword',
       spell: 'Sparkle Burst',
       inventoryOpen: false,
-      pausedForLevel: false,
+      gameOverReason: '',
     };
+    this.keys = {};
     this.keys = {};
     this.enemies = [];
     this.projectiles = [];
@@ -59,21 +63,32 @@ class FairyGuildScene extends Phaser.Scene {
     this.effects = [];
     this.notes = [];
     this.upgrades = [];
+    this.levelUpProgressBars = [];
     this.lastPointerIso = { x: 7, y: 7 };
+    this.levelSpawnsPending = 0;
+    this.levelEnemiesRemaining = 0;
+    this.levelClearQueued = false;
+    this.levelTimers = [];
   }
 
   preload() {
     this.load.image('villageBoard', '/assets/village-board.png');
+    this.load.image('levelUpUI', '/assets/level-up-ui.png');
+    this.load.image('gameOverUI', '/assets/game-over-ui.png');
+    this.load.image('statusPanelUI', '/assets/status-panel-ui.png');
+    this.load.image('guildNotesUI', '/assets/guild-notes-ui-transparent.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
     this.load.image('worldSheet', '/assets/world-ui-sheet.png');
   }
 
   create() {
+    this.resetRuntimeState();
     this.createAudio();
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
     this.registerSheetFrames('monsterSheet', 8, 5, 'monster');
     this.registerSheetFrames('worldSheet', 6, 4, 'world');
+    this.registerUiArtFrames();
     this.createGeneratedTextures();
 
     this.worldLayer = this.add.layer();
@@ -87,15 +102,19 @@ class FairyGuildScene extends Phaser.Scene {
     this.createControls();
     this.createHud();
     this.createUpgrades();
+    this.createPhaseOverlays();
     this.spawnInitialChests();
-    this.startWave();
+    this.startLevelCountdown();
 
     this.time.addEvent({
       delay: 1250,
       loop: true,
       callback: () => {
-        this.regenMana(2 + Math.floor(this.state.level / 2));
-        this.updateVillageSafety();
+        if (this.state.phase === 'playing') {
+          this.regenMana(2 + Math.floor(this.state.level / 2));
+          this.updateVillageSafety();
+          this.checkFailureState();
+        }
       },
     });
 
@@ -103,14 +122,50 @@ class FairyGuildScene extends Phaser.Scene {
     this.addGuildNote('Press E near a chest for a cheerful surprise.');
   }
 
+  resetRuntimeState() {
+    this.player = null;
+    this.playerStats = { ...PLAYER_BASE };
+    this.state = {
+      health: PLAYER_BASE.maxHealth,
+      mana: PLAYER_BASE.maxMana,
+      gold: 0,
+      xp: 0,
+      level: 1,
+      phase: 'countdown',
+      villageSafety: 100,
+      equipped: 'Wooden Sword',
+      spell: 'Sparkle Burst',
+      inventoryOpen: false,
+      gameOverReason: '',
+    };
+    this.enemies = [];
+    this.projectiles = [];
+    this.chests = [];
+    this.pickups = [];
+    this.buildings = [];
+    this.effects = [];
+    this.notes = [];
+    this.upgrades = [];
+    this.levelUpProgressBars = [];
+    this.lastPointerIso = { x: 7, y: 7 };
+    this.levelSpawnsPending = 0;
+    this.levelEnemiesRemaining = 0;
+    this.levelClearQueued = false;
+    this.levelTimers = [];
+  }
+
   update(time, delta) {
     const dt = delta / 1000;
     this.updatePointerIso();
-    this.updatePlayer(dt, time);
-    this.updateEnemies(dt, time);
-    this.updateProjectiles(dt);
-    this.updatePickups(dt);
-    this.updateChests(time);
+    if (this.state.phase === 'playing') {
+      this.updatePlayer(dt, time);
+      this.updateEnemies(dt, time);
+      this.updateProjectiles(dt);
+      this.updatePickups(dt);
+      this.updateChests(time);
+      this.checkLevelClear();
+      this.checkFailureState();
+    }
     this.updateEffects(dt);
     this.updateDepths();
     this.updateHud();
@@ -121,12 +176,35 @@ class FairyGuildScene extends Phaser.Scene {
     const image = texture.getSourceImage();
     for (let row = 0; row < rows; row += 1) {
       for (let col = 0; col < cols; col += 1) {
+        const frameName = `${prefix}-${row}-${col}`;
+        if (texture.has(frameName)) continue;
         const x = Math.round((image.width / cols) * col);
         const y = Math.round((image.height / rows) * row);
         const nextX = Math.round((image.width / cols) * (col + 1));
         const nextY = Math.round((image.height / rows) * (row + 1));
-        texture.add(`${prefix}-${row}-${col}`, 0, x, y, nextX - x, nextY - y);
+        texture.add(frameName, 0, x, y, nextX - x, nextY - y);
       }
+    }
+  }
+
+  registerUiArtFrames() {
+    const status = this.textures.get('statusPanelUI');
+    if (!status.has('panel')) {
+      status.add('panel', 0, 34, 310, 1764, 250);
+    }
+    const notes = this.textures.get('guildNotesUI');
+    if (!notes.has('panel')) {
+      notes.add('panel', 0, 94, 126, 1352, 770);
+    }
+    const world = this.textures.get('worldSheet');
+    if (!world.has('level-sword-icon')) {
+      world.add('level-sword-icon', 0, 28, 611, 136, 134);
+    }
+    if (!world.has('level-bow-icon')) {
+      world.add('level-bow-icon', 0, 330, 611, 133, 134);
+    }
+    if (!world.has('level-spell-icon')) {
+      world.add('level-spell-icon', 0, 479, 611, 135, 135);
     }
   }
 
@@ -134,6 +212,7 @@ class FairyGuildScene extends Phaser.Scene {
     const g = this.make.graphics({ x: 0, y: 0, add: false });
     const make = (key, width, height, draw) => {
       g.clear();
+      if (this.textures.exists(key)) this.textures.remove(key);
       draw(g, width, height);
       g.generateTexture(key, width, height);
     };
@@ -587,30 +666,38 @@ class FairyGuildScene extends Phaser.Scene {
         .setDisplaySize(76, 76)
         .setDepth(start.y + 40),
     };
-    this.anims.create({
-      key: 'hero-idle',
-      frames: [0, 1, 2, 3].map((col) => ({ key: 'heroSheet', frame: `hero-0-${col}` })),
-      frameRate: 3,
-      repeat: -1,
-    });
-    this.anims.create({
-      key: 'hero-walk',
-      frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-1-${col}` })),
-      frameRate: 9,
-      repeat: -1,
-    });
-    this.anims.create({
-      key: 'hero-melee',
-      frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-2-${col}` })),
-      frameRate: 16,
-      repeat: 0,
-    });
-    this.anims.create({
-      key: 'hero-special',
-      frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-3-${col}` })),
-      frameRate: 12,
-      repeat: 0,
-    });
+    if (!this.anims.exists('hero-idle')) {
+      this.anims.create({
+        key: 'hero-idle',
+        frames: [0, 1, 2, 3].map((col) => ({ key: 'heroSheet', frame: `hero-0-${col}` })),
+        frameRate: 3,
+        repeat: -1,
+      });
+    }
+    if (!this.anims.exists('hero-walk')) {
+      this.anims.create({
+        key: 'hero-walk',
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-1-${col}` })),
+        frameRate: 9,
+        repeat: -1,
+      });
+    }
+    if (!this.anims.exists('hero-melee')) {
+      this.anims.create({
+        key: 'hero-melee',
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-2-${col}` })),
+        frameRate: 16,
+        repeat: 0,
+      });
+    }
+    if (!this.anims.exists('hero-special')) {
+      this.anims.create({
+        key: 'hero-special',
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-3-${col}` })),
+        frameRate: 12,
+        repeat: 0,
+      });
+    }
     this.player.sprite.play('hero-idle');
     this.entityLayer.add([this.player.shadow, this.player.sprite]);
   }
@@ -637,10 +724,11 @@ class FairyGuildScene extends Phaser.Scene {
       four: Phaser.Input.Keyboard.KeyCodes.FOUR,
       five: Phaser.Input.Keyboard.KeyCodes.FIVE,
       six: Phaser.Input.Keyboard.KeyCodes.SIX,
+      restart: Phaser.Input.Keyboard.KeyCodes.R,
     });
     this.input.on('pointerdown', (pointer) => {
       this.ensureAudio();
-      if (pointer.leftButtonDown()) {
+      if (this.state.phase === 'playing' && pointer.leftButtonDown()) {
         this.fireBow(this.time.now);
       }
     });
@@ -648,7 +736,16 @@ class FairyGuildScene extends Phaser.Scene {
     this.keys.inventory.on('down', () => this.toggleInventory());
     this.keys.interact.on('down', () => this.tryOpenChest());
     [this.keys.one, this.keys.two, this.keys.three, this.keys.four, this.keys.five, this.keys.six].forEach((key, index) => {
-      key.on('down', () => this.buyUpgrade(index));
+      key.on('down', () => {
+        if (this.state.phase === 'levelUp' && index < 3) {
+          this.chooseLevelUpgrade(index);
+        } else {
+          this.buyUpgrade(index);
+        }
+      });
+    });
+    this.keys.restart.on('down', () => {
+      if (this.state.phase === 'gameOver') this.scene.restart();
     });
   }
 
@@ -909,6 +1006,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   buyUpgrade(index) {
+    if (this.state.phase !== 'playing') return;
     if (!this.state.inventoryOpen) return;
     const upgrade = this.upgrades[index];
     if (!upgrade) return;
@@ -964,6 +1062,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   tryOpenChest() {
+    if (this.state.phase !== 'playing') return;
     const chest = this.chests.find((candidate) => !candidate.opened && Phaser.Math.Distance.Between(
       candidate.iso.x,
       candidate.iso.y,
@@ -1000,6 +1099,7 @@ class FairyGuildScene extends Phaser.Scene {
         { x: 13.2, y: Phaser.Math.Between(2, 12) },
       ]);
       this.time.delayedCall(2200, () => {
+        if (this.state.phase !== 'playing') return;
         this.spawnChest(edge.x, edge.y, Phaser.Math.RND.pick(['gold', 'gold', 'xp', 'mana', 'heart', 'buff']));
         this.addGuildNote('A chest appeared near the old oak!');
       });
@@ -1030,43 +1130,117 @@ class FairyGuildScene extends Phaser.Scene {
     }
   }
 
-  startWave() {
-    this.state.wave += 1;
-    const wave = this.state.wave;
-    const count = Math.min(6 + wave * 2, 22);
-    this.addGuildNote(`Wave ${wave}: forest friends are feeling mischievous.`);
-    for (let i = 0; i < count; i += 1) {
-      this.time.delayedCall(700 + i * Math.max(320, 850 - wave * 35), () => {
-        this.spawnEnemy(wave);
+  clearLevelTimers() {
+    this.levelTimers.forEach((timer) => timer.remove(false));
+    this.levelTimers = [];
+  }
+
+  addLevelTimer(delay, callback) {
+    const timer = this.time.delayedCall(delay, callback);
+    this.levelTimers.push(timer);
+    return timer;
+  }
+
+  startLevelCountdown() {
+    this.clearLevelTimers();
+    this.state.phase = 'countdown';
+    this.state.inventoryOpen = false;
+    this.inventoryPanel?.setVisible(false);
+    this.levelSpawnsPending = 0;
+    this.levelEnemiesRemaining = 0;
+    this.levelClearQueued = false;
+    this.levelUpOverlay?.setVisible(false);
+    this.gameOverOverlay?.setVisible(false);
+    this.countdownOverlay?.setVisible(true);
+    this.addGuildNote(`Level ${this.state.level} begins soon!`);
+
+    const sequence = [`Level ${this.state.level}`, '3', '2', '1', 'Go!'];
+    sequence.forEach((label, index) => {
+      this.addLevelTimer(index * 780, () => {
+        this.showCountdownLabel(label);
+        if (label === 'Go!') this.playTone('level');
       });
-    }
-    this.time.delayedCall(14000 + count * 260, () => {
-      if (this.enemies.length === 0) {
-        this.rewardWave();
-      } else {
-        this.time.delayedCall(4000, () => this.checkWaveClear());
-      }
+    });
+    this.addLevelTimer(sequence.length * 780, () => this.startLevelRound());
+  }
+
+  showCountdownLabel(label) {
+    if (!this.countdownOverlay) return;
+    this.countdownLevelText.setText(label.startsWith('Level') ? label : `Level ${this.state.level}`);
+    this.countdownNumberText.setText(label.startsWith('Level') ? '' : label);
+    this.countdownNumberText.setScale(label === 'Go!' ? 0.82 : 1);
+    this.countdownOverlay.setAlpha(0.98);
+    this.tweens.add({
+      targets: this.countdownNumberText,
+      scale: label === 'Go!' ? 1.05 : 1.18,
+      yoyo: true,
+      duration: 220,
+      ease: 'Sine.easeOut',
     });
   }
 
-  checkWaveClear() {
-    if (this.state.health <= 0) return;
-    if (this.enemies.length === 0) {
-      this.rewardWave();
-    } else {
-      this.time.delayedCall(3000, () => this.checkWaveClear());
+  startLevelRound() {
+    if (this.state.phase !== 'countdown') return;
+    this.state.phase = 'playing';
+    this.countdownOverlay?.setVisible(false);
+    this.levelClearQueued = false;
+
+    const level = this.state.level;
+    const count = Math.min(4 + level * 2, 22);
+    this.levelSpawnsPending = count;
+    this.levelEnemiesRemaining = count;
+    this.addGuildNote(`Level ${level}: forest friends are on the move!`);
+
+    for (let i = 0; i < count; i += 1) {
+      this.addLevelTimer(560 + i * Math.max(250, 760 - level * 30), () => {
+        if (this.state.phase !== 'playing') return;
+        this.levelSpawnsPending = Math.max(0, this.levelSpawnsPending - 1);
+        const spawned = this.spawnEnemy(level);
+        if (!spawned) {
+          this.levelEnemiesRemaining = Math.max(0, this.levelEnemiesRemaining - 1);
+        }
+        this.checkLevelClear();
+      });
     }
   }
 
-  rewardWave() {
-    const reward = 20 + this.state.wave * 8;
-    this.state.gold += reward;
-    this.gainXp(28 + this.state.wave * 10);
-    this.addGuildNote(`The castle guard cheers you on! +${reward} gold`);
-    this.time.delayedCall(4200, () => this.startWave());
+  checkLevelClear() {
+    if (this.state.phase !== 'playing' || this.levelClearQueued) return;
+    if (this.levelSpawnsPending <= 0 && this.levelEnemiesRemaining <= 0) {
+      this.levelClearQueued = true;
+      this.addLevelTimer(720, () => this.completeLevel());
+    }
   }
 
-  spawnEnemy(wave) {
+  completeLevel() {
+    if (this.state.phase !== 'playing') return;
+    this.state.phase = 'levelUp';
+    this.state.inventoryOpen = false;
+    this.inventoryPanel?.setVisible(false);
+    this.clearProjectiles();
+    this.clearRetreatingEnemies();
+    const reward = 20 + this.state.level * 8;
+    this.state.gold += reward;
+    this.gainXp(28 + this.state.level * 10);
+    this.addGuildNote(`Level ${this.state.level} clear! +${reward} gold`);
+    this.showLevelUpScreen();
+  }
+
+  getEnemyTarget() {
+    const aliveBuildings = this.buildings.filter((building) => building.hp > 0);
+    const castle = this.buildings.find((building) => building.name === 'Castle');
+    if (!castle || castle.hp <= 0) {
+      this.enterGameOver('The castle needs a rescue rest!');
+      return null;
+    }
+    const villageTargets = aliveBuildings.filter((building) => building.name !== 'Castle');
+    return Phaser.Math.RND.pick(villageTargets.length > 0 ? villageTargets : [castle]);
+  }
+
+  spawnEnemy(level) {
+    if (this.state.phase !== 'playing') return false;
+    const target = this.getEnemyTarget();
+    if (!target) return false;
     const side = Phaser.Math.Between(0, 3);
     let iso;
     if (side === 0) iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 1.1 };
@@ -1075,36 +1249,43 @@ class FairyGuildScene extends Phaser.Scene {
     else iso = { x: 1.1, y: Phaser.Math.FloatBetween(1.4, 13.3) };
     const type = Phaser.Math.Between(0, 4);
     const p = this.isoToScreen(iso.x, iso.y, 16);
-    const size = 52 + (type % 3) * 7 + Math.min(wave, 5) * 1.5;
+    const size = 52 + (type % 3) * 7 + Math.min(level, 5) * 1.5;
     const shadow = this.add.ellipse(p.x, p.y + 13, size * 0.58, size * 0.22, 0x315133, 0.2);
     const sprite = this.add.sprite(p.x, p.y, 'monsterSheet', `monster-${type % 4}-${Phaser.Math.Between(0, 3)}`)
       .setOrigin(0.5, 0.76)
       .setDisplaySize(size, size)
       .setDepth(p.y + 50);
-    const target = Phaser.Math.RND.pick(this.buildings);
     const enemy = {
       type,
       iso,
       sprite,
       shadow,
       target,
-      hp: 2 + Math.floor(wave / 2) + (type === 2 ? 1 : 0),
-      maxHp: 2 + Math.floor(wave / 2) + (type === 2 ? 1 : 0),
-      speed: 0.75 + wave * 0.035 + type * 0.035,
+      hp: 2 + Math.floor(level / 2) + (type === 2 ? 1 : 0),
+      maxHp: 2 + Math.floor(level / 2) + (type === 2 ? 1 : 0),
+      speed: 0.75 + level * 0.035 + type * 0.035,
       touchCooldown: 0,
+      heroTouchCooldown: 0,
       dazedUntil: 0,
       wobble: Math.random() * Math.PI * 2,
       retreating: false,
+      defeated: false,
     };
     this.enemies.push(enemy);
     this.entityLayer.add([shadow, sprite]);
     if (target.name === 'Bakery' && Phaser.Math.Between(0, 2) === 0) {
       this.addGuildNote('Mushroom sprites are heading toward the bakery!');
     }
+    return true;
   }
 
   updateEnemies(dt, time) {
     this.enemies.slice().forEach((enemy) => {
+      if (!enemy.retreating && enemy.target.hp <= 0) {
+        const nextTarget = this.getEnemyTarget();
+        if (!nextTarget) return;
+        enemy.target = nextTarget;
+      }
       const targetIso = enemy.retreating
         ? this.getNearestForestExit(enemy.iso)
         : enemy.target.iso;
@@ -1118,8 +1299,13 @@ class FairyGuildScene extends Phaser.Scene {
       }
       if (!enemy.retreating && dist <= 0.45 && time > enemy.touchCooldown) {
         enemy.touchCooldown = time + 1250;
-        this.bumpBuilding(enemy.target, 4 + Math.floor(this.state.wave / 3));
+        this.bumpBuilding(enemy.target, 4 + Math.floor(this.state.level / 3));
         this.playTone('hit');
+      }
+      const playerDist = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, this.player.iso.x, this.player.iso.y);
+      if (!enemy.retreating && playerDist <= 0.58 && time > enemy.heroTouchCooldown) {
+        enemy.heroTouchCooldown = time + 1400;
+        this.takePlayerDamage(1, enemy);
       }
       if (enemy.retreating && dist < 0.55) {
         this.removeEnemy(enemy, false);
@@ -1145,7 +1331,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   damageEnemy(enemy, amount, reason) {
-    if (!this.enemies.includes(enemy)) return;
+    if (!this.enemies.includes(enemy) || enemy.defeated) return;
     enemy.hp -= amount;
     enemy.dazedUntil = Math.max(enemy.dazedUntil, this.time.now + 240);
     enemy.sprite.setTint(reason === 'sparkles' ? 0xbdf6ff : 0xfff3a0);
@@ -1155,17 +1341,20 @@ class FairyGuildScene extends Phaser.Scene {
     this.spawnSparkleBurst(enemy.sprite.x, enemy.sprite.y - 18, reason === 'sparkles' ? 0x9be7ff : 0xffed95, 7, 0.56);
     this.playTone('hit');
     if (enemy.hp <= 0) {
+      enemy.defeated = true;
+      this.levelEnemiesRemaining = Math.max(0, this.levelEnemiesRemaining - 1);
       enemy.retreating = true;
       enemy.sprite.setFrame(`monster-${enemy.type % 4}-${Phaser.Math.Between(4, 7)}`);
       enemy.sprite.setTint(0xffffff);
       enemy.speed += 0.55;
-      this.gainXp(12 + this.state.wave * 3);
+      this.gainXp(12 + this.state.level * 3);
       this.dropReward(enemy.iso.x, enemy.iso.y);
       this.addGuildNote(Phaser.Math.RND.pick([
         'A forest critter scampered home dazed.',
         'Sparkles solved that little mix-up.',
         'The village cheers your gentle defense!',
       ]));
+      this.checkLevelClear();
     }
   }
 
@@ -1187,6 +1376,14 @@ class FairyGuildScene extends Phaser.Scene {
       enemy.sprite.destroy();
       enemy.shadow.destroy();
     }
+  }
+
+  clearRetreatingEnemies() {
+    this.enemies.slice().forEach((enemy) => {
+      if (enemy.defeated || enemy.retreating) {
+        this.removeEnemy(enemy, true);
+      }
+    });
   }
 
   dropReward(x, y) {
@@ -1271,7 +1468,12 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
+  clearProjectiles() {
+    this.projectiles.splice(0).forEach((projectile) => projectile.sprite.destroy());
+  }
+
   bumpBuilding(building, amount) {
+    if (this.state.phase !== 'playing' || building.hp <= 0) return;
     building.hp = Math.max(0, building.hp - amount);
     building.underAttackUntil = this.time.now + 650;
     building.sprite.setTint(0xfff0a0);
@@ -1283,16 +1485,23 @@ class FairyGuildScene extends Phaser.Scene {
       repeat: 3,
       duration: 44,
       onComplete: () => {
-        building.sprite.clearTint();
+        if (building.hp > 0) building.sprite.clearTint();
       },
     });
     this.time.delayedCall(1500, () => {
-      if (this.time.now > building.underAttackUntil) building.repairIcon.setVisible(false);
+      if (building.hp > 0 && this.time.now > building.underAttackUntil) building.repairIcon.setVisible(false);
     });
     if (building.hp <= 0) {
-      building.hp = Math.ceil(building.max * 0.32);
-      this.state.villageSafety = Math.max(0, this.state.villageSafety - 14);
-      this.addGuildNote(`${building.name} needs repairs, but everyone is okay!`);
+      building.hp = 0;
+      building.repairIcon.setVisible(true);
+      building.sprite.setTint(0xffc98c);
+      this.state.villageSafety = Math.max(0, this.state.villageSafety - (building.name === 'Castle' ? 100 : 14));
+      if (building.name === 'Castle') {
+        this.addGuildNote('The castle needs a rescue rest!');
+        this.enterGameOver('The castle needs a rescue rest!');
+      } else {
+        this.addGuildNote(`${building.name} needs repairs, but everyone is okay!`);
+      }
       this.spawnSparkleBurst(building.sprite.x, building.sprite.y - 20, 0xffc785, 13, 0.85);
     }
   }
@@ -1306,27 +1515,53 @@ class FairyGuildScene extends Phaser.Scene {
     }
   }
 
-  gainXp(amount) {
-    this.state.xp += amount;
-    const needed = this.xpNeeded();
-    if (this.state.xp >= needed) {
-      this.state.xp -= needed;
-      this.state.level += 1;
-      this.playerStats.maxHealth += this.state.level % 2 === 0 ? 1 : 0;
-      this.playerStats.maxMana += 12;
-      this.playerStats.swordPower += this.state.level % 3 === 0 ? 1 : 0;
-      this.playerStats.spellPower += this.state.level % 2 === 1 ? 1 : 0;
-      this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 2);
-      this.state.mana = this.playerStats.maxMana;
-      this.addGuildNote(`Level up! Your mana increased!`);
-      this.spawnSparkleBurst(this.player.sprite.x, this.player.sprite.y - 38, 0xa8f3ff, 28, 1.25);
-      this.spawnShieldGlow();
-      this.playTone('level');
+  takePlayerDamage(amount, enemy) {
+    if (this.state.phase !== 'playing' || this.time.now < this.player.invulnerableUntil) return;
+    this.state.health = Math.max(0, this.state.health - amount);
+    this.player.invulnerableUntil = this.time.now + 1650;
+    if (enemy) {
+      const dx = this.player.iso.x - enemy.iso.x;
+      const dy = this.player.iso.y - enemy.iso.y;
+      const len = Math.max(0.01, Math.hypot(dx, dy));
+      this.player.iso.x += (dx / len) * 0.28;
+      this.player.iso.y += (dy / len) * 0.28;
+      this.clampIso(this.player.iso, 1.2);
+    }
+    this.playTone('hit');
+    this.spawnSparkleBurst(this.player.sprite.x, this.player.sprite.y - 28, 0xffb3c1, 10, 0.66);
+    if (this.state.health <= 0) {
+      this.enterGameOver('Your hero ran out of hearts!');
     }
   }
 
-  xpNeeded() {
-    return 90 + (this.state.level - 1) * 45;
+  checkFailureState() {
+    if (this.state.phase === 'gameOver') return;
+    if (this.state.health <= 0) {
+      this.enterGameOver('Your hero ran out of hearts!');
+      return;
+    }
+    const castle = this.buildings.find((building) => building.name === 'Castle');
+    if (castle && castle.hp <= 0) {
+      this.enterGameOver('The castle needs a rescue rest!');
+    }
+  }
+
+  enterGameOver(reason) {
+    if (this.state.phase === 'gameOver') return;
+    this.state.phase = 'gameOver';
+    this.state.gameOverReason = reason;
+    this.state.inventoryOpen = false;
+    this.inventoryPanel?.setVisible(false);
+    this.countdownOverlay?.setVisible(false);
+    this.levelUpOverlay?.setVisible(false);
+    this.clearLevelTimers();
+    this.clearProjectiles();
+    this.showGameOverScreen(reason);
+    this.playTone('hit');
+  }
+
+  gainXp(amount) {
+    this.state.xp += amount;
   }
 
   regenMana(amount) {
@@ -1420,6 +1655,229 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
+  createPhaseOverlays() {
+    this.createCountdownOverlay();
+    this.createLevelUpOverlay();
+    this.createGameOverOverlay();
+  }
+
+  createCountdownOverlay() {
+    this.countdownOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7200).setVisible(false);
+    const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x244866, 0.28);
+    const panel = this.add.graphics();
+    panel.fillStyle(0xffffff, 0.82);
+    panel.lineStyle(3, 0xffda73, 0.78);
+    panel.fillRoundedRect(-210, -116, 420, 232, 8);
+    panel.strokeRoundedRect(-210, -116, 420, 232, 8);
+    this.countdownLevelText = this.add.text(0, -54, '', this.uiTextStyle(34, '#31503b')).setOrigin(0.5);
+    this.countdownNumberText = this.add.text(0, 30, '', {
+      ...this.uiTextStyle(72, '#7a4b16'),
+      strokeThickness: 5,
+    }).setOrigin(0.5);
+    this.countdownOverlay.add([shade, panel, this.countdownLevelText, this.countdownNumberText]);
+    this.uiLayer.add(this.countdownOverlay);
+  }
+
+  createLevelUpOverlay() {
+    this.levelUpChoices = [
+      {
+        key: 'melee',
+        label: 'Melee Damage',
+        detail: '+1 sword power',
+        icon: { texture: 'worldSheet', frame: 'level-sword-icon' },
+        stat: 'swordPower',
+        color: 0xf4bc3f,
+        stageColor: 0xb94136,
+        stageAccent: 0xffd45c,
+        apply: () => {
+          this.playerStats.swordPower += 1;
+          this.addGuildNote('Melee training complete! Sword damage increased.');
+        },
+      },
+      {
+        key: 'range',
+        label: 'Range Damage',
+        detail: '+1 bow power',
+        icon: { texture: 'worldSheet', frame: 'level-bow-icon' },
+        stat: 'bowPower',
+        color: 0x72c96d,
+        stageColor: 0x397f4a,
+        stageAccent: 0xbde679,
+        apply: () => {
+          this.playerStats.bowPower += 1;
+          this.addGuildNote('Range training complete! Bow damage increased.');
+        },
+      },
+      {
+        key: 'magic',
+        label: 'Magic Damage',
+        detail: '+1 spell power',
+        icon: { texture: 'worldSheet', frame: 'level-spell-icon' },
+        stat: 'spellPower',
+        color: 0x6cc5ff,
+        stageColor: 0x3267c9,
+        stageAccent: 0xa8f3ff,
+        apply: () => {
+          this.playerStats.spellPower += 1;
+          this.addGuildNote('Magic training complete! Spell damage increased.');
+        },
+      },
+    ];
+
+    this.levelUpOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7300).setVisible(false);
+    const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.42);
+    const art = this.add.image(0, 0, 'levelUpUI').setDisplaySize(780, 438).setAlpha(0.98);
+    this.levelUpTitleText = this.add.text(0, -148, 'Level Up!', {
+      ...this.uiTextStyle(42, '#714617'),
+      strokeThickness: 4,
+    }).setOrigin(0.5);
+    this.levelUpRewardText = this.add.text(0, -102, 'Heart +1', this.uiTextStyle(22, '#bd415c')).setOrigin(0.5);
+    const helper = this.add.text(0, -70, 'Choose your guild training', this.uiTextStyle(18, '#31503b')).setOrigin(0.5);
+    this.levelUpOverlay.add([shade, art, this.levelUpTitleText, this.levelUpRewardText, helper]);
+
+    this.levelUpProgressBars = [];
+    this.levelUpChoices.forEach((choice, index) => {
+      const card = this.add.container(LEVEL_UP_CARD_XS[index], 76);
+      const hit = this.add.rectangle(0, 0, 196, 220, 0xfff1b8, 0.001)
+        .setInteractive({ useHandCursor: true });
+      const stage = this.createLevelUpIconStage(choice);
+      const icon = this.add.image(0, -24, choice.icon.texture, choice.icon.frame).setDisplaySize(76, 76);
+      const number = this.add.text(-76, -70, `${index + 1}`, this.uiTextStyle(18, '#8a5a20')).setOrigin(0.5);
+      const label = this.add.text(0, 82, choice.label, this.uiTextStyle(19, COLORS.uiInk)).setOrigin(0.5);
+      const detail = this.add.text(0, 110, choice.detail, this.uiTextStyle(14, '#5e7b4a')).setOrigin(0.5);
+      const pips = this.createLevelUpProgressPips(choice);
+      hit.on('pointerover', () => {
+        hit.setFillStyle(0xfff1b8, 0.16);
+        this.updateLevelUpProgressBars(index);
+      });
+      hit.on('pointerout', () => {
+        hit.setFillStyle(0xfff1b8, 0.001);
+        this.updateLevelUpProgressBars();
+      });
+      hit.on('pointerup', () => this.chooseLevelUpgrade(index));
+      card.add([hit, stage, icon, number, ...pips, label, detail]);
+      this.levelUpOverlay.add(card);
+    });
+    this.uiLayer.add(this.levelUpOverlay);
+  }
+
+  createLevelUpIconStage(choice) {
+    const stage = this.add.graphics();
+    stage.fillStyle(choice.stageColor, 0.22);
+    stage.fillRoundedRect(-58, -72, 116, 94, 10);
+    stage.lineStyle(2, choice.stageAccent, 0.36);
+    stage.strokeRoundedRect(-58, -72, 116, 94, 10);
+    stage.fillStyle(choice.stageColor, 0.34);
+    stage.fillEllipse(0, 18, 112, 22);
+    stage.fillStyle(choice.stageAccent, 0.18);
+    stage.fillRoundedRect(-50, -66, 100, 16, 8);
+    return stage;
+  }
+
+  createLevelUpProgressPips(choice) {
+    const pips = [];
+    const pipW = 20;
+    const gap = 5;
+    const startX = -((LEVEL_UP_MAX_PIPS - 1) * (pipW + gap)) / 2;
+    for (let i = 0; i < LEVEL_UP_MAX_PIPS; i += 1) {
+      const pip = this.add.rectangle(startX + i * (pipW + gap), 48, pipW, 9, 0xfff3c8, 0.46)
+        .setStrokeStyle(1, 0x8c6023, 0.5);
+      pips.push(pip);
+    }
+    this.levelUpProgressBars.push({ pips, stat: choice.stat, color: choice.color });
+    return pips;
+  }
+
+  updateLevelUpProgressBars(previewIndex = null) {
+    this.levelUpProgressBars.forEach((bar, index) => {
+      const current = Phaser.Math.Clamp(this.playerStats[bar.stat] - PLAYER_BASE[bar.stat], 0, LEVEL_UP_MAX_PIPS);
+      const preview = previewIndex === index ? Phaser.Math.Clamp(current + 1, 0, LEVEL_UP_MAX_PIPS) : current;
+      bar.pips.forEach((pip, pipIndex) => {
+        if (pipIndex < current) {
+          pip.setFillStyle(bar.color, 0.94);
+          pip.setStrokeStyle(1, 0xffffff, 0.72);
+        } else if (pipIndex < preview) {
+          pip.setFillStyle(bar.color, 0.5);
+          pip.setStrokeStyle(1, 0xffffff, 0.64);
+        } else {
+          pip.setFillStyle(0xfff3c8, 0.46);
+          pip.setStrokeStyle(1, 0x8c6023, 0.5);
+        }
+      });
+    });
+  }
+
+  createGameOverOverlay() {
+    this.gameOverOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7800).setVisible(false);
+    const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.48);
+    const panel = this.add.image(0, 0, 'gameOverUI')
+      .setDisplaySize(780, 439)
+      .setAlpha(0.99);
+    const title = this.add.text(0, -120, 'Guild Rest Time', {
+      ...this.uiTextStyle(40, '#714617'),
+      strokeThickness: 4,
+    }).setOrigin(0.5);
+    this.gameOverReasonText = this.add.text(0, -52, '', {
+      ...this.uiTextStyle(21, COLORS.uiInk),
+      align: 'center',
+      wordWrap: { width: 520 },
+    }).setOrigin(0.5);
+    this.gameOverStatsText = this.add.text(0, 38, '', this.uiTextStyle(19, '#31503b')).setOrigin(0.5);
+    const restartButton = this.add.rectangle(0, 158, 260, 58, 0xfff1b8, 0.04)
+      .setInteractive({ useHandCursor: true });
+    const restartText = this.add.text(0, 151, 'Restart (R)', {
+      ...this.uiTextStyle(22, '#684315'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    restartButton.on('pointerover', () => restartButton.setFillStyle(0xfff1b8, 0.18));
+    restartButton.on('pointerout', () => restartButton.setFillStyle(0xfff1b8, 0.04));
+    restartButton.on('pointerup', () => this.scene.restart());
+    this.gameOverOverlay.add([shade, panel, title, this.gameOverReasonText, this.gameOverStatsText, restartButton, restartText]);
+    this.uiLayer.add(this.gameOverOverlay);
+  }
+
+  showLevelUpScreen() {
+    this.levelUpTitleText.setText('Level Up!');
+    this.levelUpRewardText.setText('Heart +1');
+    this.updateLevelUpProgressBars();
+    this.levelUpOverlay.setVisible(true).setAlpha(0);
+    this.tweens.add({
+      targets: this.levelUpOverlay,
+      alpha: 1,
+      duration: 220,
+      ease: 'Sine.easeOut',
+    });
+    this.spawnSparkleBurst(this.player.sprite.x, this.player.sprite.y - 38, 0xa8f3ff, 28, 1.25);
+    this.playTone('level');
+  }
+
+  chooseLevelUpgrade(index) {
+    if (this.state.phase !== 'levelUp') return;
+    const choice = this.levelUpChoices[index];
+    if (!choice) return;
+    this.playerStats.maxHealth += 1;
+    this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
+    choice.apply();
+    this.updateLevelUpProgressBars();
+    this.spawnShieldGlow();
+    this.playTone('level');
+    this.state.level += 1;
+    this.levelUpOverlay.setVisible(false);
+    this.startLevelCountdown();
+  }
+
+  showGameOverScreen(reason) {
+    this.gameOverReasonText.setText(reason);
+    this.gameOverStatsText.setText(`Final Level ${this.state.level}   Gold ${this.state.gold}`);
+    this.gameOverOverlay.setVisible(true).setAlpha(0);
+    this.tweens.add({
+      targets: this.gameOverOverlay,
+      alpha: 1,
+      duration: 220,
+      ease: 'Sine.easeOut',
+    });
+  }
+
   createHud() {
     this.hud = {};
     this.createTopBar();
@@ -1429,22 +1887,23 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createTopBar() {
-    const top = this.add.container(18, 14).setDepth(6000);
-    const bg = this.add.graphics();
-    bg.fillStyle(0xffffff, 0.86);
-    bg.lineStyle(2, 0x6aaed6, 0.5);
-    bg.fillRoundedRect(0, 0, 918, 76, 8);
-    bg.strokeRoundedRect(0, 0, 918, 76, 8);
-    top.add(bg);
-    this.hud.hearts = this.add.container(18, 22);
-    this.hud.manaBar = this.createMeter(176, 17, 150, 16, 0x7fc9ff, 0x2a79bd);
-    this.hud.xpBar = this.createMeter(176, 45, 150, 14, 0xffd96c, 0xca8d23);
-    this.hud.goldText = this.add.text(352, 15, '', this.uiTextStyle(18, '#634218')).setOrigin(0, 0);
-    this.hud.levelText = this.add.text(352, 42, '', this.uiTextStyle(16, COLORS.uiInk)).setOrigin(0, 0);
-    this.hud.weaponText = this.add.text(500, 15, '', this.uiTextStyle(14, COLORS.uiInk)).setOrigin(0, 0);
-    this.hud.spellText = this.add.text(500, 42, '', this.uiTextStyle(14, COLORS.uiInk)).setOrigin(0, 0);
-    this.hud.safetyBar = this.createMeter(744, 17, 138, 17, 0x9ce889, 0x2f9b4c);
-    this.hud.waveText = this.add.text(746, 42, '', this.uiTextStyle(15, '#31503b')).setOrigin(0, 0);
+    const top = this.add.container(16, 10).setDepth(7600);
+    const bg = this.add.image(0, 0, 'statusPanelUI', 'panel')
+      .setOrigin(0, 0)
+      .setDisplaySize(892, 92);
+    const readability = this.add.graphics();
+    readability.fillStyle(0xfff7df, 0.96);
+    readability.fillRoundedRect(34, 18, 822, 58, 7);
+    top.add([bg, readability]);
+    this.hud.hearts = this.add.container(42, 34);
+    this.hud.manaBar = this.createMeter(174, 22, 148, 16, 0x6fc9ff, 0x1f6ea7);
+    this.hud.xpBar = this.createMeter(174, 51, 148, 14, 0xffd96c, 0xba7620);
+    this.hud.goldText = this.add.text(360, 19, '', this.uiTextStyle(20, '#56330f')).setOrigin(0, 0);
+    this.hud.levelText = this.add.text(360, 48, '', this.uiTextStyle(17, '#1e3348')).setOrigin(0, 0);
+    this.hud.weaponText = this.add.text(526, 19, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0, 0);
+    this.hud.spellText = this.add.text(526, 48, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0, 0);
+    this.hud.safetyBar = this.createMeter(736, 22, 112, 17, 0x9ce889, 0x2f9b4c);
+    this.hud.waveText = this.add.text(738, 48, '', this.uiTextStyle(15, '#224b31')).setOrigin(0, 0);
     top.add([
       this.hud.hearts,
       ...this.hud.manaBar.parts,
@@ -1460,26 +1919,30 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createMeter(x, y, w, h, fillColor, strokeColor) {
-    const bg = this.add.rectangle(x, y, w, h, 0xffffff, 0.62).setOrigin(0, 0).setStrokeStyle(2, strokeColor, 0.55);
+    const bg = this.add.rectangle(x, y, w, h, 0xf9fff8, 0.9).setOrigin(0, 0).setStrokeStyle(2, strokeColor, 0.8);
     const fill = this.add.rectangle(x + 3, y + 3, w - 6, h - 6, fillColor, 1).setOrigin(0, 0);
-    const shine = this.add.rectangle(x + 5, y + 4, w - 10, 3, 0xffffff, 0.34).setOrigin(0, 0);
+    const shine = this.add.rectangle(x + 5, y + 4, w - 10, 3, 0xffffff, 0.42).setOrigin(0, 0);
     return { bg, fill, shine, width: w - 6, parts: [bg, fill, shine] };
   }
 
   createNotesPanel() {
-    const panel = this.add.container(WIDTH - 326, 16).setDepth(6000);
-    const bg = this.add.graphics();
-    bg.fillStyle(0xffffff, 0.84);
-    bg.lineStyle(2, 0x80b777, 0.55);
-    bg.fillRoundedRect(0, 0, 304, 172, 8);
-    bg.strokeRoundedRect(0, 0, 304, 172, 8);
-    const title = this.add.text(16, 12, 'Guild Notes', this.uiTextStyle(18, '#31503b'));
-    this.hud.notesText = this.add.text(16, 42, '', {
-      ...this.uiTextStyle(14, COLORS.uiInk),
-      lineSpacing: 5,
-      wordWrap: { width: 272 },
+    const panel = this.add.container(WIDTH - 370, 12).setDepth(7600);
+    const bg = this.add.image(0, 0, 'guildNotesUI', 'panel')
+      .setOrigin(0, 0)
+      .setDisplaySize(354, 236);
+    const textBacking = this.add.graphics();
+    textBacking.fillStyle(0xfff8df, 0.84);
+    textBacking.fillRoundedRect(22, 60, 310, 146, 7);
+    const title = this.add.text(177, 29, 'Guild Notes', {
+      ...this.uiTextStyle(22, '#102f3e'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    this.hud.notesText = this.add.text(30, 68, '', {
+      ...this.uiTextStyle(15, '#162a3c'),
+      lineSpacing: 7,
+      wordWrap: { width: 292 },
     });
-    panel.add([bg, title, this.hud.notesText]);
+    panel.add([bg, textBacking, title, this.hud.notesText]);
     this.uiLayer.add(panel);
   }
 
@@ -1535,6 +1998,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   toggleInventory() {
+    if (this.state.phase !== 'playing') return;
     this.state.inventoryOpen = !this.state.inventoryOpen;
     this.inventoryPanel.setVisible(this.state.inventoryOpen);
     this.rebuildInventoryPanel();
@@ -1544,14 +2008,14 @@ class FairyGuildScene extends Phaser.Scene {
   updateHud() {
     this.renderHearts();
     this.setMeter(this.hud.manaBar, this.state.mana / this.playerStats.maxMana);
-    this.setMeter(this.hud.xpBar, this.state.xp / this.xpNeeded());
+    this.setMeter(this.hud.xpBar, (this.state.xp % 100) / 100);
     this.setMeter(this.hud.safetyBar, this.state.villageSafety / 100);
     this.hud.goldText.setText(`Gold ${this.state.gold}`);
-    this.hud.levelText.setText(`Lv ${this.state.level}  XP ${this.state.xp}/${this.xpNeeded()}`);
+    this.hud.levelText.setText(`Level ${this.state.level}  XP ${this.state.xp}`);
     this.hud.weaponText.setText(`Wpn: ${this.state.equipped}`);
     this.hud.spellText.setText(`Spell: ${this.state.spell}`);
-    this.hud.waveText.setText(`Safety ${this.state.villageSafety}%   Wave ${this.state.wave}`);
-    this.hud.notesText.setText(this.notes.slice(-4).map((note) => `- ${note}`).join('\n'));
+    this.hud.waveText.setText(`Safe ${this.state.villageSafety}%  L${this.state.level}`);
+    this.hud.notesText.setText(this.notes.slice(-3).map((note) => `- ${note}`).join('\n'));
     if (this.state.inventoryOpen) {
       const inventoryKey = `${this.state.gold}|${this.upgrades.map((upgrade) => upgrade.level).join(',')}`;
       if (this.hud.inventoryKey !== inventoryKey) {

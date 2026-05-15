@@ -121,4 +121,12 @@ The final result should feel like a small, cheerful Zelda-like village defense R
 - Generated image assets are stored under `public/assets/`.
 - The main village board uses `public/assets/village-board.png`.
 - Hero and monster sheets are loaded from `public/assets/hero-sheet.png` and `public/assets/monster-pickup-sheet.png`.
+- The current progression is round-clear based: each level starts with a countdown, spawns a finite enemy round, then pauses for a level-up choice once all enemies are defeated.
+- The hero starts with 3 hearts. Each level-up grants `Heart +1` and one selected damage bonus: melee, range, or magic.
+- Buildings persist their damage across levels. Non-castle buildings remain damaged at 0 HP; castle HP reaching 0 triggers game over.
+- The hero reaching 0 hearts also triggers game over, with a restart screen.
+- The level-up and game-over screens use generated textless UI art from `public/assets/level-up-ui.png` and `public/assets/game-over-ui.png`, with all functional text rendered in Phaser.
+- The level-up screen keeps `public/assets/level-up-ui-source.png` as its chroma-key source and renders each card's colored stage, five-pip progress bars, and hover preview in Phaser so future sprite swaps do not require regenerating the panel art.
+- The level-up sword, range, and magic card icons use cropped generated frames from `public/assets/world-ui-sheet.png` instead of runtime placeholder drawings.
+- The status bar and Guild Notes panel use generated textless UI art from `public/assets/status-panel-ui.png` and `public/assets/guild-notes-ui-transparent.png`, with all functional text rendered in Phaser for readability.
 - Some crisp interactive markers and HUD icons are generated at runtime with Phaser graphics for readability.
