@@ -8,6 +8,7 @@ build/
 # Vite / tooling caches
 .vite/
 .cache/
+.vercel/
 
 # Logs
 logs/

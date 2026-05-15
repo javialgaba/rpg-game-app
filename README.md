@@ -75,6 +75,12 @@ Build for production:
 npm run build
 ```
 
+Preview the production build locally:
+
+```bash
+npm run preview
+```
+
 Run TypeScript and ESLint checks:
 
 ```bash
@@ -87,6 +93,15 @@ Run the local test server script:
 ```bash
 npm run test
 ```
+
+## Vercel Deployment
+
+The project includes `vercel.json` for Vercel's Vite preset. Vercel should use:
+
+- Build command: `npm run build`
+- Output directory: `dist`
+
+To deploy from the Vercel dashboard, import the repository and keep the detected framework as Vite. Local Vercel project metadata is ignored via `.vercel/`.
 
 ## Project Structure
 
@@ -119,6 +134,7 @@ npm run test
 |-- package.json
 |-- eslint.config.js
 |-- tsconfig.json
+|-- vercel.json
 `-- README.md
 ```
 
