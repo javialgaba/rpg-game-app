@@ -34,6 +34,10 @@ const isInside = (point: GridPoint, width: number, height: number) => (
   point.x >= 0 && point.y >= 0 && point.x < width && point.y < height
 );
 
+const isInsideLevel = (level: GeneratedLevel, point: GridPoint) => isInside(point, level.width, level.height);
+
+const pointKey = (point: GridPoint) => `${point.x},${point.y}`;
+
 const getNeighborCells = (point: GridPoint, radius = 1) => {
   const cells: GridPoint[] = [];
   for (let y = point.y - radius; y <= point.y + radius; y += 1) {
@@ -352,12 +356,15 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
 export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationResult => {
   const errors = [...level.errors];
   const warnings = [...level.warnings];
+  const protectedIds = new Set<string>();
 
   if (level.width <= 0 || level.height <= 0) {
     errors.push('Level dimensions must be greater than zero.');
   }
   if (!level.playerSpawn) {
     errors.push('Player spawn is missing.');
+  } else if (!isInsideLevel(level, level.playerSpawn)) {
+    errors.push(`Player spawn ${level.playerSpawn.x},${level.playerSpawn.y} is outside level bounds.`);
   } else if (level.blockedGrid[level.playerSpawn.y]?.[level.playerSpawn.x]) {
     errors.push('Player spawn is blocked.');
   }
@@ -367,26 +374,74 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
   if (!level.protectedTargets.length) {
     errors.push('At least one protected building is required.');
   }
+  if (!level.protectedTargets.some((target) => target.token === 'C')) {
+    errors.push('A castle token (C) is required for this defense mode.');
+  }
 
+  const allAttackCells = level.protectedTargets.flatMap((target) => target.attackCells);
   level.spawnPoints.forEach((spawn) => {
+    if (!isInsideLevel(level, spawn)) {
+      errors.push(`Monster spawn ${spawn.x},${spawn.y} is outside level bounds.`);
+      return;
+    }
     if (level.blockedGrid[spawn.y]?.[spawn.x]) {
       errors.push(`Monster spawn ${spawn.x},${spawn.y} is blocked.`);
       return;
     }
-    const goals = level.protectedTargets.flatMap((target) => target.attackCells);
-    const path = findGridPath(level.walkableGrid, spawn, goals);
+    const path = findGridPath(level.walkableGrid, spawn, allAttackCells);
     if (!path) {
       errors.push(`Monster spawn ${spawn.x},${spawn.y} cannot reach any protected building.`);
     }
   });
 
+  level.protectedTargets.forEach((target) => {
+    if (protectedIds.has(target.id)) {
+      errors.push(`Duplicate protected target id ${target.id}.`);
+    }
+    protectedIds.add(target.id);
+
+    const invalidCells = target.cells.filter((cell) => !isInsideLevel(level, cell));
+    if (invalidCells.length > 0) {
+      errors.push(`${target.label} has footprint cells outside the level bounds.`);
+    }
+    if (!target.attackCells.length) {
+      errors.push(`${target.label} has no attack cells.`);
+    }
+    const reachableFromAnySpawn = level.spawnPoints.some((spawn) => (
+      isInsideLevel(level, spawn) && Boolean(findGridPath(level.walkableGrid, spawn, target.attackCells))
+    ));
+    if (!reachableFromAnySpawn) {
+      warnings.push(`${target.label} cannot currently be reached by any monster spawn.`);
+    }
+  });
+
   if (level.playerSpawn) {
+    const reachableTargets = level.protectedTargets.filter((target) => (
+      Boolean(findGridPath(level.walkableGrid, level.playerSpawn as GridPoint, target.attackCells))
+    ));
+    if (!reachableTargets.length && level.protectedTargets.length > 0) {
+      warnings.push('Player spawn cannot reach any protected building attack zone.');
+    }
+
     level.chests.forEach((chest) => {
       const path = findGridPath(level.walkableGrid, level.playerSpawn as GridPoint, [chest.grid]);
       if (!path) {
         warnings.push(`Chest ${chest.grid.x},${chest.grid.y} is not reachable from player spawn.`);
       }
     });
+  }
+
+  const blockedDecorationCells = level.decorations.filter((decoration) => (
+    !isInsideLevel(level, decoration.grid)
+    || level.blockedGrid[decoration.grid.y]?.[decoration.grid.x]
+    || level.spawnGrid[decoration.grid.y]?.[decoration.grid.x]
+  ));
+  blockedDecorationCells.forEach((decoration) => {
+    warnings.push(`${decoration.label} decoration at ${pointKey(decoration.grid)} is on a blocked or spawn cell.`);
+  });
+
+  if (!level.chests.length) {
+    warnings.push('No treasure chests are placed in this level.');
   }
 
   return {

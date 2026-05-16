@@ -103,6 +103,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayOverlay = null;
     this.timeOfDayMist = null;
     this.lampGlowGraphics = null;
+    this.timeOfDayOverride = null;
   }
 
   preload() {
@@ -211,6 +212,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayOverlay = null;
     this.timeOfDayMist = null;
     this.lampGlowGraphics = null;
+    this.timeOfDayOverride = null;
   }
 
   update(time, delta) {
@@ -763,11 +765,24 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getActiveTimeOfDay() {
+    if (this.timeOfDayOverride) {
+      return this.timeOfDayOverride;
+    }
     const paramValue = new URLSearchParams(window.location.search).get('timeOfDay');
     if (isTimeOfDay(paramValue)) {
       return paramValue;
     }
     return this.generatedLevel?.config.timeOfDay ?? DEFAULT_VILLAGE_LEVEL.timeOfDay;
+  }
+
+  cycleTimeOfDay() {
+    const order = ['morning', 'noon', 'afternoon', 'night'];
+    const current = this.getActiveTimeOfDay();
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    this.timeOfDayOverride = next;
+    this.createTimeOfDayLayer();
+    this.addGuildNote(`Time preview: ${next}.`);
+    this.updateDebugOverlay();
   }
 
   getLampGlowIsoPoints() {
@@ -792,6 +807,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayOverlay?.destroy();
     this.timeOfDayMist?.destroy();
     this.lampGlowGraphics?.destroy();
+    this.timeOfDayOverlay = null;
+    this.timeOfDayMist = null;
+    this.lampGlowGraphics = null;
     const profile = TIME_OF_DAY_PROFILES[this.getActiveTimeOfDay()];
     const layerItems = [];
 
@@ -1171,6 +1189,7 @@ class FairyGuildScene extends Phaser.Scene {
       start: Phaser.Input.Keyboard.KeyCodes.ENTER,
       debug: Phaser.Input.Keyboard.KeyCodes.B,
       levelDebug: Phaser.Input.Keyboard.KeyCodes.G,
+      timeOfDay: Phaser.Input.Keyboard.KeyCodes.N,
     });
     this.input.addPointer(5);
     this.input.on('pointerdown', (pointer) => {
@@ -1210,6 +1229,7 @@ class FairyGuildScene extends Phaser.Scene {
     });
     this.keys.debug.on('down', () => this.toggleDebugOverlay());
     this.keys.levelDebug.on('down', () => this.toggleGeneratedLevelDebug());
+    this.keys.timeOfDay.on('down', () => this.cycleTimeOfDay());
   }
 
   getTouchCapabilityInfo() {
@@ -3413,7 +3433,7 @@ class FairyGuildScene extends Phaser.Scene {
   createDebugOverlay() {
     this.debugOverlayVisible = this.isDebugOverlayRequested();
     const panel = this.add.container(18, 112).setDepth(8050).setVisible(this.debugOverlayVisible);
-    const bg = this.add.rectangle(0, 0, 372, 202, 0x102238, 0.78)
+    const bg = this.add.rectangle(0, 0, 390, 232, 0x102238, 0.78)
       .setOrigin(0, 0)
       .setStrokeStyle(2, 0xffdf7c, 0.72);
     const title = this.add.text(12, 10, 'Balance Debug (B)', {
@@ -3423,7 +3443,7 @@ class FairyGuildScene extends Phaser.Scene {
     const text = this.add.text(12, 34, '', {
       ...this.uiTextStyle(12, '#f7fff0'),
       lineSpacing: 3,
-      wordWrap: { width: 348 },
+      wordWrap: { width: 366 },
     });
     panel.add([bg, title, text]);
     this.uiLayer.add(panel);
@@ -3449,6 +3469,7 @@ class FairyGuildScene extends Phaser.Scene {
     const levelNotes = this.generatedLevelValidation
       ? `Gen notes E${this.generatedLevelValidation.errors.length} W${this.generatedLevelValidation.warnings.length}`
       : '';
+    const firstIssue = this.generatedLevelValidation?.errors[0] ?? this.generatedLevelValidation?.warnings[0] ?? '';
     this.debugOverlay.text.setText([
       `Phase ${this.state.phase} | L${this.state.level} | Safe ${this.state.villageSafety}%`,
       `Hero ${this.state.health}/${this.playerStats.maxHealth} HP | Mana ${this.state.mana}/${this.playerStats.maxMana}`,
@@ -3456,8 +3477,9 @@ class FairyGuildScene extends Phaser.Scene {
       `Enemies active ${activeEnemies} | remain ${this.levelEnemiesRemaining} | pending ${this.levelSpawnsPending}`,
       `Buildings ${buildingSummary}`,
       `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
-      levelStatus,
+      `${levelStatus} | Time ${this.getActiveTimeOfDay()} (N)`,
       levelNotes,
+      firstIssue ? `First issue: ${this.truncateGuildNote(firstIssue, 52)}` : '',
     ].join('\n'));
   }
 
