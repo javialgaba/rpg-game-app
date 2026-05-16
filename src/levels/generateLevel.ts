@@ -1,6 +1,7 @@
 import type {
   AssetRegistry,
   AssetRegistryEntry,
+  AssetRenderMetadata,
   Footprint,
   GeneratedLevel,
   GridPoint,
@@ -32,6 +33,19 @@ const getAnchorFootprintCells = (anchor: GridPoint, footprint: Footprint) => {
 const isInside = (point: GridPoint, width: number, height: number) => (
   point.x >= 0 && point.y >= 0 && point.x < width && point.y < height
 );
+
+const getNeighborCells = (point: GridPoint, radius = 1) => {
+  const cells: GridPoint[] = [];
+  for (let y = point.y - radius; y <= point.y + radius; y += 1) {
+    for (let x = point.x - radius; x <= point.x + radius; x += 1) {
+      if (x === point.x && y === point.y) {
+        continue;
+      }
+      cells.push({ x, y });
+    }
+  }
+  return cells;
+};
 
 const getAttackCells = (
   cells: GridPoint[],
@@ -192,24 +206,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     }
   });
 
-  terrain.forEach((placement) => {
-    const token = config.matrix[placement.grid.y]?.[placement.grid.x];
-    if (token !== 'G' || !rng.chance(config.decorationDensity * 0.08)) {
-      return;
-    }
-    if (blockedGrid[placement.grid.y][placement.grid.x] || spawnGrid[placement.grid.y][placement.grid.x]) {
-      return;
-    }
-    const decoration = {
-      ...placement,
-      id: `deco-${placement.grid.x}-${placement.grid.y}`,
-      token: 'D',
-      label: 'Tiny Flowers',
-    } satisfies LevelPlacement;
-    decorations.push(decoration);
-    decorationGrid[placement.grid.y][placement.grid.x] = decoration;
-  });
-
   if (!playerSpawn) {
     warnings.push('No PS player spawn found; using village center fallback.');
     playerSpawn = { x: Math.floor(width / 2), y: Math.floor(height / 2) };
@@ -222,6 +218,114 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       { x: width - 1, y: Math.floor(height / 2) },
     );
   }
+
+  const center = { x: width / 2, y: height / 2 };
+  const canDecorate = (grid: GridPoint) => {
+    if (!isInside(grid, width, height)) {
+      return false;
+    }
+    const token = config.matrix[grid.y]?.[grid.x];
+    const distanceFromCenter = Math.abs(grid.x - center.x) + Math.abs(grid.y - center.y);
+    if (
+      blockedGrid[grid.y][grid.x]
+      || spawnGrid[grid.y][grid.x]
+      || decorationGrid[grid.y][grid.x]
+      || token === 'P'
+      || token === 'V'
+      || token === 'PS'
+      || token === 'SP'
+      || token === 'CH'
+      || (playerSpawn && grid.x === playerSpawn.x && grid.y === playerSpawn.y)
+      || distanceFromCenter < 2.6
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const addDecoration = (
+    grid: GridPoint,
+    decorationKind: NonNullable<LevelPlacement['decorationKind']>,
+    label: string,
+    render?: AssetRenderMetadata,
+  ) => {
+    if (!canDecorate(grid)) {
+      return false;
+    }
+    const decoration = {
+      ...createPlacement(`deco-${decorationKind}-${grid.x}-${grid.y}-${decorations.length}`, 'D', registry.D, grid),
+      label,
+      decorationKind,
+      render,
+      blocksMovement: false,
+    } satisfies LevelPlacement;
+    decorations.push(decoration);
+    decorationGrid[grid.y][grid.x] = decoration;
+    return true;
+  };
+
+  const mushroomRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-mushroom',
+    displaySize: [46, 42],
+    origin: [0.5, 0.84],
+    alpha: 0.86,
+    z: 7,
+  };
+  const magicPlantRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-magic-plant',
+    displaySize: [44, 62],
+    origin: [0.5, 0.86],
+    alpha: 0.82,
+    z: 8,
+  };
+
+  terrain.forEach((placement) => {
+    const token = config.matrix[placement.grid.y]?.[placement.grid.x];
+    if ((token === 'G' || token === 'D') && rng.chance(config.decorationDensity * 0.08)) {
+      addDecoration(placement.grid, 'flowers', 'Tiny Flowers');
+    }
+  });
+
+  protectedTargets.forEach((target) => {
+    target.attackCells.forEach((cell) => {
+      if (rng.chance(config.decorationDensity * 0.22)) {
+        addDecoration(cell, 'flowers', `${target.label} Flower Patch`);
+      }
+    });
+  });
+
+  objects
+    .filter((placement) => placement.token === 'T')
+    .forEach((tree) => {
+      getNeighborCells(tree.grid, 1).forEach((cell) => {
+        if (!rng.chance(config.decorationDensity * 0.18)) {
+          return;
+        }
+        const isMagicPlant = rng.chance(0.28);
+        addDecoration(
+          cell,
+          isMagicPlant ? 'magicPlant' : 'mushrooms',
+          isMagicPlant ? 'Glowing Forest Sprout' : 'Mushroom Cluster',
+          isMagicPlant ? magicPlantRender : mushroomRender,
+        );
+      });
+    });
+
+  terrain.forEach((placement) => {
+    const token = config.matrix[placement.grid.y]?.[placement.grid.x];
+    const isEdge = placement.grid.x <= 1
+      || placement.grid.y <= 1
+      || placement.grid.x >= width - 2
+      || placement.grid.y >= height - 2;
+    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.12)) {
+      addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender);
+    }
+    if (token === 'G' && rng.chance(config.decorationDensity * 0.035)) {
+      addDecoration(placement.grid, 'sparkles', 'Fairy Sparkles');
+    }
+  });
 
   return {
     config,

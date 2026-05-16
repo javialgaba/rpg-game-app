@@ -70,6 +70,7 @@ export interface LevelPlacement {
   token: LevelToken;
   label: string;
   type: AssetRegistryEntry['type'];
+  decorationKind?: 'flowers' | 'mushrooms' | 'magicPlant' | 'sparkles';
   grid: GridPoint;
   iso: GridPoint;
   footprint: Footprint;

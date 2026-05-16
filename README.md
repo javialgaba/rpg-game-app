@@ -15,6 +15,7 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 - XP score, gold drops, treasure chests, and upgrade progression
 - Inventory panel with six upgrade paths
 - Game over screen when the castle falls or the hero reaches 0 hearts
+- Designer-authored procedural level scaffold with logical blockers, A* routes, decoration passes, and visual time-of-day profiles
 - Rich procedural Web Audio SFX and a gentle interaction-started village theme
 - Family-friendly effects: sparkles, puffs, dazed reactions, and retreating monsters
 - Generated image assets in a bright cartoon storybook style
@@ -60,7 +61,7 @@ Buildings keep their damage between levels. Press `T` to ready the Repair Kit, t
 
 Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
 
-The procedural level foundation lives in `src/levels/`. The current painted village remains the default map, but `?generatedLevel=1` renders the designer-authored token matrix from `defaultVillageLevel.ts` using reusable registry entries and sliced `world-ui-sheet.png` frames where available. `?debugLevel=1` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, and validation routes. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
+The procedural level foundation lives in `src/levels/`. The current painted village remains the default map, but `?generatedLevel=1` renders the designer-authored token matrix from `defaultVillageLevel.ts` using reusable registry entries and sliced `world-ui-sheet.png` frames where available. The generator adds deterministic nonblocking flowers, mushrooms, sparkles, and magical plants around designer-authored structure. `?timeOfDay=morning|noon|afternoon|night` previews visual-only lighting profiles, and `?debugLevel=1` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, and validation routes. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
 
 ## Getting Started
 
@@ -154,7 +155,8 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |   |   |-- generateLevel.ts
 |   |   |-- levelTypes.ts
 |   |   |-- pathfinding.ts
-|   |   `-- seededRandom.ts
+|   |   |-- seededRandom.ts
+|   |   `-- timeOfDay.ts
 |   |-- gameConfig.ts
 |   |-- main.ts
 |   `-- style.css

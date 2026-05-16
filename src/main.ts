@@ -4,6 +4,7 @@ import { ASSET_REGISTRY } from './levels/assetRegistry';
 import { DEFAULT_VILLAGE_LEVEL } from './levels/defaultVillageLevel';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { findGridPath, pathCost } from './levels/pathfinding';
+import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
 import {
   COLORS,
   COMPACT_NOTE_MAX_CHARS,
@@ -96,6 +97,10 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
     this.levelDebugGraphics = null;
+    this.lightingLayer = null;
+    this.timeOfDayOverlay = null;
+    this.timeOfDayMist = null;
+    this.lampGlowGraphics = null;
   }
 
   preload() {
@@ -122,10 +127,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.worldLayer = this.add.layer();
     this.entityLayer = this.add.layer();
     this.fxLayer = this.add.layer();
+    this.lightingLayer = this.add.layer().setDepth(4700);
     this.uiLayer = this.add.layer().setDepth(5000);
 
     this.createBackground();
     this.createVillage();
+    this.createTimeOfDayLayer();
     this.createPlayer();
     this.createControls();
     this.createHud();
@@ -196,6 +203,10 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
     this.levelDebugGraphics = null;
+    this.lightingLayer = null;
+    this.timeOfDayOverlay = null;
+    this.timeOfDayMist = null;
+    this.lampGlowGraphics = null;
   }
 
   update(time, delta) {
@@ -712,16 +723,113 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedDecoration(placement) {
+    if (placement.render?.textureKey) {
+      const render = placement.render;
+      const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
+      const size = render.displaySize ?? [36, 36];
+      const sprite = this.add.image(p.x, p.y, render.textureKey, render.frameKey)
+        .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
+        .setDisplaySize(size[0], size[1])
+        .setDepth(p.y + 6)
+        .setAlpha(render.alpha ?? 0.76);
+      this.entityLayer.add(sprite);
+      return;
+    }
     const p = this.isoToScreen(placement.iso.x + 0.16, placement.iso.y - 0.12, 8);
     const flowers = this.add.graphics();
-    flowers.fillStyle(0xffa8d6, 0.72);
-    flowers.fillCircle(p.x - 6, p.y, 3);
-    flowers.fillStyle(0xfff49a, 0.75);
-    flowers.fillCircle(p.x, p.y - 3, 3);
-    flowers.fillStyle(0x8fe287, 0.68);
-    flowers.fillCircle(p.x + 6, p.y + 2, 3);
+    if (placement.decorationKind === 'sparkles') {
+      flowers.fillStyle(0xfff3a6, 0.72);
+      flowers.fillCircle(p.x - 4, p.y, 2.2);
+      flowers.fillStyle(0x91e8ff, 0.62);
+      flowers.fillCircle(p.x + 5, p.y - 5, 2.4);
+      flowers.lineStyle(1, 0xffffff, 0.45);
+      flowers.lineBetween(p.x - 8, p.y - 2, p.x + 7, p.y + 3);
+    } else {
+      flowers.fillStyle(0xffa8d6, 0.72);
+      flowers.fillCircle(p.x - 6, p.y, 3);
+      flowers.fillStyle(0xfff49a, 0.75);
+      flowers.fillCircle(p.x, p.y - 3, 3);
+      flowers.fillStyle(0x8fe287, 0.68);
+      flowers.fillCircle(p.x + 6, p.y + 2, 3);
+    }
     flowers.setDepth(p.y + 5);
     this.entityLayer.add(flowers);
+  }
+
+  getActiveTimeOfDay() {
+    const paramValue = new URLSearchParams(window.location.search).get('timeOfDay');
+    if (isTimeOfDay(paramValue)) {
+      return paramValue;
+    }
+    return this.generatedLevel?.config.timeOfDay ?? DEFAULT_VILLAGE_LEVEL.timeOfDay;
+  }
+
+  getLampGlowIsoPoints() {
+    if (this.generatedLevelActive && this.generatedLevel) {
+      return [
+        ...this.generatedLevel.objects
+          .filter((placement) => placement.token === 'L')
+          .map((placement) => placement.iso),
+        ...this.generatedLevel.decorations
+          .filter((placement) => placement.decorationKind === 'magicPlant')
+          .map((placement) => placement.iso),
+      ];
+    }
+    return [
+      { x: 8.8, y: 5.8 },
+      { x: 10.8, y: 4.8 },
+      { x: 3.7, y: 9.7 },
+    ];
+  }
+
+  createTimeOfDayLayer() {
+    this.timeOfDayOverlay?.destroy();
+    this.timeOfDayMist?.destroy();
+    this.lampGlowGraphics?.destroy();
+    const profile = TIME_OF_DAY_PROFILES[this.getActiveTimeOfDay()];
+    const layerItems = [];
+
+    if (profile.overlayAlpha > 0) {
+      this.timeOfDayOverlay = this.add.rectangle(
+        WIDTH / 2,
+        HEIGHT / 2,
+        WIDTH,
+        HEIGHT,
+        profile.overlayColor,
+        profile.overlayAlpha,
+      ).setScrollFactor(0);
+      layerItems.push(this.timeOfDayOverlay);
+    }
+
+    if (profile.mistAlpha > 0) {
+      const mist = this.add.graphics();
+      mist.fillStyle(0xffffff, profile.mistAlpha);
+      [
+        [190, 184, 210, 34],
+        [612, 156, 260, 42],
+        [1050, 196, 220, 36],
+      ].forEach(([x, y, w, h]) => mist.fillEllipse(x, y, w, h));
+      this.timeOfDayMist = mist;
+      layerItems.push(mist);
+    }
+
+    if (profile.glowAlpha > 0) {
+      const glow = this.add.graphics();
+      glow.setBlendMode(Phaser.BlendModes.ADD);
+      this.getLampGlowIsoPoints().forEach((iso) => {
+        const p = this.isoToScreen(iso.x, iso.y, 20);
+        glow.fillStyle(profile.glowColor, profile.glowAlpha);
+        glow.fillCircle(p.x, p.y, 34);
+        glow.fillStyle(profile.glowColor, profile.glowAlpha * 0.42);
+        glow.fillCircle(p.x, p.y, 58);
+      });
+      this.lampGlowGraphics = glow;
+      layerItems.push(glow);
+    }
+
+    if (layerItems.length > 0) {
+      this.lightingLayer.add(layerItems);
+    }
   }
 
   drawDebugDiamond(gfx, grid, color, alpha = 0.18) {
@@ -2372,7 +2480,13 @@ class FairyGuildScene extends Phaser.Scene {
       if (!enemy.retreating && enemy.target.hp <= 0) {
         if (this.generatedLevelActive) {
           const route = this.selectGeneratedEnemyRoute(enemy.iso);
-          if (!route) {return;}
+          if (!route) {
+            enemy.retreating = true;
+            enemy.path = null;
+            enemy.pathIndex = 0;
+            this.addGuildNote(`${this.getEnemyDisplayName(enemy)} heads back to the forest.`);
+            return;
+          }
           enemy.target = route.target;
           enemy.path = route.pathIso;
           enemy.pathIndex = route.pathIso.length > 1 ? 1 : 0;
