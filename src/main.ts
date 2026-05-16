@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import './style.css';
 import { ASSET_REGISTRY } from './levels/assetRegistry';
-import { DEFAULT_VILLAGE_LEVEL } from './levels/defaultVillageLevel';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
+import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import { findGridPath, pathCost } from './levels/pathfinding';
 import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
 import {
@@ -96,6 +96,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevel = null;
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
+    this.generatedLevelConfigId = '';
+    this.generatedLevelConfigLabel = '';
+    this.generatedLevelSelectionWarnings = [];
     this.levelDebugGraphics = null;
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
@@ -205,6 +208,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevel = null;
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
+    this.generatedLevelConfigId = '';
+    this.generatedLevelConfigLabel = '';
+    this.generatedLevelSelectionWarnings = [];
     this.levelDebugGraphics = null;
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
@@ -615,17 +621,24 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   prepareGeneratedLevel() {
-    this.generatedLevel = generateLevel(DEFAULT_VILLAGE_LEVEL, ASSET_REGISTRY);
+    const selection = resolveLevelConfigFromParams(new URLSearchParams(window.location.search));
+    this.generatedLevelConfigId = selection.id;
+    this.generatedLevelConfigLabel = selection.label;
+    this.generatedLevelSelectionWarnings = selection.warnings;
+    this.generatedLevel = generateLevel(selection.config, ASSET_REGISTRY);
     this.generatedLevelValidation = validateGeneratedLevel(this.generatedLevel);
     if (!this.generatedLevelValidation.valid) {
       console.warn('[generated-level] validation failed', this.generatedLevelValidation);
-    } else if (this.generatedLevelValidation.warnings.length > 0) {
-      console.info('[generated-level] validation warnings', this.generatedLevelValidation.warnings);
+    } else if (this.generatedLevelValidation.warnings.length > 0 || selection.warnings.length > 0) {
+      console.info('[generated-level] validation warnings', {
+        selectionWarnings: selection.warnings,
+        validationWarnings: this.generatedLevelValidation.warnings,
+      });
     }
   }
 
   shouldRenderGeneratedLevel() {
-    return new URLSearchParams(window.location.search).has('generatedLevel');
+    return shouldRenderGeneratedLevelFromParams(new URLSearchParams(window.location.search));
   }
 
   isLevelDebugRequested() {
@@ -772,7 +785,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (isTimeOfDay(paramValue)) {
       return paramValue;
     }
-    return this.generatedLevel?.config.timeOfDay ?? DEFAULT_VILLAGE_LEVEL.timeOfDay;
+    return this.generatedLevel?.config.timeOfDay ?? 'morning';
   }
 
   cycleTimeOfDay() {
@@ -3517,9 +3530,12 @@ class FairyGuildScene extends Phaser.Scene {
       ? `LevelGen ${this.generatedLevelValidation.valid ? 'valid' : 'errors'} | ${this.generatedLevelActive ? 'rendered' : 'standby'} | Grid ${this.levelDebugVisible ? 'G:on' : 'G:off'}`
       : 'LevelGen unavailable';
     const levelNotes = this.generatedLevelValidation
-      ? `Gen notes E${this.generatedLevelValidation.errors.length} W${this.generatedLevelValidation.warnings.length}`
+      ? `Gen notes E${this.generatedLevelValidation.errors.length} W${this.generatedLevelValidation.warnings.length + this.generatedLevelSelectionWarnings.length}`
       : '';
-    const firstIssue = this.generatedLevelValidation?.errors[0] ?? this.generatedLevelValidation?.warnings[0] ?? '';
+    const firstIssue = this.generatedLevelValidation?.errors[0]
+      ?? this.generatedLevelSelectionWarnings[0]
+      ?? this.generatedLevelValidation?.warnings[0]
+      ?? '';
     this.debugOverlay.text.setText([
       `Phase ${this.state.phase} | L${this.state.level} | Safe ${this.state.villageSafety}%`,
       `Hero ${this.state.health}/${this.playerStats.maxHealth} HP | Mana ${this.state.mana}/${this.playerStats.maxMana}`,
@@ -3528,6 +3544,7 @@ class FairyGuildScene extends Phaser.Scene {
       `Buildings ${buildingSummary}`,
       `Targets ${this.getLiveEnemyTargetSummary()}`,
       `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
+      this.generatedLevel ? `Config ${this.generatedLevelConfigId} | Seed ${this.generatedLevel.config.seed}` : '',
       `${levelStatus} | Time ${this.getActiveTimeOfDay()} (N)`,
       this.generatedLevel ? `Route score ${this.getGeneratedRouteDebugSummary()}` : '',
       levelNotes,
