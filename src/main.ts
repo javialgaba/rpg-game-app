@@ -180,7 +180,7 @@ class FairyGuildScene extends Phaser.Scene {
       gold: 0,
       xp: 0,
       level: 1,
-      phase: 'countdown',
+      phase: 'splash',
       villageSafety: 100,
       equipped: 'Wooden Sword',
       repairMode: false,
@@ -245,7 +245,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.createUpgrades();
     this.createPhaseOverlays();
     this.spawnInitialChests();
-    this.startLevelCountdown();
+    this.showSplashScreen();
 
     this.time.addEvent({
       delay: 1250,
@@ -272,7 +272,7 @@ class FairyGuildScene extends Phaser.Scene {
       gold: 0,
       xp: 0,
       level: 1,
-      phase: 'countdown',
+      phase: 'splash',
       villageSafety: 100,
       equipped: 'Wooden Sword',
       repairMode: false,
@@ -875,6 +875,7 @@ class FairyGuildScene extends Phaser.Scene {
       five: Phaser.Input.Keyboard.KeyCodes.FIVE,
       six: Phaser.Input.Keyboard.KeyCodes.SIX,
       restart: Phaser.Input.Keyboard.KeyCodes.R,
+      start: Phaser.Input.Keyboard.KeyCodes.ENTER,
     });
     this.input.addPointer(5);
     this.input.on('pointerdown', (pointer) => {
@@ -888,6 +889,12 @@ class FairyGuildScene extends Phaser.Scene {
       }
     });
     this.input.keyboard.on('keydown', () => this.ensureAudio());
+    this.keys.melee.on('down', () => {
+      if (this.state.phase === 'splash') {this.startGameFromSplash();}
+    });
+    this.keys.start.on('down', () => {
+      if (this.state.phase === 'splash') {this.startGameFromSplash();}
+    });
     this.keys.inventory.on('down', () => this.toggleInventory());
     this.keys.repair.on('down', () => this.toggleRepairMode());
     this.keys.interact.on('down', () => {
@@ -1869,6 +1876,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
     this.levelClearQueued = false;
+    this.splashOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
     this.gameOverOverlay?.setVisible(false);
     this.countdownOverlay?.setVisible(true);
@@ -2443,9 +2451,44 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createPhaseOverlays() {
+    this.createSplashOverlay();
     this.createCountdownOverlay();
     this.createLevelUpOverlay();
     this.createGameOverOverlay();
+  }
+
+  createSplashOverlay() {
+    this.splashOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7900).setVisible(false);
+    const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.36);
+    const panel = this.add.image(0, 0, 'gameOverUI')
+      .setDisplaySize(760, 428)
+      .setAlpha(0.99);
+    const title = this.add.text(0, -94, 'The Village Must Stand', {
+      ...this.uiTextStyle(43, '#714617'),
+      align: 'center',
+      strokeThickness: 5,
+      wordWrap: { width: 610 },
+    }).setOrigin(0.5);
+    const credit = this.add.text(0, -30, 'A minigame by Javier Algaba', {
+      ...this.uiTextStyle(20, '#31503b'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    const prompt = this.add.text(0, 30, 'Defend the fairy-tale village from forest mischief.', {
+      ...this.uiTextStyle(17, COLORS.uiInk),
+      align: 'center',
+      wordWrap: { width: 520 },
+    }).setOrigin(0.5);
+    const startButton = this.add.rectangle(0, 144, 250, 62, 0xfff1b8, 0.08)
+      .setInteractive({ useHandCursor: true });
+    const startText = this.add.text(0, 136, 'START', {
+      ...this.uiTextStyle(28, '#684315'),
+      strokeThickness: 4,
+    }).setOrigin(0.5);
+    startButton.on('pointerover', () => startButton.setFillStyle(0xfff1b8, 0.2));
+    startButton.on('pointerout', () => startButton.setFillStyle(0xfff1b8, 0.08));
+    startButton.on('pointerup', () => this.startGameFromSplash());
+    this.splashOverlay.add([shade, panel, title, credit, prompt, startButton, startText]);
+    this.uiLayer.add(this.splashOverlay);
   }
 
   createCountdownOverlay() {
@@ -2592,6 +2635,33 @@ class FairyGuildScene extends Phaser.Scene {
         }
       });
     });
+  }
+
+  showSplashScreen() {
+    this.clearLevelTimers();
+    this.state.phase = 'splash';
+    this.state.inventoryOpen = false;
+    this.setRepairMode(false, false);
+    this.inventoryPanel?.setVisible(false);
+    this.countdownOverlay?.setVisible(false);
+    this.levelUpOverlay?.setVisible(false);
+    this.gameOverOverlay?.setVisible(false);
+    this.splashOverlay?.setVisible(true).setAlpha(0);
+    this.tweens.add({
+      targets: this.splashOverlay,
+      alpha: 1,
+      duration: 260,
+      ease: 'Sine.easeOut',
+    });
+  }
+
+  startGameFromSplash() {
+    if (this.state.phase !== 'splash') {return;}
+    this.ensureAudio();
+    this.playTone('level');
+    this.splashOverlay?.setVisible(false);
+    this.addGuildNote('The village adventure begins!');
+    this.startLevelCountdown();
   }
 
   createGameOverOverlay() {

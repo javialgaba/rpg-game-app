@@ -111,6 +111,7 @@ Use a colorful isometric cartoon style. The game should feel magical, cozy, adve
 - T to toggle the Repair Kit
 - Space, mouse click, or E to repair nearby damaged buildings while the Repair Kit is active
 - I to open inventory
+- Click or tap START, press Enter, or press Space to begin from the title screen
 - On touch devices, use a left virtual joystick and right action buttons for Sword, Bow, Spell, Repair Kit, Use, and Inventory. Mobile play is landscape-first with a portrait rotate hint.
 
 ## Technical Requirements
@@ -125,6 +126,7 @@ The final result should feel like a small, cheerful Zelda-like village defense R
 - Generated image assets are stored under `public/assets/`.
 - The main village board uses `public/assets/village-board.png`.
 - Hero and monster sheets are loaded from `public/assets/hero-sheet.png` and `public/assets/monster-pickup-sheet.png`.
+- The game starts in a Phaser-rendered splash phase with the title `The Village Must Stand`, the credit `A minigame by Javier Algaba`, and a START button before the first countdown.
 - The current progression is round-clear based: each level starts with a countdown, spawns a finite enemy round, then pauses for a level-up choice once all enemies are defeated.
 - The hero starts with 3 hearts. Each level-up grants `Heart +1` and one selected damage bonus: melee, range, or magic.
 - Buildings persist their damage across levels. Pressing `T` toggles the standalone Repair Kit tool; while it is active, pressing `Space`, mouse click, or `E` near a damaged building spends 6 gold and restores 14 HP. Non-castle buildings remain damaged at 0 HP until repaired, and they become targetable again once their HP rises above 0. Castle HP reaching 0 still triggers game over immediately.
