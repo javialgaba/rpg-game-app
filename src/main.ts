@@ -550,19 +550,43 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
+  getIsoMetrics() {
+    const generated = this.generatedLevelActive && this.generatedLevel;
+    const scale = generated ? this.generatedLevel.config.tileSize / 64 : 1;
+    const tileW = TILE_W * scale;
+    const tileH = TILE_H * scale;
+    const mapW = generated ? this.generatedLevel.width : MAP_W;
+    const mapH = generated ? this.generatedLevel.height : MAP_H;
+    const defaultCenterY = ORIGIN.y + ((MAP_W - 1 + MAP_H - 1) * TILE_H) / 4;
+    const origin = generated
+      ? {
+        x: ORIGIN.x,
+        y: defaultCenterY - ((mapW - 1 + mapH - 1) * tileH) / 4,
+      }
+      : ORIGIN;
+    return { origin, tileW, tileH, scale, mapW, mapH };
+  }
+
+  scaleGeneratedSize(size) {
+    const scale = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.config.tileSize / 64 : 1;
+    return [size[0] * scale, size[1] * scale];
+  }
+
   isoToScreen(x, y, z = 0) {
+    const { origin, tileW, tileH, scale } = this.getIsoMetrics();
     return {
-      x: ORIGIN.x + (x - y) * (TILE_W / 2),
-      y: ORIGIN.y + (x + y) * (TILE_H / 2) - z,
+      x: origin.x + (x - y) * (tileW / 2),
+      y: origin.y + (x + y) * (tileH / 2) - z * scale,
     };
   }
 
   screenToIso(x, y) {
-    const sx = x - ORIGIN.x;
-    const sy = y - ORIGIN.y;
+    const { origin, tileW, tileH } = this.getIsoMetrics();
+    const sx = x - origin.x;
+    const sy = y - origin.y;
     return {
-      x: sy / TILE_H + sx / TILE_W,
-      y: sy / TILE_H - sx / TILE_W,
+      x: sy / tileH + sx / tileW,
+      y: sy / tileH - sx / tileW,
     };
   }
 
@@ -657,13 +681,14 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return;
     }
+    const { tileW, tileH } = this.getIsoMetrics();
     this.generatedLevel.terrain.forEach((placement) => {
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
       const fill = placement.render?.terrainFill ?? COLORS.grassA;
       const stroke = placement.render?.terrainStroke ?? 0x5dbb65;
-      this.drawDiamond(center.x, center.y, TILE_W, TILE_H, fill, stroke, 0.92);
+      this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, 0.92);
       if (placement.render?.textureKey) {
-        const size = placement.render.displaySize ?? [TILE_W, TILE_H];
+        const size = this.scaleGeneratedSize(placement.render.displaySize ?? [TILE_W, TILE_H]);
         const sprite = this.add.image(center.x, center.y + 8, placement.render.textureKey, placement.render.frameKey)
           .setOrigin(placement.render.origin?.[0] ?? 0.5, placement.render.origin?.[1] ?? 0.62)
           .setDisplaySize(size[0], size[1])
@@ -689,7 +714,7 @@ class FairyGuildScene extends Phaser.Scene {
   renderGeneratedBuilding(placement) {
     const render = placement.render ?? {};
     const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 18);
-    const size = render.displaySize ?? [80, 70];
+    const size = this.scaleGeneratedSize(render.displaySize ?? [80, 70]);
     const base = this.add.graphics();
     base.fillStyle(0x8f7346, 0.14);
     base.fillEllipse(p.x, p.y + 22, size[0] * 0.62, 28);
@@ -734,7 +759,7 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
-    const size = render.displaySize ?? [42, 42];
+    const size = this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
     const sprite = this.add.image(p.x, p.y, render.textureKey, render.frameKey)
       .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
       .setDisplaySize(size[0], size[1])
@@ -747,7 +772,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (placement.render?.textureKey) {
       const render = placement.render;
       const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
-      const size = render.displaySize ?? [36, 36];
+      const size = this.scaleGeneratedSize(render.displaySize ?? [36, 36]);
       const sprite = this.add.image(p.x, p.y, render.textureKey, render.frameKey)
         .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
         .setDisplaySize(size[0], size[1])
@@ -870,14 +895,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   drawDebugDiamond(gfx, grid, color, alpha = 0.18) {
+    const { tileW, tileH } = this.getIsoMetrics();
     const center = this.isoToScreen(grid.x, grid.y);
     gfx.fillStyle(color, alpha);
     gfx.lineStyle(1, color, Math.min(1, alpha + 0.22));
     gfx.beginPath();
-    gfx.moveTo(center.x, center.y - TILE_H / 2);
-    gfx.lineTo(center.x + TILE_W / 2, center.y);
-    gfx.lineTo(center.x, center.y + TILE_H / 2);
-    gfx.lineTo(center.x - TILE_W / 2, center.y);
+    gfx.moveTo(center.x, center.y - tileH / 2);
+    gfx.lineTo(center.x + tileW / 2, center.y);
+    gfx.lineTo(center.x, center.y + tileH / 2);
+    gfx.lineTo(center.x - tileW / 2, center.y);
     gfx.closePath();
     gfx.fillPath();
     gfx.strokePath();
@@ -2039,11 +2065,12 @@ class FairyGuildScene extends Phaser.Scene {
 
   spawnChest(x, y, reward = 'gold') {
     const p = this.isoToScreen(x, y, 10);
+    const chestSize = this.generatedLevelActive ? this.scaleGeneratedSize([58, 58]) : [58, 58];
     const sprite = this.add.image(p.x, p.y, 'chestTexture')
       .setOrigin(0.5, 0.78)
-      .setDisplaySize(58, 58)
+      .setDisplaySize(chestSize[0], chestSize[1])
       .setDepth(p.y + 60);
-    const glow = this.add.circle(p.x, p.y - 22, 19, 0xfff2a4, 0.14).setDepth(p.y + 50);
+    const glow = this.add.circle(p.x, p.y - 22, 19 * (chestSize[0] / 58), 0xfff2a4, 0.14).setDepth(p.y + 50);
     this.tweens.add({
       targets: glow,
       scale: 1.35,
@@ -3526,6 +3553,7 @@ class FairyGuildScene extends Phaser.Scene {
       ? this.buildings.map((building) => `${building.name.slice(0, 1)}:${building.hp}/${building.max}`).join(' ')
       : 'none';
     const activeEnemies = this.enemies.filter((enemy) => !enemy.defeated && !enemy.retreating).length;
+    const metrics = this.getIsoMetrics();
     const levelStatus = this.generatedLevelValidation
       ? `LevelGen ${this.generatedLevelValidation.valid ? 'valid' : 'errors'} | ${this.generatedLevelActive ? 'rendered' : 'standby'} | Grid ${this.levelDebugVisible ? 'G:on' : 'G:off'}`
       : 'LevelGen unavailable';
@@ -3545,6 +3573,7 @@ class FairyGuildScene extends Phaser.Scene {
       `Targets ${this.getLiveEnemyTargetSummary()}`,
       `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
       this.generatedLevel ? `Config ${this.generatedLevelConfigId} | Seed ${this.generatedLevel.config.seed}` : '',
+      this.generatedLevel ? `Tile ${this.generatedLevel.config.tileSize}px -> ${Math.round(metrics.tileW)}x${Math.round(metrics.tileH)}` : '',
       `${levelStatus} | Time ${this.getActiveTimeOfDay()} (N)`,
       this.generatedLevel ? `Route score ${this.getGeneratedRouteDebugSummary()}` : '',
       levelNotes,
