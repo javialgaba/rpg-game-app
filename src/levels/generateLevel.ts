@@ -7,11 +7,17 @@ import type {
   GridPoint,
   LevelConfig,
   LevelPlacement,
+  LevelToken,
   LevelValidationResult,
   ProtectedTargetPlacement,
 } from './levelTypes';
-import { findGridPath } from './pathfinding';
+import { findGridPath, pathCost } from './pathfinding';
 import { SeededRandom } from './seededRandom';
+
+const PROTECTED_EDGE_PADDING = 4;
+const MIN_SPAWN_TARGET_PATH = 10;
+const FULL_TREE_FRAMES = new Set(['world-pine-full', 'world-tree-oak']);
+const PARTIAL_TREE_FRAMES = new Set(['world-forest-cluster', 'world-pine']);
 
 const clonePoint = (point: GridPoint) => ({ x: point.x, y: point.y });
 
@@ -36,6 +42,17 @@ const isInside = (point: GridPoint, width: number, height: number) => (
 
 const isInsideLevel = (level: GeneratedLevel, point: GridPoint) => isInside(point, level.width, level.height);
 
+const isOuterEdgeCell = (point: GridPoint, width: number, height: number) => (
+  point.x === 0 || point.y === 0 || point.x === width - 1 || point.y === height - 1
+);
+
+const getEdgeDistance = (point: GridPoint, width: number, height: number) => Math.min(
+  point.x,
+  point.y,
+  width - 1 - point.x,
+  height - 1 - point.y,
+);
+
 const pointKey = (point: GridPoint) => `${point.x},${point.y}`;
 
 const getNeighborCells = (point: GridPoint, radius = 1) => {
@@ -50,6 +67,21 @@ const getNeighborCells = (point: GridPoint, radius = 1) => {
   }
   return cells;
 };
+
+const getCardinalNeighborCells = (point: GridPoint) => [
+  { x: point.x + 1, y: point.y },
+  { x: point.x - 1, y: point.y },
+  { x: point.x, y: point.y + 1 },
+  { x: point.x, y: point.y - 1 },
+];
+
+const canCarveRoadToken = (token: LevelToken | undefined) => (
+  token === 'G' || token === 'D' || token === 'P' || token === 'V' || token === 'PS'
+);
+
+const isRoadToken = (token: LevelToken | undefined) => (
+  token === 'P' || token === 'V' || token === 'PS'
+);
 
 const getAttackCells = (
   cells: GridPoint[],
@@ -104,15 +136,131 @@ const getTerrainEntry = (entry: AssetRegistryEntry, registry: AssetRegistry) => 
   if (entry.token === 'D') {
     return registry.D;
   }
-  if (entry.token === 'SP' || entry.token === 'T') {
+  if (entry.token === 'SP') {
+    return registry.SP;
+  }
+  if (entry.token === 'T') {
     return registry.G;
   }
   return registry.G;
 };
 
+const createRoadPlan = (
+  config: LevelConfig,
+  registry: AssetRegistry,
+) => {
+  const matrix = config.matrix.map((row) => [...row]);
+  const height = matrix.length;
+  const width = matrix[0]?.length ?? 0;
+  const blockedGrid = makeGrid(width, height, false);
+  const warnings: string[] = [];
+  const protectedAnchors: GridPoint[] = [];
+  const utilityAnchors: GridPoint[] = [];
+  const chestAnchors: GridPoint[] = [];
+  let playerSpawn: GridPoint | null = null;
+
+  matrix.forEach((row, y) => {
+    row.forEach((token, x) => {
+      const entry = registry[token];
+      if (!entry) {
+        return;
+      }
+      if (token === 'PS') {
+        playerSpawn = { x, y };
+      }
+      if (entry.protected) {
+        protectedAnchors.push({ x, y });
+      } else if (token === 'W') {
+        utilityAnchors.push({ x, y });
+      } else if (token === 'CH') {
+        chestAnchors.push({ x, y });
+      }
+      if (!entry.blocksMovement) {
+        return;
+      }
+      getAnchorFootprintCells({ x, y }, entry.footprint ?? { w: 1, h: 1 }).forEach((cell) => {
+        if (isInside(cell, width, height)) {
+          blockedGrid[cell.y][cell.x] = true;
+        }
+      });
+    });
+  });
+
+  const center = playerSpawn ?? { x: Math.floor(width / 2), y: Math.floor(height / 2) };
+  const isRoadable = (point: GridPoint) => (
+    isInside(point, width, height)
+    && !blockedGrid[point.y][point.x]
+    && canCarveRoadToken(matrix[point.y]?.[point.x])
+  );
+  const walkableForRoads = blockedGrid.map((row) => row.map((blocked) => !blocked));
+
+  const carveRoadCell = (point: GridPoint) => {
+    if (!isRoadable(point)) {
+      return;
+    }
+    const token = matrix[point.y][point.x];
+    if (token === 'G' || token === 'D' || token === 'V') {
+      matrix[point.y][point.x] = 'P';
+    }
+  };
+
+  const findConnectionCells = (anchor: GridPoint) => {
+    const entry = registry[matrix[anchor.y]?.[anchor.x]];
+    const cells = getAnchorFootprintCells(anchor, entry?.footprint ?? { w: 1, h: 1 });
+    const seen = new Set<string>();
+    const candidates = cells.flatMap(getCardinalNeighborCells)
+      .filter(isRoadable)
+      .filter((candidate) => {
+        const key = pointKey(candidate);
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => (
+        Math.abs(a.x - center.x) + Math.abs(a.y - center.y)
+        - (Math.abs(b.x - center.x) + Math.abs(b.y - center.y))
+      ));
+    return candidates.length > 0 ? candidates : (isRoadable(anchor) ? [anchor] : []);
+  };
+
+  const connectTo = (anchor: GridPoint, label: string) => {
+    const endpoints = findConnectionCells(anchor);
+    if (!endpoints.length || !isRoadable(center)) {
+      warnings.push(`Road generator could not connect ${label} at ${pointKey(anchor)}.`);
+      return;
+    }
+    const path = endpoints
+      .map((endpoint) => findGridPath(walkableForRoads, center, [endpoint]))
+      .filter(Boolean)
+      .sort((a, b) => pathCost(a) - pathCost(b))[0];
+    if (!path) {
+      warnings.push(`Road generator could not find a route to ${label} at ${pointKey(anchor)}.`);
+      return;
+    }
+    path.forEach(carveRoadCell);
+  };
+
+  [...protectedAnchors, ...utilityAnchors, ...chestAnchors].forEach((anchor) => {
+    connectTo(anchor, matrix[anchor.y]?.[anchor.x] ?? 'target');
+  });
+
+  const roadGrid = makeGrid(width, height, false);
+  matrix.forEach((row, y) => {
+    row.forEach((token, x) => {
+      roadGrid[y][x] = isRoadToken(token);
+    });
+  });
+
+  return { matrix, roadGrid, warnings };
+};
+
 export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
-  const height = config.matrix.length;
-  const width = config.matrix[0]?.length ?? 0;
+  const roadPlan = createRoadPlan(config, registry);
+  const generatedConfig = { ...config, matrix: roadPlan.matrix };
+  const height = generatedConfig.matrix.length;
+  const width = generatedConfig.matrix[0]?.length ?? 0;
   const rng = new SeededRandom(config.seed);
   const walkableGrid = makeGrid(width, height, true);
   const blockedGrid = makeGrid(width, height, false);
@@ -129,8 +277,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   const warnings: string[] = [];
   const errors: string[] = [];
   let playerSpawn: GridPoint | null = null;
+  warnings.push(...roadPlan.warnings);
 
-  config.matrix.forEach((row, y) => {
+  generatedConfig.matrix.forEach((row, y) => {
     if (row.length !== width) {
       errors.push(`Row ${y} has ${row.length} cells; expected ${width}.`);
     }
@@ -224,16 +373,19 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   }
 
   const center = { x: width / 2, y: height / 2 };
+  const attackCellKeys = new Set(protectedTargets.flatMap((target) => target.attackCells.map(pointKey)));
   const canDecorate = (grid: GridPoint) => {
     if (!isInside(grid, width, height)) {
       return false;
     }
-    const token = config.matrix[grid.y]?.[grid.x];
+    const token = generatedConfig.matrix[grid.y]?.[grid.x];
     const distanceFromCenter = Math.abs(grid.x - center.x) + Math.abs(grid.y - center.y);
     if (
       blockedGrid[grid.y][grid.x]
+      || attackCellKeys.has(pointKey(grid))
       || spawnGrid[grid.y][grid.x]
       || decorationGrid[grid.y][grid.x]
+      || roadPlan.roadGrid[grid.y][grid.x]
       || token === 'P'
       || token === 'V'
       || token === 'PS'
@@ -284,18 +436,69 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     alpha: 0.82,
     z: 8,
   };
+  const saplingRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-pine-full',
+    displaySize: [68, 102],
+    origin: [0.5, 0.84],
+    alpha: 0.82,
+    z: 11,
+  };
+  const fullTreeRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-pine-full',
+    displaySize: [82, 124],
+    origin: [0.5, 0.84],
+    alpha: 0.86,
+    z: 12,
+  };
+  const oakTreeRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-tree-oak',
+    displaySize: [106, 122],
+    origin: [0.5, 0.84],
+    alpha: 0.84,
+    z: 12,
+  };
+  const lampRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-lamp',
+    displaySize: [30, 70],
+    origin: [0.5, 0.86],
+    alpha: 0.86,
+    z: 9,
+  };
+  const fenceRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-fence',
+    displaySize: [70, 46],
+    origin: [0.5, 0.82],
+    alpha: 0.84,
+    z: 8,
+  };
+  const signRender: AssetRenderMetadata = {
+    textureKey: 'worldSheet',
+    frameKey: 'world-sign',
+    displaySize: [54, 64],
+    origin: [0.5, 0.86],
+    alpha: 0.86,
+    z: 9,
+  };
 
   terrain.forEach((placement) => {
-    const token = config.matrix[placement.grid.y]?.[placement.grid.x];
+    const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
     if ((token === 'G' || token === 'D') && rng.chance(config.decorationDensity * 0.08)) {
       addDecoration(placement.grid, 'flowers', 'Tiny Flowers');
     }
   });
 
   protectedTargets.forEach((target) => {
-    target.attackCells.forEach((cell) => {
-      if (rng.chance(config.decorationDensity * 0.22)) {
+    getNeighborCells(target.grid, 2).forEach((cell) => {
+      if (rng.chance(config.decorationDensity * 0.18)) {
         addDecoration(cell, 'flowers', `${target.label} Flower Patch`);
+      }
+      if ((target.token === 'H1' || target.token === 'H2' || target.token === 'M') && rng.chance(config.decorationDensity * 0.13)) {
+        addDecoration(cell, 'fence', `${target.label} Fence`, fenceRender);
       }
     });
   });
@@ -318,7 +521,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     });
 
   terrain.forEach((placement) => {
-    const token = config.matrix[placement.grid.y]?.[placement.grid.x];
+    const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
     const isEdge = placement.grid.x <= 1
       || placement.grid.y <= 1
       || placement.grid.x >= width - 2
@@ -326,13 +529,39 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.12)) {
       addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender);
     }
-    if (token === 'G' && rng.chance(config.decorationDensity * 0.035)) {
+    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.58)) {
+      addDecoration(
+        placement.grid,
+        rng.chance(0.7) ? 'fullTree' : 'sapling',
+        'Forest Edge Tree',
+        rng.chance(0.18) ? oakTreeRender : fullTreeRender,
+      );
+    }
+    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.16)) {
+      addDecoration(placement.grid, 'sapling', 'Young Pine', saplingRender);
+    }
+    if (token === 'G' && rng.chance(config.decorationDensity * 0.05)) {
       addDecoration(placement.grid, 'sparkles', 'Fairy Sparkles');
     }
   });
 
+  terrain.forEach((placement) => {
+    if (!roadPlan.roadGrid[placement.grid.y]?.[placement.grid.x]) {
+      return;
+    }
+    const roadNeighbors = getCardinalNeighborCells(placement.grid)
+      .filter((cell) => isInside(cell, width, height) && roadPlan.roadGrid[cell.y][cell.x]);
+    getCardinalNeighborCells(placement.grid).forEach((cell) => {
+      if (roadNeighbors.length >= 3 && rng.chance(config.decorationDensity * 0.08)) {
+        addDecoration(cell, 'sign', 'Village Sign', signRender);
+      } else if (rng.chance(config.decorationDensity * 0.06)) {
+        addDecoration(cell, 'lamp', 'Path Lamp', lampRender);
+      }
+    });
+  });
+
   return {
-    config,
+    config: generatedConfig,
     width,
     height,
     walkableGrid,
@@ -341,6 +570,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     decorationGrid,
     spawnGrid,
     targetGrid,
+    roadGrid: roadPlan.roadGrid,
     terrain,
     objects,
     decorations,
@@ -388,9 +618,14 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       errors.push(`Monster spawn ${spawn.x},${spawn.y} is blocked.`);
       return;
     }
+    if (!isOuterEdgeCell(spawn, level.width, level.height)) {
+      errors.push(`Monster spawn ${spawn.x},${spawn.y} must be on the outer map edge.`);
+    }
     const path = findGridPath(level.walkableGrid, spawn, allAttackCells);
     if (!path) {
       errors.push(`Monster spawn ${spawn.x},${spawn.y} cannot reach any protected building.`);
+    } else if (pathCost(path) < MIN_SPAWN_TARGET_PATH) {
+      warnings.push(`Monster spawn ${spawn.x},${spawn.y} is too close to protected targets (${pathCost(path)} steps).`);
     }
   });
 
@@ -404,8 +639,15 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     if (invalidCells.length > 0) {
       errors.push(`${target.label} has footprint cells outside the level bounds.`);
     }
+    const edgeDistance = Math.min(...target.cells.map((cell) => getEdgeDistance(cell, level.width, level.height)));
+    if (edgeDistance < PROTECTED_EDGE_PADDING) {
+      errors.push(`${target.label} must be at least ${PROTECTED_EDGE_PADDING} cells from the map edge.`);
+    }
     if (!target.attackCells.length) {
       errors.push(`${target.label} has no attack cells.`);
+    }
+    if (!target.attackCells.some((cell) => level.roadGrid[cell.y]?.[cell.x])) {
+      errors.push(`${target.label} needs at least one adjacent walkway cell.`);
     }
     const reachableFromAnySpawn = level.spawnPoints.some((spawn) => (
       isInsideLevel(level, spawn) && Boolean(findGridPath(level.walkableGrid, spawn, target.attackCells))
@@ -416,12 +658,11 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
   });
 
   if (level.playerSpawn) {
-    const reachableTargets = level.protectedTargets.filter((target) => (
-      Boolean(findGridPath(level.walkableGrid, level.playerSpawn as GridPoint, target.attackCells))
-    ));
-    if (!reachableTargets.length && level.protectedTargets.length > 0) {
-      warnings.push('Player spawn cannot reach any protected building attack zone.');
-    }
+    level.protectedTargets.forEach((target) => {
+      if (!findGridPath(level.walkableGrid, level.playerSpawn as GridPoint, target.attackCells)) {
+        errors.push(`Player spawn cannot reach ${target.label}.`);
+      }
+    });
 
     level.chests.forEach((chest) => {
       const path = findGridPath(level.walkableGrid, level.playerSpawn as GridPoint, [chest.grid]);
@@ -438,6 +679,19 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
   ));
   blockedDecorationCells.forEach((decoration) => {
     warnings.push(`${decoration.label} decoration at ${pointKey(decoration.grid)} is on a blocked or spawn cell.`);
+  });
+
+  [...level.objects, ...level.decorations].forEach((placement) => {
+    if (!isInsideLevel(level, placement.grid)) {
+      errors.push(`${placement.label} is outside board bounds.`);
+    }
+    const frameKey = placement.render?.frameKey;
+    if ((placement.token === 'T' || placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree') && !FULL_TREE_FRAMES.has(frameKey ?? '')) {
+      errors.push(`${placement.label} must use a full-tree frame, not ${frameKey ?? 'an unnamed frame'}.`);
+    }
+    if (frameKey && PARTIAL_TREE_FRAMES.has(frameKey) && placement.decorationKind !== 'fullTree') {
+      errors.push(`${placement.label} uses clipped frame ${frameKey} as a normal prop.`);
+    }
   });
 
   if (!level.chests.length) {

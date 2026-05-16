@@ -23,23 +23,6 @@ const FESTIVAL_VILLAGE_LEVEL: LevelConfig = {
   timeOfDay: 'afternoon',
   decorationDensity: 0.52,
   difficulty: 2,
-  matrix: [
-    ['T', 'T', 'T', 'SP', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'SP', 'T', 'T', 'T'],
-    ['T', 'G', 'G', 'P', 'P', 'P', 'G', 'D', 'G', 'P', 'P', 'P', 'G', 'G', 'T'],
-    ['T', 'G', 'CH', 'P', 'G', 'G', 'G', 'C', 'G', 'G', 'G', 'P', 'CH', 'G', 'T'],
-    ['SP', 'P', 'P', 'P', 'G', 'D', 'G', 'G', 'G', 'D', 'G', 'P', 'P', 'P', 'SP'],
-    ['T', 'G', 'G', 'G', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'G', 'G', 'G', 'T'],
-    ['T', 'G', 'H1', 'G', 'P', 'G', 'D', 'G', 'D', 'G', 'P', 'G', 'H2', 'G', 'T'],
-    ['T', 'G', 'D', 'P', 'P', 'P', 'P', 'PS', 'P', 'P', 'P', 'P', 'D', 'G', 'T'],
-    ['T', 'P', 'P', 'P', 'P', 'V', 'V', 'V', 'V', 'V', 'P', 'P', 'P', 'P', 'T'],
-    ['T', 'G', 'D', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'D', 'G', 'T'],
-    ['T', 'G', 'G', 'G', 'P', 'CH', 'D', 'G', 'D', 'CH', 'P', 'G', 'G', 'G', 'T'],
-    ['T', 'G', 'M', 'G', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'G', 'W', 'G', 'T'],
-    ['SP', 'P', 'P', 'P', 'G', 'G', 'G', 'CH', 'G', 'G', 'G', 'P', 'P', 'P', 'SP'],
-    ['T', 'G', 'CH', 'P', 'D', 'G', 'G', 'L', 'G', 'G', 'D', 'P', 'CH', 'G', 'T'],
-    ['T', 'G', 'G', 'P', 'P', 'P', 'G', 'D', 'G', 'P', 'P', 'P', 'G', 'G', 'T'],
-    ['T', 'T', 'T', 'SP', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'SP', 'T', 'T', 'T'],
-  ],
 };
 
 export const LEVEL_CATALOG: Record<string, LevelCatalogEntry> = {
@@ -80,11 +63,14 @@ export const getGeneratedLevelIdFromParams = (params: URLSearchParams) => {
 };
 
 export const shouldRenderGeneratedLevelFromParams = (params: URLSearchParams) => {
-  if (!params.has('generatedLevel')) {
+  const explicitStaticMap = params.has('staticMap')
+    || params.has('paintedMap')
+    || params.has('legacyMap');
+  if (explicitStaticMap) {
     return false;
   }
   const raw = params.get('generatedLevel');
-  return raw !== '0' && raw !== 'false' && raw !== 'off';
+  return raw !== '0' && raw !== 'false' && raw !== 'off' && raw !== 'static';
 };
 
 export const resolveLevelConfigFromParams = (params: URLSearchParams): LevelSelection => {

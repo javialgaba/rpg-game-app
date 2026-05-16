@@ -15,7 +15,7 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 - XP score, gold drops, treasure chests, and upgrade progression
 - Inventory panel with six upgrade paths
 - Game over screen when the castle falls or the hero reaches 0 hearts
-- Designer-authored procedural level scaffold with logical blockers, A* routes, decoration passes, and visual time-of-day profiles
+- Designer-authored procedural level system with logical blockers, edge spawns, A* routes, decoration passes, and visual time-of-day profiles
 - Rich procedural Web Audio SFX and a gentle interaction-started village theme
 - Family-friendly effects: sparkles, puffs, dazed reactions, and retreating monsters
 - Generated image assets in a bright cartoon storybook style
@@ -51,7 +51,7 @@ The PWA shell includes PNG app icons for iOS and installable browsers. Use `?deb
 
 ## Progression
 
-The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Press `START` to begin the Level 1 countdown. The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. When all enemies in the current level are defeated, gameplay pauses and a level-up screen appears.
+The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Press `START` to begin the Level 1 countdown. The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. Level clear is driven by the explicit player-defeat quota for the round, so retreat animations or skipped invalid spawns cannot block progression. When all required enemies are defeated, gameplay pauses and a level-up screen appears.
 
 Every level-up grants `Heart +1` and one chosen training bonus:
 
@@ -63,7 +63,7 @@ Buildings keep their damage between levels. Press `T` to ready the Repair Kit, t
 
 Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
 
-The procedural level foundation lives in `src/levels/`. The current painted village remains the default map, but `?generatedLevel=1` renders the default designer-authored token matrix and `?generatedLevel=festival-village` renders a second catalog level. Level catalog entries live in `levelCatalog.ts`; designers can also preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. Generated maps honor `tileSize` by scaling the isometric diamond spacing and generated object art while leaving the static painted board unchanged. The generator uses reusable registry entries and sliced `world-ui-sheet.png` frames where available, then adds deterministic nonblocking flowers, mushrooms, sparkles, and magical plants around designer-authored structure. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, validation routes, chests, decorations, and live enemy paths. The `B` balance panel also shows live target counts, tile metrics, and route scores so designers can see why monsters prefer a building. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
+The procedural level foundation lives in `src/levels/`. Procedural maps are now the default game map on every fresh start. The default village is a larger 19x19 designer-authored matrix with `tileSize: 54`, a two-cell forest buffer, edge-only `SP` spawn cells, and protected buildings placed away from the border. `?generatedLevel=festival-village` renders a second catalog level using the same larger layout rules, while `?staticMap=1` temporarily restores the older painted board for comparison. Level catalog entries live in `levelCatalog.ts`; designers can also preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. Generated maps honor `tileSize` by scaling the isometric diamond spacing and generated object art while leaving the static painted board path unchanged. The generator validates edge spawns, protected-building edge padding, and spawn-to-target path length, then adds deterministic nonblocking flowers, mushrooms, saplings, sparkles, and magical plants around designer-authored structure. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, validation routes, chests, decorations, and live enemy paths. The `B` balance panel also shows defeat quota progress, pending spawns, live target counts, tile metrics, and route scores so designers can see why monsters prefer a building. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
 
 ## Getting Started
 

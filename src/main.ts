@@ -82,6 +82,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
+    this.levelRequiredDefeats = 0;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
     this.levelClearQueued = false;
     this.levelTimers = [];
     this.lastRepairAt = 0;
@@ -102,6 +105,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelDebugGraphics = null;
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
+    this.generatedTerrainMask = null;
+    this.generatedTerrainMaskGraphics = null;
     this.lightingLayer = null;
     this.timeOfDayOverlay = null;
     this.timeOfDayMist = null;
@@ -194,6 +199,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
+    this.levelRequiredDefeats = 0;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
     this.levelClearQueued = false;
     this.levelTimers = [];
     this.lastRepairAt = 0;
@@ -214,6 +222,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelDebugGraphics = null;
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
+    this.generatedTerrainMask = null;
+    this.generatedTerrainMaskGraphics = null;
     this.lightingLayer = null;
     this.timeOfDayOverlay = null;
     this.timeOfDayMist = null;
@@ -281,6 +291,7 @@ class FairyGuildScene extends Phaser.Scene {
     addFrame(world, 'world-lamp', 438, 302, 92, 250);
     addFrame(world, 'world-tree-oak', 536, 260, 254, 294);
     addFrame(world, 'world-pine', 790, 282, 138, 248);
+    addFrame(world, 'world-pine-full', 772, 276, 190, 302);
     addFrame(world, 'world-magic-plant', 920, 320, 150, 220);
     addFrame(world, 'world-mushroom', 1068, 340, 150, 190);
     addFrame(world, 'world-fence', 1190, 318, 172, 188);
@@ -607,6 +618,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createBackground() {
+    const useGeneratedMap = this.shouldRenderGeneratedLevel();
     const bg = this.add.graphics();
     bg.fillGradientStyle(COLORS.skyTop, COLORS.skyTop, COLORS.skyBottom, COLORS.skyBottom, 1);
     bg.fillRect(0, 0, WIDTH, HEIGHT);
@@ -617,6 +629,15 @@ class FairyGuildScene extends Phaser.Scene {
     bg.fillEllipse(1010, 76, 250, 48);
     bg.fillEllipse(700, 138, 180, 34);
     this.worldLayer.add(bg);
+    if (useGeneratedMap) {
+      const boardBase = this.add.graphics();
+      boardBase.fillStyle(0x376f45, 0.28);
+      boardBase.fillEllipse(WIDTH / 2, 392, 1120, 610);
+      boardBase.fillStyle(0xf4e7ae, 0.08);
+      boardBase.fillEllipse(WIDTH / 2, 370, 980, 500);
+      this.worldLayer.add(boardBase);
+      return;
+    }
     const board = this.add.image(WIDTH / 2, HEIGHT / 2, 'villageBoard')
       .setDisplaySize(WIDTH, HEIGHT)
       .setAlpha(0.88);
@@ -625,11 +646,15 @@ class FairyGuildScene extends Phaser.Scene {
 
   createVillage() {
     this.prepareGeneratedLevel();
+    this.generatedLevelActive = this.shouldRenderGeneratedLevel();
     this.tileGraphics = this.add.graphics();
-    this.tileGraphics.setAlpha(this.shouldRenderGeneratedLevel() ? 0.28 : 0.15);
+    this.tileGraphics.setAlpha(this.generatedLevelActive ? 0.56 : 0.15);
     this.worldLayer.add(this.tileGraphics);
-    if (this.shouldRenderGeneratedLevel()) {
-      this.generatedLevelActive = true;
+    if (this.generatedLevelActive) {
+      this.createGeneratedTerrainMask();
+      if (this.generatedTerrainMask) {
+        this.tileGraphics.setMask(this.generatedTerrainMask);
+      }
       this.renderGeneratedLevel();
     } else {
       this.drawMapTiles();
@@ -683,17 +708,22 @@ class FairyGuildScene extends Phaser.Scene {
     }
     const { tileW, tileH } = this.getIsoMetrics();
     this.generatedLevel.terrain.forEach((placement) => {
+      const sourceToken = this.generatedLevel?.config.matrix[placement.grid.y]?.[placement.grid.x];
+      const isOuterTerrainCell = this.isGeneratedOuterTextureCell(placement.grid);
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
-      const fill = placement.render?.terrainFill ?? COLORS.grassA;
-      const stroke = placement.render?.terrainStroke ?? 0x5dbb65;
-      this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, 0.92);
-      if (placement.render?.textureKey) {
+      const fill = isOuterTerrainCell ? COLORS.forest : placement.render?.terrainFill ?? COLORS.grassA;
+      const stroke = isOuterTerrainCell ? 0x2f744f : placement.render?.terrainStroke ?? 0x5dbb65;
+      this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, isOuterTerrainCell ? 0.78 : 0.92);
+      if (placement.render?.textureKey && !isOuterTerrainCell && sourceToken !== 'SP') {
         const size = this.scaleGeneratedSize(placement.render.displaySize ?? [TILE_W, TILE_H]);
         const sprite = this.add.image(center.x, center.y + 8, placement.render.textureKey, placement.render.frameKey)
           .setOrigin(placement.render.origin?.[0] ?? 0.5, placement.render.origin?.[1] ?? 0.62)
           .setDisplaySize(size[0], size[1])
           .setDepth(center.y - 28)
           .setAlpha(0.74);
+        if (this.generatedTerrainMask) {
+          sprite.setMask(this.generatedTerrainMask);
+        }
         this.worldLayer.add(sprite);
       }
     });
@@ -709,6 +739,43 @@ class FairyGuildScene extends Phaser.Scene {
       }
     });
     this.generatedLevel.decorations.forEach((placement) => this.renderGeneratedDecoration(placement));
+  }
+
+  isGeneratedOuterTextureCell(grid) {
+    if (!this.generatedLevel) {
+      return false;
+    }
+    return grid.x <= 3
+      || grid.y <= 3
+      || grid.x >= this.generatedLevel.width - 4
+      || grid.y >= this.generatedLevel.height - 4;
+  }
+
+  createGeneratedTerrainMask() {
+    if (!this.generatedLevel) {
+      return;
+    }
+    this.generatedTerrainMaskGraphics?.destroy();
+    const { tileW, tileH } = this.getIsoMetrics();
+    const topCenter = this.isoToScreen(0, 0);
+    const rightCenter = this.isoToScreen(this.generatedLevel.width - 1, 0);
+    const bottomCenter = this.isoToScreen(this.generatedLevel.width - 1, this.generatedLevel.height - 1);
+    const leftCenter = this.isoToScreen(0, this.generatedLevel.height - 1);
+    const top = new Phaser.Geom.Point(topCenter.x, topCenter.y - tileH / 2);
+    const right = new Phaser.Geom.Point(rightCenter.x + tileW / 2, rightCenter.y);
+    const bottom = new Phaser.Geom.Point(bottomCenter.x, bottomCenter.y + tileH / 2);
+    const left = new Phaser.Geom.Point(leftCenter.x - tileW / 2, leftCenter.y);
+    const maskGraphics = this.make.graphics({ x: 0, y: 0, add: false } as any);
+    maskGraphics.fillStyle(0xffffff, 1);
+    maskGraphics.beginPath();
+    maskGraphics.moveTo(top.x, top.y);
+    maskGraphics.lineTo(right.x, right.y);
+    maskGraphics.lineTo(bottom.x, bottom.y);
+    maskGraphics.lineTo(left.x, left.y);
+    maskGraphics.closePath();
+    maskGraphics.fillPath();
+    this.generatedTerrainMaskGraphics = maskGraphics;
+    this.generatedTerrainMask = maskGraphics.createGeometryMask();
   }
 
   renderGeneratedBuilding(placement) {
@@ -910,6 +977,9 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getDecorationDebugColor(kind) {
+    if (kind === 'fullTree' || kind === 'sapling') {
+      return 0x2ed573;
+    }
     if (kind === 'mushrooms') {
       return 0xffaa55;
     }
@@ -918,6 +988,12 @@ class FairyGuildScene extends Phaser.Scene {
     }
     if (kind === 'sparkles') {
       return 0xffffff;
+    }
+    if (kind === 'lamp') {
+      return 0xffe36a;
+    }
+    if (kind === 'fence' || kind === 'sign') {
+      return 0xc7924e;
     }
     return 0xff93d8;
   }
@@ -947,11 +1023,20 @@ class FairyGuildScene extends Phaser.Scene {
     for (let y = 0; y < this.generatedLevel.height; y += 1) {
       for (let x = 0; x < this.generatedLevel.width; x += 1) {
         this.drawDebugDiamond(gfx, { x, y }, 0xffffff, 0.035);
+        if (this.generatedLevel.roadGrid[y]?.[x]) {
+          this.drawDebugDiamond(gfx, { x, y }, 0xe8d39c, 0.18);
+        }
         if (this.generatedLevel.blockedGrid[y][x]) {
           this.drawDebugDiamond(gfx, { x, y }, 0xff6b6b, 0.22);
         }
       }
     }
+    const top = this.isoToScreen((this.generatedLevel.width - 1) / 2, 0, -8);
+    const right = this.isoToScreen(this.generatedLevel.width - 1, (this.generatedLevel.height - 1) / 2, -8);
+    const bottom = this.isoToScreen((this.generatedLevel.width - 1) / 2, this.generatedLevel.height - 1, -8);
+    const left = this.isoToScreen(0, (this.generatedLevel.height - 1) / 2, -8);
+    gfx.lineStyle(3, 0xffffff, 0.38);
+    gfx.strokePoints([top, right, bottom, left, top], false, true);
     this.generatedLevel.spawnPoints.forEach((spawn) => this.drawDebugDiamond(gfx, spawn, 0xc678ff, 0.38));
     if (this.generatedLevel.playerSpawn) {
       this.drawDebugDiamond(gfx, this.generatedLevel.playerSpawn, 0x68d8ff, 0.42);
@@ -1054,6 +1139,23 @@ class FairyGuildScene extends Phaser.Scene {
   createPathStones() {
     const stones = this.add.graphics();
     stones.fillStyle(0xe6d3a6, 0.55);
+    if (this.generatedLevelActive && this.generatedLevel) {
+      this.generatedLevel.roadGrid.forEach((row, y) => {
+        row.forEach((isRoad, x) => {
+          if (!isRoad || (x + y) % 2 !== 0) {
+            return;
+          }
+          const p = this.isoToScreen(x + 0.12 * Math.sin(y * 1.7), y + 0.14 * Math.cos(x * 1.3));
+          stones.fillEllipse(p.x, p.y, 8 + ((x + y) % 3) * 2, 4.5, 1);
+        });
+      });
+      stones.setAlpha(0.38);
+      if (this.generatedTerrainMask) {
+        stones.setMask(this.generatedTerrainMask);
+      }
+      this.worldLayer.add(stones);
+      return;
+    }
     for (let y = 3; y < 12; y += 1) {
       for (let x = 6; x <= 8; x += 1) {
         const p = this.isoToScreen(x + 0.12 * Math.sin(y), y + 0.18 * Math.cos(x));
@@ -2372,6 +2474,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.inventoryPanel?.setVisible(false);
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
+    this.levelRequiredDefeats = 0;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
     this.levelClearQueued = false;
     this.splashOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
@@ -2414,6 +2519,9 @@ class FairyGuildScene extends Phaser.Scene {
     const count = Math.min(LEVEL_SPAWN_BASE + level * LEVEL_SPAWN_PER_LEVEL, LEVEL_SPAWN_MAX);
     this.levelSpawnsPending = count;
     this.levelEnemiesRemaining = count;
+    this.levelRequiredDefeats = count;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
     this.addGuildNote(`Level ${level}: forest friends are on the move!`);
     if (level === 1) {
       this.addGuildNote('Tip: T readies repairs when buildings flash.');
@@ -2429,7 +2537,12 @@ class FairyGuildScene extends Phaser.Scene {
         this.levelSpawnsPending = Math.max(0, this.levelSpawnsPending - 1);
         const spawned = this.spawnEnemy(level);
         if (!spawned) {
-          this.levelEnemiesRemaining = Math.max(0, this.levelEnemiesRemaining - 1);
+          this.levelSpawnFailures += 1;
+          this.levelRequiredDefeats = Math.max(0, this.levelRequiredDefeats - 1);
+          this.levelEnemiesRemaining = Math.max(0, this.levelRequiredDefeats - this.levelDefeatsThisRound);
+          if (this.generatedLevelActive) {
+            console.warn('Generated spawn skipped because no protected target route was available.');
+          }
         }
         this.checkLevelClear();
       });
@@ -2438,7 +2551,8 @@ class FairyGuildScene extends Phaser.Scene {
 
   checkLevelClear() {
     if (this.state.phase !== 'playing' || this.levelClearQueued) {return;}
-    if (this.levelSpawnsPending <= 0 && this.levelEnemiesRemaining <= 0) {
+    const requiredDefeatsMet = this.levelDefeatsThisRound >= this.levelRequiredDefeats;
+    if (this.levelSpawnsPending <= 0 && requiredDefeatsMet) {
       this.levelClearQueued = true;
       this.addLevelTimer(720, () => this.completeLevel());
     }
@@ -2481,11 +2595,29 @@ class FairyGuildScene extends Phaser.Scene {
     return { x, y };
   }
 
-  getGeneratedSpawnIso() {
+  getGeneratedEdgeSpawnPoints() {
     if (!this.generatedLevel?.spawnPoints.length) {
+      return [];
+    }
+    return this.generatedLevel.spawnPoints.filter((spawn) => (
+      spawn.x === 0
+      || spawn.y === 0
+      || spawn.x === this.generatedLevel.width - 1
+      || spawn.y === this.generatedLevel.height - 1
+    ));
+  }
+
+  getGeneratedSpawnIso() {
+    const edgeSpawns = this.getGeneratedEdgeSpawnPoints();
+    if (!edgeSpawns.length) {
+      console.warn('Generated level has no outer-edge spawn points.');
       return null;
     }
-    const spawn = this.generatedLevel.spawnPoints[Phaser.Math.Between(0, this.generatedLevel.spawnPoints.length - 1)];
+    const spawn = edgeSpawns[Phaser.Math.Between(0, edgeSpawns.length - 1)];
+    return this.jitterGeneratedSpawnPoint(spawn);
+  }
+
+  jitterGeneratedSpawnPoint(spawn) {
     return {
       x: spawn.x + Phaser.Math.FloatBetween(-0.18, 0.18),
       y: spawn.y + Phaser.Math.FloatBetween(-0.18, 0.18),
@@ -2564,11 +2696,23 @@ class FairyGuildScene extends Phaser.Scene {
     if (!target) {return false;}
     let iso;
     if (this.generatedLevelActive) {
-      iso = this.getGeneratedSpawnIso();
-      route = iso ? this.selectGeneratedEnemyRoute(iso) : null;
-      if (route) {
-        target = route.target;
+      const spawnCandidates = [...this.getGeneratedEdgeSpawnPoints()];
+      for (let i = spawnCandidates.length - 1; i > 0; i -= 1) {
+        const j = Phaser.Math.Between(0, i);
+        [spawnCandidates[i], spawnCandidates[j]] = [spawnCandidates[j], spawnCandidates[i]];
       }
+      for (const spawn of spawnCandidates) {
+        iso = this.jitterGeneratedSpawnPoint(spawn);
+        route = this.selectGeneratedEnemyRoute(iso);
+        if (route) {
+          break;
+        }
+      }
+      if (!route) {
+        console.warn('Generated enemy spawn skipped: no route to a protected target.', iso);
+        return false;
+      }
+      target = route.target;
     }
     if (!iso) {
       const side = Phaser.Math.Between(0, 3);
@@ -2619,6 +2763,7 @@ class FairyGuildScene extends Phaser.Scene {
       routeHealthFactor: route?.healthFactor ?? null,
       retreating: false,
       defeated: false,
+      countedDefeat: false,
     };
     this.enemies.push(enemy);
     this.entityLayer.add([shadow, sprite]);
@@ -2656,14 +2801,16 @@ class FairyGuildScene extends Phaser.Scene {
       }
       let targetIso = enemy.retreating ? this.getNearestForestExit(enemy.iso) : enemy.target.iso;
       if (!enemy.retreating && enemy.path?.length) {
-        const currentWaypoint = enemy.path[Math.min(enemy.pathIndex, enemy.path.length - 1)];
-        if (
+        const waypointArrivalRadius = 0.38;
+        let currentWaypoint = enemy.path[Math.min(enemy.pathIndex, enemy.path.length - 1)];
+        while (
           enemy.pathIndex < enemy.path.length - 1
-          && Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, currentWaypoint.x, currentWaypoint.y) < 0.18
+          && Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, currentWaypoint.x, currentWaypoint.y) <= waypointArrivalRadius
         ) {
           enemy.pathIndex += 1;
+          currentWaypoint = enemy.path[Math.min(enemy.pathIndex, enemy.path.length - 1)];
         }
-        targetIso = enemy.path[Math.min(enemy.pathIndex, enemy.path.length - 1)];
+        targetIso = currentWaypoint;
       }
       const dist = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, targetIso.x, targetIso.y);
       if (time > enemy.dazedUntil && dist > 0.35) {
@@ -2695,10 +2842,12 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getNearestForestExit(iso) {
+    const maxX = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.width - 0.8 : 14.2;
+    const maxY = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.height - 0.8 : 14.2;
     const exits = [
       { x: iso.x, y: 0.8 },
-      { x: 14.2, y: iso.y },
-      { x: iso.x, y: 14.2 },
+      { x: maxX, y: iso.y },
+      { x: iso.x, y: maxY },
       { x: 0.8, y: iso.y },
     ];
     return exits.reduce((best, exit) => (
@@ -2721,7 +2870,11 @@ class FairyGuildScene extends Phaser.Scene {
     this.playTone('hit');
     if (enemy.hp <= 0) {
       enemy.defeated = true;
-      this.levelEnemiesRemaining = Math.max(0, this.levelEnemiesRemaining - 1);
+      if (!enemy.countedDefeat) {
+        enemy.countedDefeat = true;
+        this.levelDefeatsThisRound += 1;
+      }
+      this.levelEnemiesRemaining = Math.max(0, this.levelRequiredDefeats - this.levelDefeatsThisRound);
       enemy.retreating = true;
       enemy.sprite.setFrame(`monster-${enemy.archetype.row}-${Phaser.Math.Between(4, 7)}`);
       enemy.sprite.setTint(0xffffff);
@@ -3568,7 +3721,8 @@ class FairyGuildScene extends Phaser.Scene {
       `Phase ${this.state.phase} | L${this.state.level} | Safe ${this.state.villageSafety}%`,
       `Hero ${this.state.health}/${this.playerStats.maxHealth} HP | Mana ${this.state.mana}/${this.playerStats.maxMana}`,
       `Gold ${this.state.gold} | XP ${this.state.xp} | Mode ${this.state.repairMode ? 'repair' : 'combat'}`,
-      `Enemies active ${activeEnemies} | remain ${this.levelEnemiesRemaining} | pending ${this.levelSpawnsPending}`,
+      `Defeats ${this.levelDefeatsThisRound}/${this.levelRequiredDefeats} | pending ${this.levelSpawnsPending} | spawn skips ${this.levelSpawnFailures}`,
+      `Enemies active ${activeEnemies} | remaining ${this.levelEnemiesRemaining}`,
       `Buildings ${buildingSummary}`,
       `Targets ${this.getLiveEnemyTargetSummary()}`,
       `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,

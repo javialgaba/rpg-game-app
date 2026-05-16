@@ -70,7 +70,7 @@ export interface LevelPlacement {
   token: LevelToken;
   label: string;
   type: AssetRegistryEntry['type'];
-  decorationKind?: 'flowers' | 'mushrooms' | 'magicPlant' | 'sparkles';
+  decorationKind?: 'flowers' | 'mushrooms' | 'magicPlant' | 'sparkles' | 'sapling' | 'fullTree' | 'lamp' | 'fence' | 'sign';
   grid: GridPoint;
   iso: GridPoint;
   footprint: Footprint;
@@ -96,6 +96,7 @@ export interface GeneratedLevel {
   decorationGrid: (LevelPlacement | null)[][];
   spawnGrid: boolean[][];
   targetGrid: boolean[][];
+  roadGrid: boolean[][];
   terrain: LevelPlacement[];
   objects: LevelPlacement[];
   decorations: LevelPlacement[];

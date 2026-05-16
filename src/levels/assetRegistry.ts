@@ -110,7 +110,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     walkable: false,
     blocksMovement: true,
     footprint: { w: 1, h: 1 },
-    render: { textureKey: 'worldSheet', frameKey: 'world-pine', displaySize: [72, 110], origin: [0.5, 0.84], alpha: 0.9, z: 12 },
+    render: { textureKey: 'worldSheet', frameKey: 'world-pine-full', displaySize: [82, 124], origin: [0.5, 0.84], alpha: 0.9, z: 12 },
     needsSlicing: true,
   },
   D: {
