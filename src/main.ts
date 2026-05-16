@@ -1,158 +1,34 @@
 import Phaser from 'phaser';
 import './style.css';
-
-const WIDTH = 1280;
-const HEIGHT = 720;
-const TILE_W = 92;
-const TILE_H = 46;
-const MAP_W = 15;
-const MAP_H = 15;
-const ORIGIN = { x: WIDTH / 2, y: 108 };
-const PLAYER_BASE = {
-  maxHealth: 3,
-  maxMana: 90,
-  speed: 3.15,
-  swordPower: 1,
-  bowPower: 1,
-  spellPower: 2,
-  bowCooldown: 560,
-  spellCost: 28,
-};
-
-const LEVEL_UP_CARD_XS = [-210, 0, 210];
-const LEVEL_UP_MAX_PIPS = 5;
-const REPAIR_COST = 6;
-const REPAIR_AMOUNT = 14;
-const REPAIR_RANGE = 1.35;
-const REPAIR_COOLDOWN = 650;
-
-const ENEMY_ARCHETYPES = [
-  {
-    key: 'blob',
-    label: 'forest blob',
-    row: 0,
-    unlockLevel: 1,
-    weight: 4,
-    hp: 2,
-    speed: 0.76,
-    buildingDamage: 4,
-    contactDamage: 1,
-    size: 52,
-    rewardGold: [6, 13],
-    rewardXp: 13,
-  },
-  {
-    key: 'sprite',
-    label: 'leafy sprite',
-    row: 1,
-    unlockLevel: 1,
-    weight: 3,
-    hp: 2,
-    speed: 0.88,
-    buildingDamage: 3,
-    contactDamage: 1,
-    size: 50,
-    rewardGold: [7, 14],
-    rewardXp: 14,
-  },
-  {
-    key: 'mushroom',
-    label: 'mushroom sprite',
-    row: 2,
-    unlockLevel: 1,
-    weight: 3,
-    hp: 3,
-    speed: 0.68,
-    buildingDamage: 5,
-    contactDamage: 1,
-    size: 60,
-    rewardGold: [8, 16],
-    rewardXp: 16,
-  },
-  {
-    key: 'lizard',
-    label: 'leafy lizard',
-    row: 3,
-    unlockLevel: 2,
-    weight: 2,
-    hp: 3,
-    speed: 0.96,
-    buildingDamage: 4,
-    contactDamage: 1,
-    size: 58,
-    rewardGold: [9, 17],
-    rewardXp: 18,
-  },
-  {
-    key: 'acorn',
-    label: 'acorn critter',
-    row: 4,
-    unlockLevel: 3,
-    weight: 2,
-    hp: 4,
-    speed: 0.78,
-    buildingDamage: 6,
-    contactDamage: 1,
-    size: 62,
-    rewardGold: [10, 20],
-    rewardXp: 20,
-  },
-];
-
-const ENEMY_VARIANTS = [
-  {
-    key: 'normal',
-    label: '',
-    unlockLevel: 1,
-    weight: 7,
-    tint: null,
-    scale: 1,
-    hp: 1,
-    speed: 1,
-    buildingDamage: 1,
-    contactDamage: 1,
-    reward: 1,
-  },
-  {
-    key: 'bright',
-    label: 'bright',
-    unlockLevel: 2,
-    weight: 3,
-    tint: 0xd9ff8f,
-    scale: 1.08,
-    hp: 1.25,
-    speed: 1.08,
-    buildingDamage: 1.12,
-    contactDamage: 1,
-    reward: 1.22,
-  },
-  {
-    key: 'elder',
-    label: 'elder',
-    unlockLevel: 4,
-    weight: 2,
-    tint: 0xffc878,
-    scale: 1.22,
-    hp: 1.65,
-    speed: 0.92,
-    buildingDamage: 1.45,
-    contactDamage: 1,
-    reward: 1.55,
-  },
-];
-
-const COLORS = {
-  skyTop: 0x8bd6ff,
-  skyBottom: 0xd7f6ff,
-  grassA: 0x91dd78,
-  grassB: 0x79cf70,
-  forest: 0x59b66f,
-  path: 0xd6bc87,
-  pathEdge: 0xb99763,
-  garden: 0xf5a6c7,
-  water: 0x7fd8f6,
-  uiInk: '#25324a',
-};
+import {
+  COLORS,
+  COMPACT_NOTE_MAX_CHARS,
+  COMPACT_NOTES_MAX_VISIBLE,
+  DESKTOP_NOTES_MAX_VISIBLE,
+  ENEMY_ARCHETYPES,
+  ENEMY_VARIANTS,
+  HEIGHT,
+  LEVEL_FIRST_SPAWN_DELAY,
+  LEVEL_SPAWN_BASE,
+  LEVEL_SPAWN_INTERVAL_BASE,
+  LEVEL_SPAWN_INTERVAL_MIN,
+  LEVEL_SPAWN_INTERVAL_STEP,
+  LEVEL_SPAWN_MAX,
+  LEVEL_SPAWN_PER_LEVEL,
+  LEVEL_UP_CARD_XS,
+  LEVEL_UP_MAX_PIPS,
+  MAP_H,
+  MAP_W,
+  ORIGIN,
+  PLAYER_BASE,
+  REPAIR_AMOUNT,
+  REPAIR_COOLDOWN,
+  REPAIR_COST,
+  REPAIR_RANGE,
+  TILE_H,
+  TILE_W,
+  WIDTH,
+} from './gameConfig';
 
 type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'use' | 'inventory';
 
@@ -2049,13 +1925,20 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelClearQueued = false;
 
     const level = this.state.level;
-    const count = Math.min(4 + level * 2, 22);
+    const count = Math.min(LEVEL_SPAWN_BASE + level * LEVEL_SPAWN_PER_LEVEL, LEVEL_SPAWN_MAX);
     this.levelSpawnsPending = count;
     this.levelEnemiesRemaining = count;
     this.addGuildNote(`Level ${level}: forest friends are on the move!`);
+    if (level === 1) {
+      this.addGuildNote('Tip: T readies repairs when buildings flash.');
+    }
 
     for (let i = 0; i < count; i += 1) {
-      this.addLevelTimer(560 + i * Math.max(250, 760 - level * 30), () => {
+      const spawnInterval = Math.max(
+        LEVEL_SPAWN_INTERVAL_MIN,
+        LEVEL_SPAWN_INTERVAL_BASE - level * LEVEL_SPAWN_INTERVAL_STEP,
+      );
+      this.addLevelTimer(LEVEL_FIRST_SPAWN_DELAY + i * spawnInterval, () => {
         if (this.state.phase !== 'playing') {return;}
         this.levelSpawnsPending = Math.max(0, this.levelSpawnsPending - 1);
         const spawned = this.spawnEnemy(level);
@@ -3054,6 +2937,24 @@ class FairyGuildScene extends Phaser.Scene {
     ].join('\n'));
   }
 
+  isCompactUi() {
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    return this.touchControlsEnabled || viewportWidth < 900;
+  }
+
+  truncateGuildNote(note, maxLength) {
+    if (note.length <= maxLength) {return note;}
+    return `${note.slice(0, maxLength - 3).trimEnd()}...`;
+  }
+
+  getVisibleGuildNotes() {
+    const compact = this.isCompactUi();
+    const maxVisible = compact ? COMPACT_NOTES_MAX_VISIBLE : DESKTOP_NOTES_MAX_VISIBLE;
+    return this.notes.slice(-maxVisible).map((note) => (
+      compact ? this.truncateGuildNote(note, COMPACT_NOTE_MAX_CHARS) : note
+    ));
+  }
+
   updateHud() {
     this.renderHearts();
     this.setMeter(this.hud.manaBar, this.state.mana / this.playerStats.maxMana);
@@ -3064,7 +2965,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.hud.weaponText.setText(`Wpn: ${this.state.equipped}`);
     this.hud.spellText.setText(`Spell: ${this.state.spell}`);
     this.hud.waveText.setText(`Safe ${this.state.villageSafety}%  L${this.state.level}`);
-    this.hud.notesText.setText(this.notes.slice(-3).map((note) => `- ${note}`).join('\n'));
+    this.hud.notesText.setText(this.getVisibleGuildNotes().map((note) => `- ${note}`).join('\n'));
     if (this.state.inventoryOpen) {
       const inventoryKey = `${this.state.gold}|${this.upgrades.map((upgrade) => upgrade.level).join(',')}`;
       if (this.hud.inventoryKey !== inventoryKey) {

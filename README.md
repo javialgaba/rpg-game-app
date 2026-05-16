@@ -56,9 +56,9 @@ Every level-up grants `Heart +1` and one chosen training bonus:
 - `2` Range Damage: increases bow power
 - `3` Magic Damage: increases spell power
 
-Buildings keep their damage between levels. Press `T` to ready the Repair Kit, then use `Space`, mouse click, or `E` near a damaged building to spend 6 gold and restore 14 HP. Non-castle buildings at 0 HP can be repaired and become valid monster targets again once their HP rises above 0. If the castle reaches 0 HP, or the hero reaches 0 hearts, the game ends.
+Buildings keep their damage between levels. Press `T` to ready the Repair Kit, then use `Space`, mouse click, or `E` near a damaged building to spend 5 gold and restore 16 HP. Non-castle buildings at 0 HP can be repaired and become valid monster targets again once their HP rises above 0. If the castle reaches 0 HP, or the hero reaches 0 hearts, the game ends.
 
-Enemy strength is configured in `ENEMY_ARCHETYPES` and `ENEMY_VARIANTS` inside `src/main.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
+Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
 
 ## Getting Started
 
@@ -146,6 +146,7 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- world-ui-sheet.png
 |       `-- world-ui-sheet-source.png
 |-- src/
+|   |-- gameConfig.ts
 |   |-- main.ts
 |   `-- style.css
 |-- index.html
