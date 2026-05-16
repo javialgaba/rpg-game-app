@@ -97,6 +97,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
     this.levelDebugGraphics = null;
+    this.levelDebugVisible = false;
+    this.levelDebugLastRenderAt = 0;
     this.lightingLayer = null;
     this.timeOfDayOverlay = null;
     this.timeOfDayMist = null;
@@ -203,6 +205,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
     this.levelDebugGraphics = null;
+    this.levelDebugVisible = false;
+    this.levelDebugLastRenderAt = 0;
     this.lightingLayer = null;
     this.timeOfDayOverlay = null;
     this.timeOfDayMist = null;
@@ -227,6 +231,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateTouchControls();
     this.updateHud();
     this.updateDebugOverlay();
+    this.updateGeneratedLevelDebug(time);
   }
 
   registerSheetFrames(key, cols, rows, prefix) {
@@ -601,7 +606,8 @@ class FairyGuildScene extends Phaser.Scene {
       this.createBuildings();
       this.createProps();
     }
-    if (this.isLevelDebugRequested()) {
+    this.levelDebugVisible = this.isLevelDebugRequested();
+    if (this.levelDebugVisible) {
       this.drawGeneratedLevelDebug();
     }
   }
@@ -846,6 +852,34 @@ class FairyGuildScene extends Phaser.Scene {
     gfx.strokePath();
   }
 
+  getDecorationDebugColor(kind) {
+    if (kind === 'mushrooms') {
+      return 0xffaa55;
+    }
+    if (kind === 'magicPlant') {
+      return 0x6af7ff;
+    }
+    if (kind === 'sparkles') {
+      return 0xffffff;
+    }
+    return 0xff93d8;
+  }
+
+  drawDebugPath(gfx, path, color, alpha = 0.56) {
+    if (!path?.length) {
+      return;
+    }
+    gfx.lineStyle(2, color, alpha);
+    const first = this.isoToScreen(path[0].x, path[0].y, -5);
+    gfx.beginPath();
+    gfx.moveTo(first.x, first.y);
+    path.slice(1).forEach((cell) => {
+      const p = this.isoToScreen(cell.x, cell.y, -5);
+      gfx.lineTo(p.x, p.y);
+    });
+    gfx.strokePath();
+  }
+
   drawGeneratedLevelDebug() {
     if (!this.generatedLevel) {
       return;
@@ -869,12 +903,58 @@ class FairyGuildScene extends Phaser.Scene {
       target.cells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0xffdf6a, 0.34));
       target.attackCells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x7dff9a, 0.18));
     });
+    this.generatedLevel.chests.forEach((chest) => this.drawDebugDiamond(gfx, chest.grid, 0xffb84f, 0.42));
+    this.generatedLevel.decorations.forEach((decoration) => (
+      this.drawDebugDiamond(gfx, decoration.grid, this.getDecorationDebugColor(decoration.decorationKind), 0.20)
+    ));
     const goals = this.generatedLevel.protectedTargets.flatMap((target) => target.attackCells);
     this.generatedLevel.spawnPoints.forEach((spawn) => {
       const path = findGridPath(this.generatedLevel.walkableGrid, spawn, goals);
       path?.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x60ffb2, 0.16));
+      this.drawDebugPath(gfx, path, 0x60ffb2, 0.35);
     });
+    this.enemies
+      .filter((enemy) => !enemy.defeated && !enemy.retreating)
+      .forEach((enemy) => {
+        this.drawDebugPath(gfx, enemy.path, 0xff5cc6, 0.82);
+        this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.iso), 0xff5cc6, 0.42);
+        if (enemy.target?.iso) {
+          this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.target.iso), 0xfff15c, 0.42);
+        }
+      });
     this.worldLayer.add(gfx);
+  }
+
+  toggleGeneratedLevelDebug() {
+    if (!this.generatedLevel) {
+      return;
+    }
+    this.levelDebugVisible = !this.levelDebugVisible;
+    try {
+      localStorage.setItem('debugLevelOverlay', this.levelDebugVisible ? '1' : '0');
+    } catch {
+      // Debug persistence is optional.
+    }
+    if (this.levelDebugVisible) {
+      this.drawGeneratedLevelDebug();
+      this.addGuildNote('Level grid debug shown.');
+    } else {
+      this.levelDebugGraphics?.destroy();
+      this.levelDebugGraphics = null;
+      this.addGuildNote('Level grid debug hidden.');
+    }
+    this.updateDebugOverlay();
+  }
+
+  updateGeneratedLevelDebug(time) {
+    if (!this.levelDebugVisible || !this.generatedLevel) {
+      return;
+    }
+    if (time - this.levelDebugLastRenderAt < 260) {
+      return;
+    }
+    this.levelDebugLastRenderAt = time;
+    this.drawGeneratedLevelDebug();
   }
 
   drawMapTiles() {
@@ -1090,6 +1170,7 @@ class FairyGuildScene extends Phaser.Scene {
       restart: Phaser.Input.Keyboard.KeyCodes.R,
       start: Phaser.Input.Keyboard.KeyCodes.ENTER,
       debug: Phaser.Input.Keyboard.KeyCodes.B,
+      levelDebug: Phaser.Input.Keyboard.KeyCodes.G,
     });
     this.input.addPointer(5);
     this.input.on('pointerdown', (pointer) => {
@@ -1128,6 +1209,7 @@ class FairyGuildScene extends Phaser.Scene {
       if (this.state.phase === 'gameOver') {this.scene.restart();}
     });
     this.keys.debug.on('down', () => this.toggleDebugOverlay());
+    this.keys.levelDebug.on('down', () => this.toggleGeneratedLevelDebug());
   }
 
   getTouchCapabilityInfo() {
@@ -3362,8 +3444,11 @@ class FairyGuildScene extends Phaser.Scene {
       : 'none';
     const activeEnemies = this.enemies.filter((enemy) => !enemy.defeated && !enemy.retreating).length;
     const levelStatus = this.generatedLevelValidation
-      ? `LevelGen ${this.generatedLevelValidation.valid ? 'valid' : 'errors'} | ${this.generatedLevelActive ? 'rendered' : 'standby'}`
+      ? `LevelGen ${this.generatedLevelValidation.valid ? 'valid' : 'errors'} | ${this.generatedLevelActive ? 'rendered' : 'standby'} | Grid ${this.levelDebugVisible ? 'G:on' : 'G:off'}`
       : 'LevelGen unavailable';
+    const levelNotes = this.generatedLevelValidation
+      ? `Gen notes E${this.generatedLevelValidation.errors.length} W${this.generatedLevelValidation.warnings.length}`
+      : '';
     this.debugOverlay.text.setText([
       `Phase ${this.state.phase} | L${this.state.level} | Safe ${this.state.villageSafety}%`,
       `Hero ${this.state.health}/${this.playerStats.maxHealth} HP | Mana ${this.state.mana}/${this.playerStats.maxMana}`,
@@ -3372,6 +3457,7 @@ class FairyGuildScene extends Phaser.Scene {
       `Buildings ${buildingSummary}`,
       `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
       levelStatus,
+      levelNotes,
     ].join('\n'));
   }
 

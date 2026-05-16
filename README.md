@@ -34,6 +34,7 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 | Inventory | `I` |
 | Buy upgrade | `1` through `6` while inventory is open |
 | Pick level-up bonus | `1`, `2`, or `3` on the level-up screen |
+| Toggle level grid debug | `G` |
 | Start game | Click/tap `START`, `Enter`, or `Space` on the title screen |
 | Restart after game over | `R` |
 
@@ -61,7 +62,7 @@ Buildings keep their damage between levels. Press `T` to ready the Repair Kit, t
 
 Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
 
-The procedural level foundation lives in `src/levels/`. The current painted village remains the default map, but `?generatedLevel=1` renders the designer-authored token matrix from `defaultVillageLevel.ts` using reusable registry entries and sliced `world-ui-sheet.png` frames where available. The generator adds deterministic nonblocking flowers, mushrooms, sparkles, and magical plants around designer-authored structure. `?timeOfDay=morning|noon|afternoon|night` previews visual-only lighting profiles, and `?debugLevel=1` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, and validation routes. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
+The procedural level foundation lives in `src/levels/`. The current painted village remains the default map, but `?generatedLevel=1` renders the designer-authored token matrix from `defaultVillageLevel.ts` using reusable registry entries and sliced `world-ui-sheet.png` frames where available. The generator adds deterministic nonblocking flowers, mushrooms, sparkles, and magical plants around designer-authored structure. `?timeOfDay=morning|noon|afternoon|night` previews visual-only lighting profiles, and `?debugLevel=1` or `G` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, validation routes, chests, decorations, and live enemy paths. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
 
 ## Getting Started
 
