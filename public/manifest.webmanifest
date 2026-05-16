@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "The Village Must Stand",
+  "short_name": "Village Stand",
+  "description": "A cheerful fairy-tale village defense RPG minigame.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#7fcaf3",
+  "theme_color": "#7fcaf3",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

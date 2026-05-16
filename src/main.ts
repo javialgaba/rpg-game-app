@@ -207,6 +207,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.repairModeIndicator = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
+    this.touchDetection = null;
+    this.lastTouchControlsVisibility = null;
     this.controlsHint = null;
   }
 
@@ -242,6 +244,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.createControls();
     this.createHud();
     this.createTouchControls();
+    this.setupMobileViewportHandlers();
     this.createUpgrades();
     this.createPhaseOverlays();
     this.spawnInitialChests();
@@ -298,6 +301,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.repairModeIndicator = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
+    this.touchDetection = null;
+    this.lastTouchControlsVisibility = null;
     this.controlsHint = null;
   }
 
@@ -915,16 +920,39 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
-  isTouchDevice() {
-    const forceTouchControls = import.meta.env.DEV && new URLSearchParams(window.location.search).has('touchControls');
-    const hasTouchInput = this.sys.game.device.input.touch || navigator.maxTouchPoints > 0;
+  getTouchCapabilityInfo() {
+    const params = new URLSearchParams(window.location.search);
+    const forceTouchControls = params.has('touchControls') || params.has('forceTouch');
+    const maxTouchPoints = navigator.maxTouchPoints ?? 0;
     const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-    return forceTouchControls || hasTouchInput || coarsePointer;
+    const anyCoarsePointer = window.matchMedia?.('(any-pointer: coarse)').matches ?? false;
+    const hoverNone = window.matchMedia?.('(hover: none)').matches ?? false;
+    const hasTouchStart = 'ontouchstart' in window || 'TouchEvent' in window;
+    const phaserTouch = Boolean(this.sys.game.device.input.touch);
+
+    return {
+      enabled: forceTouchControls || phaserTouch || maxTouchPoints > 0 || coarsePointer || anyCoarsePointer || hasTouchStart,
+      forceTouchControls,
+      phaserTouch,
+      maxTouchPoints,
+      coarsePointer,
+      anyCoarsePointer,
+      hoverNone,
+      hasTouchStart,
+      userAgent: navigator.userAgent,
+    };
+  }
+
+  isTouchDevice() {
+    this.touchDetection = this.getTouchCapabilityInfo();
+    this.debugTouchControls('touch detection', this.touchDetection);
+    return this.touchDetection.enabled;
   }
 
   createTouchControls() {
     this.touchControlsEnabled = this.isTouchDevice();
     if (!this.touchControlsEnabled) {
+      this.debugTouchControls('touch controls skipped');
       return;
     }
 
@@ -960,7 +988,6 @@ class FairyGuildScene extends Phaser.Scene {
 
     const portraitOverlay = this.createPortraitOverlay();
     container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons)]);
-    this.uiLayer.add([container, portraitOverlay]);
     this.touchControls = {
       container,
       joystickBase,
@@ -984,6 +1011,31 @@ class FairyGuildScene extends Phaser.Scene {
     this.input.on('pointerup', (pointer) => this.releaseJoystick(pointer));
     this.input.on('pointerupoutside', (pointer) => this.releaseJoystick(pointer));
     this.updateTouchControls();
+    this.debugTouchControls('touch controls created');
+  }
+
+  setupMobileViewportHandlers() {
+    const refreshScale = () => {
+      this.scale.refresh();
+      this.updateTouchControls();
+      this.debugTouchControls('viewport refreshed');
+    };
+    const delayedRefresh = () => {
+      refreshScale();
+      window.setTimeout(refreshScale, 180);
+    };
+
+    window.addEventListener('resize', delayedRefresh, { passive: true });
+    window.addEventListener('orientationchange', delayedRefresh, { passive: true });
+    window.visualViewport?.addEventListener('resize', delayedRefresh, { passive: true });
+    window.visualViewport?.addEventListener('scroll', delayedRefresh, { passive: true });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('resize', delayedRefresh);
+      window.removeEventListener('orientationchange', delayedRefresh);
+      window.visualViewport?.removeEventListener('resize', delayedRefresh);
+      window.visualViewport?.removeEventListener('scroll', delayedRefresh);
+    });
   }
 
   createTouchActionButton(
@@ -1074,14 +1126,30 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     this.updatePortraitHint();
-    this.setTouchControlsVisible(this.state.phase === 'playing' && !this.isPortraitLayout());
+    this.touchControls.container.setAlpha(this.state.phase === 'countdown' ? 0.72 : 1);
+    this.setTouchControlsVisible(
+      (this.state.phase === 'countdown' || this.state.phase === 'playing') && !this.isPortraitLayout(),
+    );
   }
 
   setTouchControlsVisible(visible: boolean) {
     if (!this.touchControls) {
       return;
     }
-    this.touchControls.container.setVisible(this.touchControlsEnabled && visible);
+    const nextVisible = this.touchControlsEnabled && visible;
+    this.touchControls.container.setVisible(nextVisible);
+    if (!nextVisible) {
+      this.touchControls.joystickPointerId = null;
+      this.touchControls.joystickVector = { x: 0, y: 0 };
+      this.touchControls.joystickThumb.setPosition(
+        this.touchControls.joystickCenter.x,
+        this.touchControls.joystickCenter.y,
+      );
+    }
+    if (this.lastTouchControlsVisibility !== nextVisible) {
+      this.lastTouchControlsVisibility = nextVisible;
+      this.debugTouchControls('touch controls visibility changed', { visible: nextVisible });
+    }
   }
 
   updatePortraitHint() {
@@ -1092,7 +1160,67 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   isPortraitLayout() {
-    return window.innerHeight > window.innerWidth;
+    const viewport = window.visualViewport;
+    const width = viewport?.width ?? window.innerWidth;
+    const height = viewport?.height ?? window.innerHeight;
+    return height > width;
+  }
+
+  debugTouchControls(message, extra = {}) {
+    const params = new URLSearchParams(window.location.search);
+    const storageEnabled = (() => {
+      try {
+        return localStorage.getItem('debugTouchControls') === '1';
+      } catch {
+        return false;
+      }
+    })();
+    if (!params.has('debugTouch') && !storageEnabled) {
+      return;
+    }
+
+    const gameEl = document.getElementById('game');
+    const canvas = this.game.canvas;
+    const gameStyle = gameEl ? getComputedStyle(gameEl) : null;
+    const canvasStyle = canvas ? getComputedStyle(canvas) : null;
+    console.info('[touch-controls]', message, {
+      ...extra,
+      detection: this.touchDetection,
+      created: Boolean(this.touchControls),
+      enabled: this.touchControlsEnabled,
+      phase: this.state.phase,
+      portrait: this.isPortraitLayout(),
+      containerVisible: this.touchControls?.container.visible ?? null,
+      containerAlpha: this.touchControls?.container.alpha ?? null,
+      containerDepth: this.touchControls?.container.depth ?? null,
+      viewport: {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        visualWidth: window.visualViewport?.width ?? null,
+        visualHeight: window.visualViewport?.height ?? null,
+      },
+      gameDom: gameStyle ? {
+        exists: true,
+        display: gameStyle.display,
+        visibility: gameStyle.visibility,
+        position: gameStyle.position,
+        zIndex: gameStyle.zIndex,
+        pointerEvents: gameStyle.pointerEvents,
+        width: gameStyle.width,
+        height: gameStyle.height,
+      } : { exists: false },
+      canvasDom: canvasStyle ? {
+        exists: true,
+        display: canvasStyle.display,
+        visibility: canvasStyle.visibility,
+        position: canvasStyle.position,
+        zIndex: canvasStyle.zIndex,
+        pointerEvents: canvasStyle.pointerEvents,
+        opacity: canvasStyle.opacity,
+        width: canvasStyle.width,
+        height: canvasStyle.height,
+      } : { exists: false },
+    });
   }
 
   getMovementVector() {
@@ -2940,3 +3068,11 @@ const config = {
 };
 
 new Phaser.Game(config);
+
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+      console.warn('Service worker registration failed.', error);
+    });
+  });
+}

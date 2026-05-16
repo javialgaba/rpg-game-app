@@ -38,6 +38,12 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 
 On touch devices, the game shows a landscape-first mobile overlay with a left joystick and right-side action buttons for Sword, Bow, Spell, Repair Kit, Use, and Inventory. Bow and Spell auto-target nearby enemies on mobile. Portrait phones show a rotate hint.
 
+## Mobile & PWA
+
+Mobile Safari cannot forcibly hide the browser/navigation chrome for an ordinary webpage. For the most immersive mode, add the app to the Home Screen and launch it from there; the web manifest and Apple mobile meta tags request fullscreen/standalone landscape play. When opened normally in Safari, the layout uses dynamic viewport sizing and safe-area insets so the canvas fits below the visible browser UI.
+
+For mobile diagnostics, append `?debugTouch=1` to log touch detection, Phaser touch-control creation, canvas visibility, and safe-area layout details. Append `?touchControls=1` to force the touch overlay while testing in desktop browser emulation.
+
 ## Progression
 
 The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Press `START` to begin the Level 1 countdown. The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. When all enemies in the current level are defeated, gameplay pauses and a level-up screen appears.

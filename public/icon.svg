@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">The Village Must Stand icon</title>
+  <desc id="desc">A cheerful castle shield icon for the game.</desc>
+  <rect width="512" height="512" rx="112" fill="#7fcaf3" />
+  <path d="M96 182c0-28 22-50 50-50h220c28 0 50 22 50 50v192c0 28-22 50-50 50H146c-28 0-50-22-50-50V182Z" fill="#fff4cf" />
+  <path d="M118 182c0-16 12-28 28-28h220c16 0 28 12 28 28v192c0 16-12 28-28 28H146c-16 0-28-12-28-28V182Z" fill="#f7d98a" stroke="#8a5a20" stroke-width="14" />
+  <path d="M164 150V96h48v54m76 0V76h52v74" fill="none" stroke="#8a5a20" stroke-width="18" stroke-linecap="round" />
+  <path d="M151 157h62V96h74v61h76v92H151v-92Z" fill="#8fd3ff" stroke="#31503b" stroke-width="12" stroke-linejoin="round" />
+  <path d="M192 249h128v153H192V249Z" fill="#fff7df" stroke="#8a5a20" stroke-width="12" />
+  <path d="M220 402V308c0-20 16-36 36-36s36 16 36 36v94" fill="#9b6630" stroke="#684315" stroke-width="10" />
+  <path d="M256 122l28 48 54 12-36 42 5 55-51-22-51 22 5-55-36-42 54-12 28-48Z" fill="#ffdf63" stroke="#8a5a20" stroke-width="12" stroke-linejoin="round" />
+</svg>
