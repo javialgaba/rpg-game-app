@@ -60,6 +60,8 @@ Buildings keep their damage between levels. Press `T` to ready the Repair Kit, t
 
 Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
 
+The procedural level foundation lives in `src/levels/`. The current painted village remains the default map, but `?generatedLevel=1` renders the designer-authored token matrix from `defaultVillageLevel.ts` using reusable registry entries and sliced `world-ui-sheet.png` frames where available. `?debugLevel=1` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, and validation routes. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
+
 ## Getting Started
 
 Install dependencies:
@@ -146,6 +148,13 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- world-ui-sheet.png
 |       `-- world-ui-sheet-source.png
 |-- src/
+|   |-- levels/
+|   |   |-- assetRegistry.ts
+|   |   |-- defaultVillageLevel.ts
+|   |   |-- generateLevel.ts
+|   |   |-- levelTypes.ts
+|   |   |-- pathfinding.ts
+|   |   `-- seededRandom.ts
 |   |-- gameConfig.ts
 |   |-- main.ts
 |   `-- style.css
