@@ -210,6 +210,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.touchDetection = null;
     this.lastTouchControlsVisibility = null;
     this.controlsHint = null;
+    this.debugOverlay = null;
+    this.debugOverlayVisible = false;
   }
 
   preload() {
@@ -304,6 +306,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.touchDetection = null;
     this.lastTouchControlsVisibility = null;
     this.controlsHint = null;
+    this.debugOverlay = null;
+    this.debugOverlayVisible = false;
   }
 
   update(time, delta) {
@@ -323,6 +327,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateRepairModeIndicator(time);
     this.updateTouchControls();
     this.updateHud();
+    this.updateDebugOverlay();
   }
 
   registerSheetFrames(key, cols, rows, prefix) {
@@ -881,6 +886,7 @@ class FairyGuildScene extends Phaser.Scene {
       six: Phaser.Input.Keyboard.KeyCodes.SIX,
       restart: Phaser.Input.Keyboard.KeyCodes.R,
       start: Phaser.Input.Keyboard.KeyCodes.ENTER,
+      debug: Phaser.Input.Keyboard.KeyCodes.B,
     });
     this.input.addPointer(5);
     this.input.on('pointerdown', (pointer) => {
@@ -918,6 +924,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.keys.restart.on('down', () => {
       if (this.state.phase === 'gameOver') {this.scene.restart();}
     });
+    this.keys.debug.on('down', () => this.toggleDebugOverlay());
   }
 
   getTouchCapabilityInfo() {
@@ -2869,6 +2876,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.createNotesPanel();
     this.createControlsHint();
     this.createInventoryPanel();
+    this.createDebugOverlay();
   }
 
   createTopBar() {
@@ -2989,6 +2997,61 @@ class FairyGuildScene extends Phaser.Scene {
     this.inventoryPanel.setVisible(this.state.inventoryOpen);
     this.rebuildInventoryPanel();
     this.addGuildNote(this.state.inventoryOpen ? 'Guild pack opened. Press 1-6 to upgrade.' : 'Guild pack tucked away.');
+  }
+
+  isDebugOverlayRequested() {
+    const params = new URLSearchParams(window.location.search);
+    const storageEnabled = (() => {
+      try {
+        return localStorage.getItem('debugGameOverlay') === '1';
+      } catch {
+        return false;
+      }
+    })();
+    return params.has('debugGame') || storageEnabled;
+  }
+
+  createDebugOverlay() {
+    this.debugOverlayVisible = this.isDebugOverlayRequested();
+    const panel = this.add.container(18, 112).setDepth(8050).setVisible(this.debugOverlayVisible);
+    const bg = this.add.rectangle(0, 0, 372, 180, 0x102238, 0.78)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, 0xffdf7c, 0.72);
+    const title = this.add.text(12, 10, 'Balance Debug (B)', {
+      ...this.uiTextStyle(14, '#fff2b8'),
+      strokeThickness: 2,
+    });
+    const text = this.add.text(12, 34, '', {
+      ...this.uiTextStyle(12, '#f7fff0'),
+      lineSpacing: 3,
+      wordWrap: { width: 348 },
+    });
+    panel.add([bg, title, text]);
+    this.uiLayer.add(panel);
+    this.debugOverlay = { panel, text };
+  }
+
+  toggleDebugOverlay() {
+    if (!this.debugOverlay) {return;}
+    this.debugOverlayVisible = !this.debugOverlayVisible;
+    this.debugOverlay.panel.setVisible(this.debugOverlayVisible);
+    this.updateDebugOverlay();
+  }
+
+  updateDebugOverlay() {
+    if (!this.debugOverlay?.panel.visible) {return;}
+    const buildingSummary = this.buildings.length
+      ? this.buildings.map((building) => `${building.name.slice(0, 1)}:${building.hp}/${building.max}`).join(' ')
+      : 'none';
+    const activeEnemies = this.enemies.filter((enemy) => !enemy.defeated && !enemy.retreating).length;
+    this.debugOverlay.text.setText([
+      `Phase ${this.state.phase} | L${this.state.level} | Safe ${this.state.villageSafety}%`,
+      `Hero ${this.state.health}/${this.playerStats.maxHealth} HP | Mana ${this.state.mana}/${this.playerStats.maxMana}`,
+      `Gold ${this.state.gold} | XP ${this.state.xp} | Mode ${this.state.repairMode ? 'repair' : 'combat'}`,
+      `Enemies active ${activeEnemies} | remain ${this.levelEnemiesRemaining} | pending ${this.levelSpawnsPending}`,
+      `Buildings ${buildingSummary}`,
+      `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
+    ].join('\n'));
   }
 
   updateHud() {

@@ -44,6 +44,8 @@ Mobile Safari cannot forcibly hide the browser/navigation chrome for an ordinary
 
 For mobile diagnostics, append `?debugTouch=1` to log touch detection, Phaser touch-control creation, canvas visibility, and safe-area layout details. Append `?touchControls=1` to force the touch overlay while testing in desktop browser emulation.
 
+The PWA shell includes PNG app icons for iOS and installable browsers. Use `?debugGame=1` or press `B` to show a small balance overlay with phase, enemy counts, building HP, hero stats, and current resources.
+
 ## Progression
 
 The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Press `START` to begin the Level 1 countdown. The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. When all enemies in the current level are defeated, gameplay pauses and a level-up screen appears.
@@ -90,11 +92,18 @@ Preview the production build locally:
 npm run preview
 ```
 
-Run TypeScript and ESLint checks:
+Run the full smoke check:
+
+```bash
+npm test
+```
+
+Or run TypeScript, ESLint, and production build checks separately:
 
 ```bash
 npm run typecheck
 npm run lint
+npm run build
 ```
 
 Run the local test server script:
