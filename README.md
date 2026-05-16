@@ -15,6 +15,7 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 - XP score, gold drops, treasure chests, and upgrade progression
 - Inventory panel with six upgrade paths
 - Game over screen when the castle falls or the hero reaches 0 hearts
+- Designer-authored procedural level system with logical blockers, edge spawns, A* routes, decoration passes, and visual time-of-day profiles
 - Rich procedural Web Audio SFX and a gentle interaction-started village theme
 - Family-friendly effects: sparkles, puffs, dazed reactions, and retreating monsters
 - Generated image assets in a bright cartoon storybook style
@@ -33,6 +34,8 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 | Inventory | `I` |
 | Buy upgrade | `1` through `6` while inventory is open |
 | Pick level-up bonus | `1`, `2`, or `3` on the level-up screen |
+| Toggle level grid debug | `G` |
+| Cycle time-of-day preview | `N` |
 | Start game | Click/tap `START`, `Enter`, or `Space` on the title screen |
 | Restart after game over | `R` |
 
@@ -48,7 +51,7 @@ The PWA shell includes PNG app icons for iOS and installable browsers. Use `?deb
 
 ## Progression
 
-The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Press `START` to begin the Level 1 countdown. The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. When all enemies in the current level are defeated, gameplay pauses and a level-up screen appears.
+The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Press `START` to begin the Level 1 countdown. The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. Level clear is driven by the explicit player-defeat quota for the round, so retreat animations or skipped invalid spawns cannot block progression. When all required enemies are defeated, gameplay pauses and a level-up screen appears.
 
 Every level-up grants `Heart +1` and one chosen training bonus:
 
@@ -59,6 +62,8 @@ Every level-up grants `Heart +1` and one chosen training bonus:
 Buildings keep their damage between levels. Press `T` to ready the Repair Kit, then use `Space`, mouse click, or `E` near a damaged building to spend 5 gold and restore 16 HP. Non-castle buildings at 0 HP can be repaired and become valid monster targets again once their HP rises above 0. If the castle reaches 0 HP, or the hero reaches 0 hearts, the game ends.
 
 Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
+
+The procedural level foundation lives in `src/levels/`. Procedural maps are now the default game map on every fresh start. The default village is a larger 19x19 designer-authored matrix with `tileSize: 44`, a two-cell forest buffer, edge-only `SP` spawn cells, and protected buildings placed away from the border. `?generatedLevel=festival-village` renders a second catalog level using the same larger layout rules, while `?staticMap=1` temporarily restores the older painted board for comparison. Level catalog entries live in `levelCatalog.ts`; designers can also preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. Generated maps honor `tileSize` by scaling the isometric diamond spacing and generated object art while leaving the static painted board path unchanged. The generator validates edge spawns, protected-building edge padding, and spawn-to-target path length, then adds deterministic nonblocking flowers, mushrooms, saplings, sparkles, and magical plants around designer-authored structure. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, validation routes, chests, decorations, and live enemy paths. The `B` balance panel also shows defeat quota progress, pending spawns, live target counts, tile metrics, and route scores so designers can see why monsters prefer a building. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
 
 ## Getting Started
 
@@ -106,6 +111,13 @@ npm run lint
 npm run build
 ```
 
+Rebuild or validate the fixed-cell atlas assets:
+
+```bash
+npm run build:atlases
+npm run validate:atlases
+```
+
 Run the local test server script:
 
 ```bash
@@ -129,12 +141,22 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |   `-- base-prompt.md
 |-- public/
 |   `-- assets/
+|       |-- atlas-sources/
+|       |   `-- generated/
+|       |-- buildings_atlas.json
+|       |-- buildings_atlas.png
+|       |-- effects_atlas.json
+|       |-- effects_atlas.png
 |       |-- game-over-ui.png
 |       |-- game-over-ui-source.png
 |       |-- guild-notes-ui.png
 |       |-- guild-notes-ui-transparent.png
 |       |-- hero-sheet.png
 |       |-- hero-sheet-source.png
+|       |-- hud_bars_atlas.json
+|       |-- hud_bars_atlas.png
+|       |-- hud_ui_atlas.json
+|       |-- hud_ui_atlas.png
 |       |-- level-up-ui.png
 |       |-- level-up-ui-source.png
 |       |-- monster-pickup-sheet.png
@@ -142,10 +164,27 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- repair-tool.png
 |       |-- repair-tool-source.png
 |       |-- status-panel-ui.png
+|       |-- touch_controls_atlas.json
+|       |-- touch_controls_atlas.png
+|       |-- ui_atlas.json
+|       |-- ui_atlas.png
 |       |-- village-board.png
+|       |-- world_edges_atlas.json
+|       |-- world_edges_atlas.png
+|       |-- world_tiles_atlas.json
+|       |-- world_tiles_atlas.png
 |       |-- world-ui-sheet.png
 |       `-- world-ui-sheet-source.png
 |-- src/
+|   |-- levels/
+|   |   |-- assetRegistry.ts
+|   |   |-- defaultVillageLevel.ts
+|   |   |-- generateLevel.ts
+|   |   |-- levelCatalog.ts
+|   |   |-- levelTypes.ts
+|   |   |-- pathfinding.ts
+|   |   |-- seededRandom.ts
+|   |   `-- timeOfDay.ts
 |   |-- gameConfig.ts
 |   |-- main.ts
 |   `-- style.css
@@ -153,13 +192,29 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |-- package.json
 |-- eslint.config.js
 |-- tsconfig.json
+|-- tools/
+|   |-- atlas-manifest.mjs
+|   `-- build-atlases.mjs
 |-- vercel.json
 `-- README.md
 ```
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current game uses the generated village board as the main scene backdrop, generated hero and monster sheets for characters, generated `status-panel-ui.png` and `guild-notes-ui-transparent.png` HUD frames, a standalone transparent `repair-tool.png` sprite, and generated textless `level-up-ui.png` and `game-over-ui.png` panels.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD/world-edge source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png`, `world-edges-structural-source.png`, `world-edges-atmosphere-source.png`, and their transparent cutout sheets.
+
+Atlas split rules:
+
+- `world_tiles_atlas`: playable terrain, full world props, and chests only.
+- `world_edges_atlas`: floating-island cliff rims, corner caps, a soft island shadow, fog surround bands, and sparse off-board decorative edge clusters.
+- `buildings_atlas`: castle, houses, market, bakery, and well frames.
+- `ui_atlas`: square gameplay and inventory icons only.
+- `touch_controls_atlas`: touch button icons only, used by the Phaser mobile overlay.
+- `hud_ui_atlas`: square/compact HUD badges such as coin, crown, and repair tool.
+- `hud_bars_atlas`: long HUD bar frames only, with a separate fixed rectangular cell size.
+- `effects_atlas`: smoke, sparkles, arrows, magic splashes, and shield glows.
+
+Large panel art remains standalone: generated `status-panel-ui.png`, `guild-notes-ui-transparent.png`, textless `level-up-ui.png`, and `game-over-ui.png`.
 
 Composable asset rule: keep UI panels textless and transparent. Swappable sprites, labels, hit areas, progress bars, live values, and colored card stages should remain Phaser-owned layers so future sprite swaps do not require regenerating panel art.
 
