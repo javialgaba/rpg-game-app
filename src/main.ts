@@ -2452,12 +2452,14 @@ class FairyGuildScene extends Phaser.Scene {
     };
   }
 
-  selectGeneratedEnemyRoute(startIso) {
+  getGeneratedRouteScores(startIso) {
     if (!this.generatedLevel) {
-      return null;
+      return [];
     }
     const start = this.isoToGridCell(startIso);
-    const choices = this.generatedLevel.protectedTargets
+    const levelPressure = Math.max(0, this.state.level - 1);
+    const distanceWeight = 2.2 + this.generatedLevel.config.difficulty * 0.16 + levelPressure * 0.04;
+    return this.generatedLevel.protectedTargets
       .map((target) => {
         const building = this.buildings.find((candidate) => candidate.levelPlacementId === target.id && candidate.hp > 0);
         if (!building) {
@@ -2468,10 +2470,15 @@ class FairyGuildScene extends Phaser.Scene {
           return null;
         }
         const healthFactor = Phaser.Math.Clamp(building.hp / building.max, 0.25, 1);
-        const score = (building.importance ?? target.importance) * healthFactor - pathCost(path) * 2.4;
-        return { building, path, score };
+        const cost = pathCost(path);
+        const score = (building.importance ?? target.importance) * healthFactor - cost * distanceWeight;
+        return { building, path, score, cost, healthFactor, distanceWeight };
       })
       .filter(Boolean);
+  }
+
+  selectGeneratedEnemyRoute(startIso) {
+    const choices = this.getGeneratedRouteScores(startIso);
     if (!choices.length) {
       return null;
     }
@@ -2479,6 +2486,9 @@ class FairyGuildScene extends Phaser.Scene {
     return {
       target: best.building,
       pathIso: best.path.map((cell) => ({ x: cell.x, y: cell.y })),
+      score: best.score,
+      cost: best.cost,
+      healthFactor: best.healthFactor,
     };
   }
 
@@ -2564,6 +2574,9 @@ class FairyGuildScene extends Phaser.Scene {
       wobble: Math.random() * Math.PI * 2,
       path: route?.pathIso ?? null,
       pathIndex: route?.pathIso?.length > 1 ? 1 : 0,
+      routeScore: route?.score ?? null,
+      routeCost: route?.cost ?? null,
+      routeHealthFactor: route?.healthFactor ?? null,
       retreating: false,
       defeated: false,
     };
@@ -2592,6 +2605,9 @@ class FairyGuildScene extends Phaser.Scene {
           enemy.target = route.target;
           enemy.path = route.pathIso;
           enemy.pathIndex = route.pathIso.length > 1 ? 1 : 0;
+          enemy.routeScore = route.score;
+          enemy.routeCost = route.cost;
+          enemy.routeHealthFactor = route.healthFactor;
         } else {
           const nextTarget = this.getEnemyTarget();
           if (!nextTarget) {return;}
@@ -3433,7 +3449,7 @@ class FairyGuildScene extends Phaser.Scene {
   createDebugOverlay() {
     this.debugOverlayVisible = this.isDebugOverlayRequested();
     const panel = this.add.container(18, 112).setDepth(8050).setVisible(this.debugOverlayVisible);
-    const bg = this.add.rectangle(0, 0, 390, 232, 0x102238, 0.78)
+    const bg = this.add.rectangle(0, 0, 404, 264, 0x102238, 0.78)
       .setOrigin(0, 0)
       .setStrokeStyle(2, 0xffdf7c, 0.72);
     const title = this.add.text(12, 10, 'Balance Debug (B)', {
@@ -3443,7 +3459,7 @@ class FairyGuildScene extends Phaser.Scene {
     const text = this.add.text(12, 34, '', {
       ...this.uiTextStyle(12, '#f7fff0'),
       lineSpacing: 3,
-      wordWrap: { width: 366 },
+      wordWrap: { width: 380 },
     });
     panel.add([bg, title, text]);
     this.uiLayer.add(panel);
@@ -3455,6 +3471,40 @@ class FairyGuildScene extends Phaser.Scene {
     this.debugOverlayVisible = !this.debugOverlayVisible;
     this.debugOverlay.panel.setVisible(this.debugOverlayVisible);
     this.updateDebugOverlay();
+  }
+
+  getGeneratedRouteDebugSummary() {
+    if (!this.generatedLevel) {
+      return '';
+    }
+    const source = this.generatedLevel.spawnPoints[0] ?? this.generatedLevel.playerSpawn;
+    if (!source) {
+      return 'Routes unavailable';
+    }
+    const scores = this.getGeneratedRouteScores(source)
+      .slice()
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4);
+    if (!scores.length) {
+      return 'Routes no reachable targets';
+    }
+    return scores.map((choice) => (
+      `${choice.building.name.slice(0, 3)} ${Math.round(choice.score)} d${choice.cost}`
+    )).join(' | ');
+  }
+
+  getLiveEnemyTargetSummary() {
+    const counts = this.enemies
+      .filter((enemy) => !enemy.defeated && !enemy.retreating)
+      .reduce((summary, enemy) => {
+        const name = enemy.target?.name ?? 'None';
+        summary[name] = (summary[name] ?? 0) + 1;
+        return summary;
+      }, {});
+    const entries = Object.entries(counts);
+    return entries.length
+      ? entries.map(([name, count]) => `${name.slice(0, 3)}:${count}`).join(' ')
+      : 'none';
   }
 
   updateDebugOverlay() {
@@ -3476,8 +3526,10 @@ class FairyGuildScene extends Phaser.Scene {
       `Gold ${this.state.gold} | XP ${this.state.xp} | Mode ${this.state.repairMode ? 'repair' : 'combat'}`,
       `Enemies active ${activeEnemies} | remain ${this.levelEnemiesRemaining} | pending ${this.levelSpawnsPending}`,
       `Buildings ${buildingSummary}`,
+      `Targets ${this.getLiveEnemyTargetSummary()}`,
       `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
       `${levelStatus} | Time ${this.getActiveTimeOfDay()} (N)`,
+      this.generatedLevel ? `Route score ${this.getGeneratedRouteDebugSummary()}` : '',
       levelNotes,
       firstIssue ? `First issue: ${this.truncateGuildNote(firstIssue, 52)}` : '',
     ].join('\n'));
