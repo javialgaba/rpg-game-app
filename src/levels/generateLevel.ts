@@ -375,7 +375,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
 
   const center = { x: width / 2, y: height / 2 };
   const attackCellKeys = new Set(protectedTargets.flatMap((target) => target.attackCells.map(pointKey)));
-  const canDecorate = (grid: GridPoint) => {
+  const canDecorate = (grid: GridPoint, options?: { allowNearEdge?: boolean }) => {
     if (!isInside(grid, width, height)) {
       return false;
     }
@@ -388,7 +388,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       || spawnGrid[grid.y][grid.x]
       || decorationGrid[grid.y][grid.x]
       || roadPlan.roadGrid[grid.y][grid.x]
-      || edgeDistance < 3
+      || (!options?.allowNearEdge && edgeDistance < 3)
       || token === 'P'
       || token === 'V'
       || token === 'PS'
@@ -407,8 +407,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     decorationKind: NonNullable<LevelPlacement['decorationKind']>,
     label: string,
     render?: AssetRenderMetadata,
+    options?: { allowNearEdge?: boolean },
   ) => {
-    if (!canDecorate(grid)) {
+    if (!canDecorate(grid, options)) {
       return false;
     }
     const decoration = {
@@ -423,14 +424,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     return true;
   };
 
-  const mushroomRender: AssetRenderMetadata = {
-    textureKey: 'worldTilesAtlas',
-    frameKey: 'mushroom_cluster_01',
-    displaySize: [131, 99],
-    origin: [0.5, 0.84],
-    alpha: 1,
-    z: 7,
-  };
   const magicPlantRender: AssetRenderMetadata = {
     textureKey: 'worldTilesAtlas',
     frameKey: 'magic_plant_01',
@@ -463,45 +456,101 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     alpha: 1,
     z: 12,
   };
-  const lampRender: AssetRenderMetadata = {
-    textureKey: 'worldTilesAtlas',
-    frameKey: 'lamp_01',
-    displaySize: [135, 101],
+  const signRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'sign_post',
+    displaySize: [136, 156],
     origin: [0.5, 0.86],
     alpha: 1,
     z: 9,
   };
-  const fenceRender: AssetRenderMetadata = {
-    textureKey: 'worldTilesAtlas',
-    frameKey: 'fence_01',
-    displaySize: [156, 103],
-    origin: [0.5, 0.82],
+  const flowerPatchRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'flower_patch_wild',
+    displaySize: [150, 118],
+    origin: [0.5, 0.84],
+    alpha: 1,
+    z: 7,
+  };
+  const grassPatchRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'grass_tuft_patch',
+    displaySize: [148, 114],
+    origin: [0.5, 0.84],
+    alpha: 1,
+    z: 7,
+  };
+  const rockClusterRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'rock_cluster_round',
+    displaySize: [142, 124],
+    origin: [0.5, 0.84],
     alpha: 1,
     z: 8,
   };
-  const signRender: AssetRenderMetadata = {
-    textureKey: 'worldTilesAtlas',
-    frameKey: 'sign_01',
-    displaySize: [144, 106],
+  const mushroomPatchRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'mushroom_patch',
+    displaySize: [148, 126],
+    origin: [0.5, 0.84],
+    alpha: 1,
+    z: 8,
+  };
+  const bushRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'bush_foreground',
+    displaySize: [162, 128],
+    origin: [0.5, 0.84],
+    alpha: 1,
+    z: 9,
+  };
+  const treeClusterRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'tree_cluster_edge',
+    displaySize: [228, 212],
+    origin: [0.5, 0.86],
+    alpha: 1,
+    z: 11,
+  };
+  const lanternRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'lantern_post',
+    displaySize: [108, 158],
     origin: [0.5, 0.86],
     alpha: 1,
     z: 9,
+  };
+  const fenceSegmentRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'fence_segment',
+    displaySize: [150, 116],
+    origin: [0.5, 0.84],
+    alpha: 1,
+    z: 8,
   };
 
   terrain.forEach((placement) => {
     const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
-    if ((token === 'G' || token === 'D') && rng.chance(config.decorationDensity * 0.08)) {
-      addDecoration(placement.grid, 'flowers', 'Tiny Flowers');
+    if ((token === 'G' || token === 'D') && rng.chance(config.decorationDensity * 0.15)) {
+      const roll = rng.next();
+      if (roll < 0.52) {
+        addDecoration(placement.grid, 'flowers', 'Wildflower Patch', flowerPatchRender);
+      } else if (roll < 0.8) {
+        addDecoration(placement.grid, 'grassPatch', 'Soft Grass Tuft', grassPatchRender);
+      } else {
+        addDecoration(placement.grid, 'rocks', 'Gentle Rock Cluster', rockClusterRender);
+      }
     }
   });
 
   protectedTargets.forEach((target) => {
     getNeighborCells(target.grid, 2).forEach((cell) => {
       if (rng.chance(config.decorationDensity * 0.16)) {
-        addDecoration(cell, 'flowers', `${target.label} Flower Patch`);
+        const render = rng.chance(0.68) ? flowerPatchRender : bushRender;
+        addDecoration(cell, render === bushRender ? 'bush' : 'flowers', `${target.label} Garden`, render);
       }
       if ((target.token === 'H1' || target.token === 'H2' || target.token === 'M') && rng.chance(config.decorationDensity * 0.10)) {
-        addDecoration(cell, 'fence', `${target.label} Fence`, fenceRender);
+        addDecoration(cell, 'fence', `${target.label} Fence`, fenceSegmentRender);
       }
     });
   });
@@ -518,7 +567,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
           cell,
           isMagicPlant ? 'magicPlant' : 'mushrooms',
           isMagicPlant ? 'Glowing Forest Sprout' : 'Mushroom Cluster',
-          isMagicPlant ? magicPlantRender : mushroomRender,
+          isMagicPlant ? magicPlantRender : mushroomPatchRender,
         );
       });
     });
@@ -530,18 +579,38 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       || placement.grid.x >= width - 2
       || placement.grid.y >= height - 2;
     if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.12)) {
-      addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender);
+      addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender, { allowNearEdge: true });
     }
-    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.34)) {
+    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.46)) {
       addDecoration(
         placement.grid,
-        rng.chance(0.7) ? 'fullTree' : 'sapling',
-        'Forest Edge Tree',
-        rng.chance(0.18) ? oakTreeRender : fullTreeRender,
+        rng.chance(0.64) ? 'treeCluster' : 'fullTree',
+        'Forest Edge Growth',
+        rng.chance(0.64) ? treeClusterRender : (rng.chance(0.18) ? oakTreeRender : fullTreeRender),
+        { allowNearEdge: true },
       );
     }
-    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.09)) {
+    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.26)) {
+      const edgeRender = rng.chance(0.58) ? bushRender : rockClusterRender;
+      addDecoration(
+        placement.grid,
+        edgeRender === bushRender ? 'bush' : 'rocks',
+        'Outer Edge Filler',
+        edgeRender,
+        { allowNearEdge: true },
+      );
+    }
+    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.13)) {
       addDecoration(placement.grid, 'sapling', 'Young Pine', saplingRender);
+    }
+    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.10)) {
+      const interiorRender = rng.chance(0.52) ? bushRender : flowerPatchRender;
+      addDecoration(
+        placement.grid,
+        interiorRender === bushRender ? 'bush' : 'flowers',
+        'Village Green Detail',
+        interiorRender,
+      );
     }
     if (token === 'G' && rng.chance(config.decorationDensity * 0.035)) {
       addDecoration(placement.grid, 'sparkles', 'Fairy Sparkles');
@@ -558,7 +627,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       if (roadNeighbors.length >= 3 && rng.chance(config.decorationDensity * 0.08)) {
         addDecoration(cell, 'sign', 'Village Sign', signRender);
       } else if (rng.chance(config.decorationDensity * 0.06)) {
-        addDecoration(cell, 'lamp', 'Path Lamp', lampRender);
+        addDecoration(cell, 'lamp', 'Path Lamp', lanternRender);
       }
     });
   });

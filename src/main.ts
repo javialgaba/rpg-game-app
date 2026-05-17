@@ -618,7 +618,13 @@ class FairyGuildScene extends Phaser.Scene {
   createBackground() {
     const useGeneratedMap = this.shouldRenderGeneratedLevel();
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0x7fc8f4, 0x7fc8f4, 0xd6f3ff, 0xd6f3ff, 1);
+    bg.fillGradientStyle(
+      useGeneratedMap ? 0xa5cfd5 : 0x7fc8f4,
+      useGeneratedMap ? 0xa5cfd5 : 0x7fc8f4,
+      useGeneratedMap ? 0xe5efe7 : 0xd6f3ff,
+      useGeneratedMap ? 0xe5efe7 : 0xd6f3ff,
+      1,
+    );
     bg.fillRect(0, 0, WIDTH, HEIGHT);
     bg.fillStyle(0x67c176, 1);
     bg.fillEllipse(WIDTH / 2, 700, 1320, 316);
@@ -636,12 +642,53 @@ class FairyGuildScene extends Phaser.Scene {
       boardBase.fillStyle(0xcfb3ff, 0.14);
       boardBase.fillEllipse(WIDTH / 2, 474, 1080, 430);
       this.shadowLayer.add(boardBase);
+      this.renderGeneratedScreenBackdropFill();
       return;
     }
     const board = this.add.image(WIDTH / 2, HEIGHT / 2, 'villageBoard')
       .setDisplaySize(WIDTH, HEIGHT)
       .setAlpha(0.88);
     this.backgroundLayer.add(board);
+  }
+
+  renderGeneratedScreenBackdropFill() {
+    if (!this.textures.exists('environmentFrameAtlas')) {
+      return;
+    }
+    const screenPieces = [
+      ['forest_cluster_back', 124, 236, 412, 426, 2, 0.96, 0.76],
+      ['tree_cluster_edge', 122, 514, 356, 382, 3, 0.82, 0.98],
+      ['bush_foreground', 170, 642, 308, 182, 4, 0.82, 0.96],
+      ['cliff_wall_side', 54, 366, 266, 622, 5, 0.78, 1],
+      ['cliff_corner_nw', 114, 150, 302, 334, 6, 0.78, 1],
+      ['forest_cluster_back', WIDTH - 124, 246, 412, 426, 2, 0.76, 0.96],
+      ['tree_cluster_edge', WIDTH - 122, 514, 356, 382, 3, 0.82, 0.98],
+      ['bush_foreground', WIDTH - 170, 642, 308, 182, 4, 0.82, 0.96],
+      ['cliff_wall_side', WIDTH - 54, 366, 266, 622, 5, 0.78, 1],
+      ['cliff_corner_ne', WIDTH - 114, 150, 302, 334, 6, 0.78, 1],
+      ['forest_cluster_back', WIDTH / 2, 86, 1040, 248, 2, 0.74, 0.84],
+      ['forest_cluster_back', WIDTH / 2, 158, 786, 224, 2, 0.76, 0.88],
+      ['tree_cluster_edge', WIDTH / 2 - 172, 190, 272, 228, 3, 0.82, 0.92],
+      ['tree_cluster_edge', WIDTH / 2 + 172, 190, 272, 228, 3, 0.82, 0.92],
+      ['fog_patch', 164, 304, 396, 232, 3, 0.5, 0.26],
+      ['fog_patch', WIDTH / 2, 166, 1050, 208, 3, 0.5, 0.22],
+      ['fog_patch', WIDTH / 2, 230, 760, 168, 3, 0.5, 0.18],
+      ['fog_patch', WIDTH - 164, 304, 396, 232, 3, 0.5, 0.26],
+      ['purple_mist_patch', 176, HEIGHT - 86, 412, 184, 4, 0.5, 0.18],
+      ['purple_mist_patch', WIDTH - 176, HEIGHT - 86, 412, 184, 4, 0.5, 0.18],
+    ];
+    screenPieces.forEach(([frame, x, y, width, height, depth, originY, alpha]) => {
+      this.addEnvironmentFrameSprite(
+        this.backgroundLayer,
+        frame as string,
+        x as number,
+        y as number,
+        width as number,
+        height as number,
+        depth as number,
+        { originY: originY as number, alpha: alpha as number },
+      );
+    });
   }
 
   createVillage() {
@@ -697,6 +744,16 @@ class FairyGuildScene extends Phaser.Scene {
       && raw !== '0'
       && raw !== 'false'
       && raw !== 'off';
+  }
+
+  shouldAutoStartFromParams() {
+    const raw = new URLSearchParams(window.location.search).get('autostart');
+    return raw === '1' || raw === 'true' || raw === 'on';
+  }
+
+  shouldSkipCountdownFromParams() {
+    const raw = new URLSearchParams(window.location.search).get('skipCountdown');
+    return raw === '1' || raw === 'true' || raw === 'on';
   }
 
   renderGeneratedLevel() {
@@ -953,10 +1010,16 @@ class FairyGuildScene extends Phaser.Scene {
       ['tree_cluster_edge', bounds.left.x - tileW * 4.85, bounds.top.y - tileH * 0.82, tileW * 8.8, tileH * 8.8, bounds.top.y + tileH * 0.16],
       ['tree_cluster_edge', bounds.right.x + tileW * 4.7, bounds.top.y - tileH * 0.52, tileW * 8.8, tileH * 8.8, bounds.top.y + tileH * 0.16],
       ['forest_cluster_back', bounds.centerX, bounds.top.y - tileH * 0.95, tileW * 8.4, tileH * 7.6, bounds.top.y + tileH * 0.08],
+      ['forest_cluster_back', bounds.centerX - tileW * 5.2, bounds.top.y - tileH * 1.1, tileW * 7.2, tileH * 6.8, bounds.top.y - tileH * 0.02],
+      ['forest_cluster_back', bounds.centerX + tileW * 5.2, bounds.top.y - tileH * 1.1, tileW * 7.2, tileH * 6.8, bounds.top.y - tileH * 0.02],
       ['bush_foreground', bounds.left.x - tileW * 3.05, bounds.bottom.y + tileH * 0.88, tileW * 5.6, tileH * 4.6, bounds.bottom.y + tileH * 0.18],
       ['bush_foreground', bounds.right.x + tileW * 3.05, bounds.bottom.y + tileH * 0.88, tileW * 5.6, tileH * 4.6, bounds.bottom.y + tileH * 0.18],
+      ['bush_foreground', bounds.left.x - tileW * 2.4, bounds.top.y + tileH * 0.48, tileW * 4.6, tileH * 3.9, bounds.top.y + tileH * 0.24],
+      ['bush_foreground', bounds.right.x + tileW * 2.4, bounds.top.y + tileH * 0.48, tileW * 4.6, tileH * 3.9, bounds.top.y + tileH * 0.24],
       ['flower_patch_wild', bounds.left.x - tileW * 2.2, bounds.top.y - tileH * 0.05, tileW * 4.8, tileH * 3.6, bounds.top.y + tileH * 0.18],
       ['flower_patch_wild', bounds.right.x + tileW * 2.2, bounds.top.y - tileH * 0.05, tileW * 4.8, tileH * 3.6, bounds.top.y + tileH * 0.18],
+      ['flower_patch_wild', bounds.centerX - tileW * 6.6, bounds.top.y + tileH * 0.22, tileW * 4.4, tileH * 3.4, bounds.top.y + tileH * 0.14],
+      ['flower_patch_wild', bounds.centerX + tileW * 6.6, bounds.top.y + tileH * 0.22, tileW * 4.4, tileH * 3.4, bounds.top.y + tileH * 0.14],
       ['rock_cluster_round', bounds.left.x - tileW * 4.58, bounds.bottom.y + tileH * 2.22, tileW * 5.2, tileH * 4.6, bounds.bottom.y + tileH * 1.12],
       ['rock_cluster_round', bounds.right.x + tileW * 4.58, bounds.bottom.y + tileH * 2.22, tileW * 5.2, tileH * 4.6, bounds.bottom.y + tileH * 1.12],
       ['grass_tuft_patch', bounds.centerX - tileW * 3.7, bounds.bottom.y + tileH * 0.52, tileW * 4.2, tileH * 3.6, bounds.bottom.y + tileH * 0.16],
@@ -965,11 +1028,8 @@ class FairyGuildScene extends Phaser.Scene {
       ['stone_scatter', bounds.right.x + tileW * 1.9, bounds.centerY + tileH * 2.3, tileW * 4.8, tileH * 4.0, bounds.centerY + tileH * 1.28],
       ['rock_cluster_round', bounds.centerX - tileW * 5.4, bounds.top.y - tileH * 0.36, tileW * 4.4, tileH * 3.8, bounds.top.y + tileH * 0.26],
       ['rock_cluster_round', bounds.centerX + tileW * 5.4, bounds.top.y - tileH * 0.36, tileW * 4.4, tileH * 3.8, bounds.top.y + tileH * 0.26],
-      ['path_edge_piece', bounds.centerX - tileW * 2.35, bounds.centerY + tileH * 1.92, tileW * 4.6, tileH * 3.3, bounds.centerY + tileH * 1.02],
-      ['path_edge_piece', bounds.centerX + tileW * 2.35, bounds.centerY - tileH * 1.52, tileW * 4.6, tileH * 3.3, bounds.centerY - tileH * 0.54],
-      ['fence_segment', bounds.centerX - tileW * 0.96, bounds.centerY - tileH * 1.22, tileW * 3.8, tileH * 2.8, bounds.centerY - tileH * 0.34],
-      ['lantern_post', bounds.centerX + tileW * 0.92, bounds.centerY + tileH * 0.94, tileW * 2.8, tileH * 4.4, bounds.centerY + tileH * 0.36],
-      ['sign_post', bounds.centerX - tileW * 4.15, bounds.centerY + tileH * 0.62, tileW * 3.1, tileH * 4.3, bounds.centerY - tileH * 0.02],
+      ['tree_cluster_edge', bounds.left.x - tileW * 2.8, bounds.bottom.y + tileH * 1.1, tileW * 6.4, tileH * 6.8, bounds.bottom.y + tileH * 0.18],
+      ['tree_cluster_edge', bounds.right.x + tileW * 2.8, bounds.bottom.y + tileH * 1.1, tileW * 6.4, tileH * 6.8, bounds.bottom.y + tileH * 0.18],
     ];
     decorPieces.forEach(([frame, x, y, width, height, depth]) => {
       this.addEnvironmentFrameSprite(
@@ -1594,6 +1654,18 @@ class FairyGuildScene extends Phaser.Scene {
   getDecorationDebugColor(kind) {
     if (kind === 'fullTree' || kind === 'sapling') {
       return 0x2ed573;
+    }
+    if (kind === 'treeCluster') {
+      return 0x1fa85f;
+    }
+    if (kind === 'bush') {
+      return 0x78d66a;
+    }
+    if (kind === 'rocks') {
+      return 0xd0d5dd;
+    }
+    if (kind === 'grassPatch') {
+      return 0x9be86b;
     }
     if (kind === 'mushrooms') {
       return 0xffaa55;
@@ -3101,6 +3173,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.countdownOverlay?.setVisible(true);
     this.addGuildNote(`Level ${this.state.level} begins soon!`);
 
+    if (this.shouldSkipCountdownFromParams()) {
+      this.countdownOverlay?.setVisible(false);
+      this.startLevelRound();
+      return;
+    }
+
     const sequence = [`Level ${this.state.level}`, '3', '2', '1', 'Go!'];
     sequence.forEach((label, index) => {
       this.addLevelTimer(index * 780, () => {
@@ -4026,6 +4104,11 @@ class FairyGuildScene extends Phaser.Scene {
     this.countdownOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
     this.gameOverOverlay?.setVisible(false);
+    if (this.shouldAutoStartFromParams()) {
+      this.splashOverlay?.setVisible(false).setAlpha(0);
+      this.startGameFromSplash();
+      return;
+    }
     this.splashOverlay?.setVisible(true).setAlpha(0);
     this.tweens.add({
       targets: this.splashOverlay,
