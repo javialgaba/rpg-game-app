@@ -169,6 +169,8 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- ui_atlas.json
 |       |-- ui_atlas.png
 |       |-- village-board.png
+|       |-- world_edges_atlas.json
+|       |-- world_edges_atlas.png
 |       |-- world_tiles_atlas.json
 |       |-- world_tiles_atlas.png
 |       |-- world-ui-sheet.png
@@ -199,11 +201,12 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png` and its transparent `ui-touch-hud.png` cutout sheet.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD/world-edge source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png`, `world-edges-structural-source.png`, `world-edges-atmosphere-source.png`, and their transparent cutout sheets.
 
 Atlas split rules:
 
-- `world_tiles_atlas`: terrain, full world props, chests, and directional island side-wall/corner/shadow frames.
+- `world_tiles_atlas`: playable terrain, full world props, and chests only.
+- `world_edges_atlas`: floating-island cliff rims, corner caps, a soft island shadow, fog surround bands, and sparse off-board decorative edge clusters.
 - `buildings_atlas`: castle, houses, market, bakery, and well frames.
 - `ui_atlas`: square gameplay and inventory icons only.
 - `touch_controls_atlas`: touch button icons only, used by the Phaser mobile overlay.

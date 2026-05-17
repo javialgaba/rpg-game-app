@@ -130,6 +130,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.atlas('touchControlsAtlas', '/assets/touch_controls_atlas.png', '/assets/touch_controls_atlas.json');
     this.load.atlas('hudUiAtlas', '/assets/hud_ui_atlas.png', '/assets/hud_ui_atlas.json');
     this.load.atlas('hudBarsAtlas', '/assets/hud_bars_atlas.png', '/assets/hud_bars_atlas.json');
+    this.load.atlas('worldEdgesAtlas', '/assets/world_edges_atlas.png', '/assets/world_edges_atlas.json');
     this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
   }
 
@@ -688,8 +689,8 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return;
     }
+    this.renderGeneratedWorldEdges();
     const { tileW, tileH } = this.getIsoMetrics();
-    this.renderGeneratedIslandBorder();
     this.generatedLevel.terrain.forEach((placement) => {
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
       const render = placement.render ?? {};
@@ -719,99 +720,213 @@ class FairyGuildScene extends Phaser.Scene {
       }
     });
     this.generatedLevel.decorations.forEach((placement) => this.renderGeneratedDecoration(placement));
+    this.renderGeneratedWorldEdgeClusters();
   }
 
-  renderGeneratedIslandBorder() {
-    if (!this.generatedLevel || !this.textures.exists('worldTilesAtlas')) {
+  renderGeneratedWorldEdges() {
+    if (!this.generatedLevel || !this.textures.exists('worldEdgesAtlas')) {
       return;
     }
-    const texture = this.textures.get('worldTilesAtlas');
+    const texture = this.textures.get('worldEdgesAtlas');
     const { tileW, tileH } = this.getIsoMetrics();
-    this.renderGeneratedIslandShadow(tileW, tileH);
+    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
+    if (!bounds) {
+      return;
+    }
+    this.renderGeneratedWorldFog(bounds, tileW, tileH, texture);
+    this.renderGeneratedWorldShadow(bounds, tileW, tileH, texture);
     this.generatedLevel.terrain.forEach((placement) => {
       if (!this.isGeneratedBoardEdgeCell(placement.grid)) {
         return;
       }
-      const frame = this.getGeneratedIslandBorderFrame(placement.grid);
+      const frame = this.getGeneratedWorldCliffFrame(placement.grid);
       if (!frame || !texture.has(frame)) {
         return;
       }
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
-      const offset = this.getGeneratedIslandBorderOffset(placement.grid, tileW, tileH);
+      const offset = this.getGeneratedWorldCliffOffset(placement.grid, tileW, tileH);
       const isCorner = frame.includes('corner');
-      const size = this.scaleGeneratedSize(isCorner ? [158, 132] : [190, 124]);
+      const size = this.scaleGeneratedSize(isCorner ? [246, 238] : [320, 244]);
       const border = this.add.image(
         center.x + offset.x,
         center.y + offset.y,
-        'worldTilesAtlas',
+        'worldEdgesAtlas',
         frame,
       )
-        .setOrigin(0.5, 0.35)
+        .setOrigin(0.5, 0.46)
         .setDisplaySize(size[0], size[1])
-        .setDepth(center.y - tileH - 28)
+        .setDepth(center.y - tileH - 46)
         .setAlpha(1);
       this.worldLayer.add(border);
     });
   }
 
-  renderGeneratedIslandShadow(tileW, tileH) {
+  getGeneratedWorldBounds(tileW, tileH) {
     if (!this.generatedLevel) {
+      return null;
+    }
+    const top = this.isoToScreen(0, 0);
+    const right = this.isoToScreen(this.generatedLevel.width - 1, 0);
+    const bottom = this.isoToScreen(this.generatedLevel.width - 1, this.generatedLevel.height - 1);
+    const left = this.isoToScreen(0, this.generatedLevel.height - 1);
+    return {
+      top,
+      right,
+      bottom,
+      left,
+      centerX: (left.x + right.x) / 2,
+      centerY: (top.y + bottom.y) / 2,
+      boardWidth: Math.abs(right.x - left.x) + tileW * 2.55,
+      boardHeight: Math.abs(bottom.y - top.y) + tileH * 2.55,
+    };
+  }
+
+  renderGeneratedWorldFog(bounds, tileW, tileH, texture) {
+    const fogPieces = [
+      {
+        frame: 'edge_fog_n_01',
+        x: bounds.centerX,
+        y: bounds.top.y - tileH * 3.15,
+        width: bounds.boardWidth * 1.16,
+        height: tileH * 9.8,
+        alpha: 0.22,
+      },
+      {
+        frame: 'edge_fog_e_01',
+        x: bounds.right.x + tileW * 2.65,
+        y: bounds.centerY + tileH * 0.18,
+        width: tileW * 8.3,
+        height: bounds.boardHeight * 0.96,
+        alpha: 0.2,
+      },
+      {
+        frame: 'edge_fog_s_01',
+        x: bounds.centerX,
+        y: bounds.bottom.y + tileH * 3.25,
+        width: bounds.boardWidth * 1.18,
+        height: tileH * 9.8,
+        alpha: 0.24,
+      },
+      {
+        frame: 'edge_fog_w_01',
+        x: bounds.left.x - tileW * 2.65,
+        y: bounds.centerY + tileH * 0.18,
+        width: tileW * 8.3,
+        height: bounds.boardHeight * 0.96,
+        alpha: 0.2,
+      },
+    ];
+    fogPieces.forEach((piece) => {
+      if (!texture.has(piece.frame)) {
+        return;
+      }
+      const fog = this.add.image(piece.x, piece.y, 'worldEdgesAtlas', piece.frame)
+        .setOrigin(0.5)
+        .setDisplaySize(piece.width, piece.height)
+        .setDepth(bounds.top.y - tileH - 220)
+        .setAlpha(piece.alpha);
+      this.worldLayer.add(fog);
+    });
+  }
+
+  renderGeneratedWorldShadow(bounds, tileW, tileH, texture) {
+    if (!texture.has('edge_shadow_01')) {
       return;
     }
-    const texture = this.textures.get('worldTilesAtlas');
-    if (!texture.has('island_shadow_01')) {
-      return;
-    }
-    const topCenter = this.isoToScreen(0, 0);
-    const rightCenter = this.isoToScreen(this.generatedLevel.width - 1, 0);
-    const bottomCenter = this.isoToScreen(this.generatedLevel.width - 1, this.generatedLevel.height - 1);
-    const leftCenter = this.isoToScreen(0, this.generatedLevel.height - 1);
-    const boardWidth = Math.abs(rightCenter.x - leftCenter.x) + tileW * 2.2;
-    const boardHeight = Math.abs(bottomCenter.y - topCenter.y) + tileH * 2;
     const shadow = this.add.image(
-      (leftCenter.x + rightCenter.x) / 2,
-      bottomCenter.y + tileH * 1.18,
-      'worldTilesAtlas',
-      'island_shadow_01',
+      bounds.centerX,
+      bounds.bottom.y + tileH * 1.58,
+      'worldEdgesAtlas',
+      'edge_shadow_01',
     )
       .setOrigin(0.5)
-      .setDisplaySize(boardWidth, Math.max(tileH * 7.5, boardHeight * 0.34))
-      .setDepth(topCenter.y - tileH - 90)
-      .setAlpha(0.34);
+      .setDisplaySize(bounds.boardWidth * 1.18, Math.max(tileH * 9, bounds.boardHeight * 0.42))
+      .setDepth(bounds.top.y - tileH - 180)
+      .setAlpha(0.44);
     this.worldLayer.add(shadow);
   }
 
-  getGeneratedIslandBorderFrame(grid) {
+  renderGeneratedWorldEdgeClusters() {
+    if (!this.generatedLevel || !this.textures.exists('worldEdgesAtlas')) {
+      return;
+    }
+    const texture = this.textures.get('worldEdgesAtlas');
+    const { tileW, tileH } = this.getIsoMetrics();
+    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
+    if (!bounds) {
+      return;
+    }
+    const size = this.scaleGeneratedSize([318, 274]);
+    const clusters = [
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.left.x - tileW * 1.55,
+        y: bounds.top.y + tileH * 1.58,
+        depth: bounds.top.y + tileH * 0.28,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.right.x + tileW * 1.55,
+        y: bounds.top.y + tileH * 1.58,
+        depth: bounds.top.y + tileH * 0.28,
+      },
+      {
+        frame: 'edge_cluster_sw_01',
+        x: bounds.left.x - tileW * 1.55,
+        y: bounds.bottom.y + tileH * 2.34,
+        depth: bounds.bottom.y + tileH * 1.42,
+      },
+      {
+        frame: 'edge_cluster_se_01',
+        x: bounds.right.x + tileW * 1.55,
+        y: bounds.bottom.y + tileH * 2.34,
+        depth: bounds.bottom.y + tileH * 1.42,
+      },
+    ];
+    clusters.forEach((cluster) => {
+      if (!texture.has(cluster.frame)) {
+        return;
+      }
+      const decoration = this.add.image(cluster.x, cluster.y, 'worldEdgesAtlas', cluster.frame)
+        .setOrigin(0.5, 0.72)
+        .setDisplaySize(size[0], size[1])
+        .setDepth(cluster.depth)
+        .setAlpha(0.98);
+      this.worldLayer.add(decoration);
+    });
+  }
+
+  getGeneratedWorldCliffFrame(grid) {
     if (!this.generatedLevel) {
       return null;
     }
     const maxX = this.generatedLevel.width - 1;
     const maxY = this.generatedLevel.height - 1;
-    if (grid.x === 0 && grid.y === 0) {return 'island_corner_n_01';}
-    if (grid.x === maxX && grid.y === 0) {return 'island_corner_e_01';}
-    if (grid.x === maxX && grid.y === maxY) {return 'island_corner_s_01';}
-    if (grid.x === 0 && grid.y === maxY) {return 'island_corner_w_01';}
-    if (grid.y === 0) {return 'island_edge_nw_01';}
-    if (grid.x === maxX) {return 'island_edge_ne_01';}
-    if (grid.y === maxY) {return 'island_edge_se_01';}
-    if (grid.x === 0) {return 'island_edge_sw_01';}
+    if (grid.x === 0 && grid.y === 0) {return 'edge_corner_n_01';}
+    if (grid.x === maxX && grid.y === 0) {return 'edge_corner_e_01';}
+    if (grid.x === maxX && grid.y === maxY) {return 'edge_corner_s_01';}
+    if (grid.x === 0 && grid.y === maxY) {return 'edge_corner_w_01';}
+    if (grid.y === 0) {return 'edge_cliff_nw_01';}
+    if (grid.x === maxX) {return 'edge_cliff_ne_01';}
+    if (grid.y === maxY) {return 'edge_cliff_se_01';}
+    if (grid.x === 0) {return 'edge_cliff_sw_01';}
     return null;
   }
 
-  getGeneratedIslandBorderOffset(grid, tileW, tileH) {
+  getGeneratedWorldCliffOffset(grid, tileW, tileH) {
     if (!this.generatedLevel) {
       return { x: 0, y: 0 };
     }
     const maxX = this.generatedLevel.width - 1;
     const maxY = this.generatedLevel.height - 1;
-    if (grid.x === 0 && grid.y === 0) {return { x: 0, y: tileH * 0.34 };}
-    if (grid.x === maxX && grid.y === 0) {return { x: tileW * 0.24, y: tileH * 0.52 };}
-    if (grid.x === maxX && grid.y === maxY) {return { x: 0, y: tileH * 0.86 };}
-    if (grid.x === 0 && grid.y === maxY) {return { x: -tileW * 0.24, y: tileH * 0.52 };}
-    if (grid.y === 0) {return { x: tileW * 0.12, y: tileH * 0.22 };}
-    if (grid.x === maxX) {return { x: tileW * 0.18, y: tileH * 0.54 };}
-    if (grid.y === maxY) {return { x: -tileW * 0.12, y: tileH * 0.82 };}
-    if (grid.x === 0) {return { x: -tileW * 0.18, y: tileH * 0.54 };}
+    if (grid.x === 0 && grid.y === 0) {return { x: 0, y: tileH * 0.72 };}
+    if (grid.x === maxX && grid.y === 0) {return { x: tileW * 0.54, y: tileH * 0.92 };}
+    if (grid.x === maxX && grid.y === maxY) {return { x: 0, y: tileH * 1.46 };}
+    if (grid.x === 0 && grid.y === maxY) {return { x: -tileW * 0.54, y: tileH * 0.92 };}
+    if (grid.y === 0) {return { x: tileW * 0.16, y: tileH * 0.52 };}
+    if (grid.x === maxX) {return { x: tileW * 0.48, y: tileH * 0.92 };}
+    if (grid.y === maxY) {return { x: -tileW * 0.16, y: tileH * 1.3 };}
+    if (grid.x === 0) {return { x: -tileW * 0.48, y: tileH * 0.92 };}
     return { x: 0, y: 0 };
   }
 
