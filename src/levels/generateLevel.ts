@@ -18,6 +18,7 @@ const PROTECTED_EDGE_PADDING = 4;
 const MIN_SPAWN_TARGET_PATH = 10;
 const FULL_TREE_FRAMES = new Set(['world-pine-full', 'world-tree-oak']);
 const PARTIAL_TREE_FRAMES = new Set(['world-forest-cluster', 'world-pine']);
+const VALID_TERRAIN_FRAMES = new Set(['world-grass-tile', 'world-path-tile', 'world-garden-tile']);
 
 const clonePoint = (point: GridPoint) => ({ x: point.x, y: point.y });
 
@@ -134,7 +135,7 @@ const getTerrainEntry = (entry: AssetRegistryEntry, registry: AssetRegistry) => 
     return registry.P;
   }
   if (entry.token === 'D') {
-    return registry.D;
+    return registry.G;
   }
   if (entry.token === 'SP') {
     return registry.SP;
@@ -380,12 +381,14 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     }
     const token = generatedConfig.matrix[grid.y]?.[grid.x];
     const distanceFromCenter = Math.abs(grid.x - center.x) + Math.abs(grid.y - center.y);
+    const edgeDistance = getEdgeDistance(grid, width, height);
     if (
       blockedGrid[grid.y][grid.x]
       || attackCellKeys.has(pointKey(grid))
       || spawnGrid[grid.y][grid.x]
       || decorationGrid[grid.y][grid.x]
       || roadPlan.roadGrid[grid.y][grid.x]
+      || edgeDistance < 3
       || token === 'P'
       || token === 'V'
       || token === 'PS'
@@ -494,10 +497,10 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
 
   protectedTargets.forEach((target) => {
     getNeighborCells(target.grid, 2).forEach((cell) => {
-      if (rng.chance(config.decorationDensity * 0.18)) {
+      if (rng.chance(config.decorationDensity * 0.16)) {
         addDecoration(cell, 'flowers', `${target.label} Flower Patch`);
       }
-      if ((target.token === 'H1' || target.token === 'H2' || target.token === 'M') && rng.chance(config.decorationDensity * 0.13)) {
+      if ((target.token === 'H1' || target.token === 'H2' || target.token === 'M') && rng.chance(config.decorationDensity * 0.10)) {
         addDecoration(cell, 'fence', `${target.label} Fence`, fenceRender);
       }
     });
@@ -529,7 +532,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.12)) {
       addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender);
     }
-    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.58)) {
+    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.34)) {
       addDecoration(
         placement.grid,
         rng.chance(0.7) ? 'fullTree' : 'sapling',
@@ -537,10 +540,10 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         rng.chance(0.18) ? oakTreeRender : fullTreeRender,
       );
     }
-    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.16)) {
+    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.09)) {
       addDecoration(placement.grid, 'sapling', 'Young Pine', saplingRender);
     }
-    if (token === 'G' && rng.chance(config.decorationDensity * 0.05)) {
+    if (token === 'G' && rng.chance(config.decorationDensity * 0.035)) {
       addDecoration(placement.grid, 'sparkles', 'Fairy Sparkles');
     }
   });
@@ -691,6 +694,13 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     }
     if (frameKey && PARTIAL_TREE_FRAMES.has(frameKey) && placement.decorationKind !== 'fullTree') {
       errors.push(`${placement.label} uses clipped frame ${frameKey} as a normal prop.`);
+    }
+  });
+
+  level.terrain.forEach((placement) => {
+    const frameKey = placement.render?.frameKey;
+    if (frameKey && !VALID_TERRAIN_FRAMES.has(frameKey)) {
+      warnings.push(`${placement.label} terrain uses unexpected frame ${frameKey}.`);
     }
   });
 

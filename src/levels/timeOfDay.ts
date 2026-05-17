@@ -11,10 +11,10 @@ export interface TimeOfDayProfile {
 export const TIME_OF_DAY_PROFILES: Record<TimeOfDay, TimeOfDayProfile> = {
   morning: {
     overlayColor: 0xffdca3,
-    overlayAlpha: 0.08,
+    overlayAlpha: 0,
     glowColor: 0xfff3a8,
-    glowAlpha: 0.12,
-    mistAlpha: 0.10,
+    glowAlpha: 0,
+    mistAlpha: 0,
   },
   noon: {
     overlayColor: 0xffffff,

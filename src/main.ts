@@ -648,7 +648,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.prepareGeneratedLevel();
     this.generatedLevelActive = this.shouldRenderGeneratedLevel();
     this.tileGraphics = this.add.graphics();
-    this.tileGraphics.setAlpha(this.generatedLevelActive ? 0.56 : 0.15);
+    this.tileGraphics.setAlpha(this.generatedLevelActive ? 1 : 0.15);
     this.worldLayer.add(this.tileGraphics);
     if (this.generatedLevelActive) {
       this.createGeneratedTerrainMask();
@@ -692,14 +692,11 @@ class FairyGuildScene extends Phaser.Scene {
 
   isLevelDebugRequested() {
     const params = new URLSearchParams(window.location.search);
-    const storageEnabled = (() => {
-      try {
-        return localStorage.getItem('debugLevelOverlay') === '1';
-      } catch {
-        return false;
-      }
-    })();
-    return params.has('debugLevel') || storageEnabled;
+    const raw = params.get('debugLevel') ?? params.get('debugGrid');
+    return (params.has('debugLevel') || params.has('debugGrid'))
+      && raw !== '0'
+      && raw !== 'false'
+      && raw !== 'off';
   }
 
   renderGeneratedLevel() {
@@ -708,27 +705,15 @@ class FairyGuildScene extends Phaser.Scene {
     }
     const { tileW, tileH } = this.getIsoMetrics();
     this.generatedLevel.terrain.forEach((placement) => {
-      const sourceToken = this.generatedLevel?.config.matrix[placement.grid.y]?.[placement.grid.x];
-      const isOuterTerrainCell = this.isGeneratedOuterTextureCell(placement.grid);
-      const center = this.isoToScreen(placement.iso.x, placement.iso.y);
-      const fill = isOuterTerrainCell ? COLORS.forest : placement.render?.terrainFill ?? COLORS.grassA;
-      const stroke = isOuterTerrainCell ? 0x2f744f : placement.render?.terrainStroke ?? 0x5dbb65;
-      this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, isOuterTerrainCell ? 0.78 : 0.92);
-      if (placement.render?.textureKey && !isOuterTerrainCell && sourceToken !== 'SP') {
-        const size = this.scaleGeneratedSize(placement.render.displaySize ?? [TILE_W, TILE_H]);
-        const sprite = this.add.image(center.x, center.y + 8, placement.render.textureKey, placement.render.frameKey)
-          .setOrigin(placement.render.origin?.[0] ?? 0.5, placement.render.origin?.[1] ?? 0.62)
-          .setDisplaySize(size[0], size[1])
-          .setDepth(center.y - 28)
-          .setAlpha(0.74);
-        if (this.generatedTerrainMask) {
-          sprite.setMask(this.generatedTerrainMask);
-        }
-        this.worldLayer.add(sprite);
+      if (this.isGeneratedBoardEdgeCell(placement.grid)) {
+        return;
       }
+      const center = this.isoToScreen(placement.iso.x, placement.iso.y);
+      const fill = placement.render?.terrainFill ?? COLORS.grassA;
+      const stroke = placement.render?.terrainStroke ?? 0x5dbb65;
+      this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, 1, 0);
     });
     this.createPathStones();
-    this.createForestBorder();
     this.generatedLevel.objects.forEach((placement) => {
       if (placement.type === 'building') {
         this.renderGeneratedBuilding(placement);
@@ -741,14 +726,14 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevel.decorations.forEach((placement) => this.renderGeneratedDecoration(placement));
   }
 
-  isGeneratedOuterTextureCell(grid) {
+  isGeneratedBoardEdgeCell(grid) {
     if (!this.generatedLevel) {
       return false;
     }
-    return grid.x <= 3
-      || grid.y <= 3
-      || grid.x >= this.generatedLevel.width - 4
-      || grid.y >= this.generatedLevel.height - 4;
+    return grid.x === 0
+      || grid.y === 0
+      || grid.x === this.generatedLevel.width - 1
+      || grid.y === this.generatedLevel.height - 1;
   }
 
   createGeneratedTerrainMask() {
@@ -789,7 +774,7 @@ class FairyGuildScene extends Phaser.Scene {
       .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.84)
       .setDisplaySize(size[0], size[1])
       .setDepth(p.y)
-      .setAlpha(render.alpha ?? 0.78);
+      .setAlpha(1);
     const repairIcon = this.add.container(p.x + size[0] * 0.34, p.y - size[1] * 0.58)
       .setVisible(false)
       .setDepth(p.y + 140);
@@ -821,6 +806,9 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedProp(placement) {
+    if (this.generatedLevelActive && this.generatedLevel && placement.token === 'T' && this.isGeneratedBoardEdgeCell(placement.grid)) {
+      return;
+    }
     const render = placement.render;
     if (!render?.textureKey) {
       return;
@@ -1123,9 +1111,9 @@ class FairyGuildScene extends Phaser.Scene {
     }
   }
 
-  drawDiamond(x, y, w, h, fill, stroke, alpha = 1) {
+  drawDiamond(x, y, w, h, fill, stroke, alpha = 1, strokeAlpha = 0.45) {
     this.tileGraphics.fillStyle(fill, alpha);
-    this.tileGraphics.lineStyle(1, stroke, 0.45);
+    this.tileGraphics.lineStyle(1, stroke, strokeAlpha);
     this.tileGraphics.beginPath();
     this.tileGraphics.moveTo(x, y - h / 2);
     this.tileGraphics.lineTo(x + w / 2, y);
