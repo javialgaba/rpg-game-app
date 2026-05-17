@@ -131,6 +131,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.atlas('hudUiAtlas', '/assets/hud_ui_atlas.png', '/assets/hud_ui_atlas.json');
     this.load.atlas('hudBarsAtlas', '/assets/hud_bars_atlas.png', '/assets/hud_bars_atlas.json');
     this.load.atlas('worldEdgesAtlas', '/assets/world_edges_atlas.png', '/assets/world_edges_atlas.json');
+    this.load.atlas('environmentFrameAtlas', '/assets/environment_frame_atlas.png', '/assets/environment_frame_atlas.json');
     this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
   }
 
@@ -142,11 +143,22 @@ class FairyGuildScene extends Phaser.Scene {
     this.registerUiArtFrames();
     this.createGeneratedTextures();
 
-    this.worldLayer = this.add.layer();
-    this.entityLayer = this.add.layer();
-    this.fxLayer = this.add.layer();
+    this.backgroundLayer = this.add.layer().setDepth(0);
+    this.shadowLayer = this.add.layer().setDepth(40);
+    this.terrainBaseLayer = this.add.layer().setDepth(100);
+    this.edgeLayer = this.add.layer().setDepth(150);
+    this.waterLayer = this.add.layer().setDepth(190);
+    this.decorLayer = this.add.layer().setDepth(240);
+    this.buildingLayer = this.add.layer().setDepth(300);
+    this.characterLayer = this.add.layer().setDepth(360);
+    this.effectsLayer = this.add.layer().setDepth(440);
     this.lightingLayer = this.add.layer().setDepth(4700);
-    this.uiLayer = this.add.layer().setDepth(5000);
+    this.hudLayer = this.add.layer().setDepth(5000);
+    this.touchLayer = this.add.layer().setDepth(7700);
+    this.worldLayer = this.terrainBaseLayer;
+    this.entityLayer = this.characterLayer;
+    this.fxLayer = this.effectsLayer;
+    this.uiLayer = this.hudLayer;
 
     this.createBackground();
     this.createVillage();
@@ -606,28 +618,30 @@ class FairyGuildScene extends Phaser.Scene {
   createBackground() {
     const useGeneratedMap = this.shouldRenderGeneratedLevel();
     const bg = this.add.graphics();
-    bg.fillGradientStyle(COLORS.skyTop, COLORS.skyTop, COLORS.skyBottom, COLORS.skyBottom, 1);
+    bg.fillGradientStyle(0x7fc8f4, 0x7fc8f4, 0xd6f3ff, 0xd6f3ff, 1);
     bg.fillRect(0, 0, WIDTH, HEIGHT);
-    bg.fillStyle(0x68c878, 1);
-    bg.fillEllipse(WIDTH / 2, 696, 1240, 280);
-    bg.fillStyle(0xcdf7f2, 0.45);
-    bg.fillEllipse(200, 108, 190, 38);
-    bg.fillEllipse(1010, 76, 250, 48);
-    bg.fillEllipse(700, 138, 180, 34);
-    this.worldLayer.add(bg);
+    bg.fillStyle(0x67c176, 1);
+    bg.fillEllipse(WIDTH / 2, 700, 1320, 316);
+    bg.fillStyle(0xbfeef2, 0.42);
+    bg.fillEllipse(188, 106, 210, 42);
+    bg.fillEllipse(1020, 78, 270, 52);
+    bg.fillEllipse(704, 142, 220, 40);
+    this.backgroundLayer.add(bg);
     if (useGeneratedMap) {
       const boardBase = this.add.graphics();
-      boardBase.fillStyle(0x376f45, 0.28);
-      boardBase.fillEllipse(WIDTH / 2, 392, 1120, 610);
-      boardBase.fillStyle(0xf4e7ae, 0.08);
-      boardBase.fillEllipse(WIDTH / 2, 370, 980, 500);
-      this.worldLayer.add(boardBase);
+      boardBase.fillStyle(0x4c8e62, 0.32);
+      boardBase.fillEllipse(WIDTH / 2, 426, 1380, 760);
+      boardBase.fillStyle(0xbce6d4, 0.18);
+      boardBase.fillEllipse(WIDTH / 2, 384, 1180, 620);
+      boardBase.fillStyle(0xcfb3ff, 0.14);
+      boardBase.fillEllipse(WIDTH / 2, 474, 1080, 430);
+      this.shadowLayer.add(boardBase);
       return;
     }
     const board = this.add.image(WIDTH / 2, HEIGHT / 2, 'villageBoard')
       .setDisplaySize(WIDTH, HEIGHT)
       .setAlpha(0.88);
-    this.worldLayer.add(board);
+    this.backgroundLayer.add(board);
   }
 
   createVillage() {
@@ -635,7 +649,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelActive = this.shouldRenderGeneratedLevel();
     this.tileGraphics = this.add.graphics();
     this.tileGraphics.setAlpha(this.generatedLevelActive ? 1 : 0.15);
-    this.worldLayer.add(this.tileGraphics);
+    this.terrainBaseLayer.add(this.tileGraphics);
     if (this.generatedLevelActive) {
       this.createGeneratedTerrainMask();
       if (this.generatedTerrainMask) {
@@ -690,6 +704,7 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     this.renderGeneratedWorldEdges();
+    this.renderGeneratedEnvironmentFrame();
     const { tileW, tileH } = this.getIsoMetrics();
     this.generatedLevel.terrain.forEach((placement) => {
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
@@ -702,7 +717,7 @@ class FairyGuildScene extends Phaser.Scene {
           .setDisplaySize(size[0], size[1])
           .setDepth(center.y - tileH)
           .setAlpha(1);
-        this.worldLayer.add(sprite);
+        this.terrainBaseLayer.add(sprite);
         return;
       }
       const fill = render.terrainFill ?? COLORS.grassA;
@@ -733,10 +748,14 @@ class FairyGuildScene extends Phaser.Scene {
     if (!bounds) {
       return;
     }
+    this.renderGeneratedWorldBackdrop(bounds, tileW, tileH, texture);
     this.renderGeneratedWorldFog(bounds, tileW, tileH, texture);
     this.renderGeneratedWorldShadow(bounds, tileW, tileH, texture);
     this.generatedLevel.terrain.forEach((placement) => {
       if (!this.isGeneratedBoardEdgeCell(placement.grid)) {
+        return;
+      }
+      if (!this.shouldRenderGeneratedCellCliff(placement.grid)) {
         return;
       }
       const frame = this.getGeneratedWorldCliffFrame(placement.grid);
@@ -757,7 +776,212 @@ class FairyGuildScene extends Phaser.Scene {
         .setDisplaySize(size[0], size[1])
         .setDepth(center.y - tileH - 46)
         .setAlpha(1);
-      this.worldLayer.add(border);
+      this.edgeLayer.add(border);
+    });
+  }
+
+  shouldRenderGeneratedCellCliff(grid) {
+    if (!this.generatedLevel) {
+      return false;
+    }
+    const maxX = this.generatedLevel.width - 1;
+    const maxY = this.generatedLevel.height - 1;
+    const isCorner = (
+      (grid.x === 0 && grid.y === 0)
+      || (grid.x === maxX && grid.y === 0)
+      || (grid.x === maxX && grid.y === maxY)
+      || (grid.x === 0 && grid.y === maxY)
+    );
+    if (isCorner) {
+      return true;
+    }
+    if (grid.y === maxY) {
+      return true;
+    }
+    if (grid.y === 0) {
+      return false;
+    }
+    if (grid.x === 0 || grid.x === maxX) {
+      return grid.y >= Math.max(4, Math.floor(maxY * 0.28));
+    }
+    return false;
+  }
+
+  addEnvironmentFrameSprite(
+    layer,
+    frame,
+    x,
+    y,
+    width,
+    height,
+    depth,
+    options: { originX?: number; originY?: number; alpha?: number } = {},
+  ) {
+    if (!this.textures.exists('environmentFrameAtlas')) {
+      return null;
+    }
+    const texture = this.textures.get('environmentFrameAtlas');
+    if (!texture.has(frame)) {
+      return null;
+    }
+    const sprite = this.add.image(x, y, 'environmentFrameAtlas', frame)
+      .setOrigin(options.originX ?? 0.5, options.originY ?? 0.82)
+      .setDisplaySize(width, height)
+      .setDepth(depth)
+      .setAlpha(options.alpha ?? 1);
+    layer.add(sprite);
+    return sprite;
+  }
+
+  renderGeneratedEnvironmentFrame() {
+    if (!this.generatedLevel || !this.textures.exists('environmentFrameAtlas')) {
+      return;
+    }
+    const { tileW, tileH } = this.getIsoMetrics();
+    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
+    if (!bounds) {
+      return;
+    }
+
+    const backdropPieces = [
+      ['forest_cluster_back', bounds.centerX, bounds.top.y - tileH * 3.15, tileW * 18.5, tileH * 15.6, 5, 0.98],
+      ['forest_cluster_back', bounds.centerX, bounds.top.y - tileH * 1.22, tileW * 13.8, tileH * 11.8, 5, 0.9],
+      ['forest_cluster_back', bounds.centerX, bounds.top.y + tileH * 0.18, tileW * 10.8, tileH * 8.8, 5, 0.76],
+      ['forest_cluster_back', bounds.centerX - tileW * 7.8, bounds.top.y - tileH * 2.45, tileW * 15.8, tileH * 14.8, 5, 0.95],
+      ['forest_cluster_back', bounds.centerX + tileW * 7.8, bounds.top.y - tileH * 2.45, tileW * 15.8, tileH * 14.8, 5, 0.95],
+      ['forest_cluster_back', bounds.left.x - tileW * 5.6, bounds.top.y - tileH * 1.35, tileW * 13.8, tileH * 13.6, 5, 0.92],
+      ['forest_cluster_back', bounds.right.x + tileW * 5.6, bounds.top.y - tileH * 1.35, tileW * 13.8, tileH * 13.6, 5, 0.92],
+      ['tree_cluster_edge', bounds.left.x - tileW * 5.6, bounds.centerY - tileH * 1.8, tileW * 11.8, tileH * 13.2, 6, 0.92],
+      ['tree_cluster_edge', bounds.right.x + tileW * 5.6, bounds.centerY - tileH * 1.8, tileW * 11.8, tileH * 13.2, 6, 0.92],
+      ['tree_cluster_edge', bounds.left.x - tileW * 3.6, bounds.bottom.y + tileH * 1.55, tileW * 9.4, tileH * 9.8, 6, 0.86],
+      ['tree_cluster_edge', bounds.right.x + tileW * 3.6, bounds.bottom.y + tileH * 1.55, tileW * 9.4, tileH * 9.8, 6, 0.86],
+      ['pine_silhouette_tall', bounds.left.x - tileW * 2.4, bounds.top.y - tileH * 2.8, tileW * 6.8, tileH * 10.6, 7, 0.78],
+      ['pine_silhouette_tall', bounds.right.x + tileW * 2.4, bounds.top.y - tileH * 2.8, tileW * 6.8, tileH * 10.6, 7, 0.78],
+      ['fog_patch', bounds.centerX - tileW * 5.8, bounds.top.y - tileH * 1.4, tileW * 12.8, tileH * 8.8, 9, 0.28],
+      ['fog_patch', bounds.centerX, bounds.top.y - tileH * 0.42, tileW * 18.6, tileH * 9.8, 9, 0.34],
+      ['fog_patch', bounds.centerX + tileW * 5.8, bounds.top.y - tileH * 1.4, tileW * 12.8, tileH * 8.8, 9, 0.28],
+      ['purple_mist_patch', bounds.left.x - tileW * 6.2, bounds.centerY + tileH * 2.3, tileW * 10.8, tileH * 8.4, 9, 0.2],
+      ['purple_mist_patch', bounds.right.x + tileW * 6.2, bounds.centerY + tileH * 2.3, tileW * 10.8, tileH * 8.4, 9, 0.2],
+    ];
+    backdropPieces.forEach(([frame, x, y, width, height, depth, alpha]) => {
+      this.addEnvironmentFrameSprite(
+        this.backgroundLayer,
+        frame,
+        x as number,
+        y as number,
+        width as number,
+        height as number,
+        depth as number,
+        { originY: 0.74, alpha: alpha as number },
+      );
+    });
+
+    const shadowPieces = [
+      ['large_shadow', bounds.centerX, bounds.bottom.y + tileH * 1.8, bounds.boardWidth * 1.72, tileH * 13.8, 20, 0.62],
+      ['purple_mist_patch', bounds.left.x - tileW * 3.2, bounds.bottom.y + tileH * 2.9, tileW * 12.2, tileH * 8.6, 22, 0.42],
+      ['purple_mist_patch', bounds.right.x + tileW * 3.2, bounds.bottom.y + tileH * 2.9, tileW * 12.2, tileH * 8.6, 22, 0.42],
+      ['fog_patch', bounds.centerX, bounds.bottom.y + tileH * 2.5, bounds.boardWidth * 1.08, tileH * 8.8, 23, 0.24],
+    ];
+    shadowPieces.forEach(([frame, x, y, width, height, depth, alpha]) => {
+      this.addEnvironmentFrameSprite(
+        this.shadowLayer,
+        frame,
+        x as number,
+        y as number,
+        width as number,
+        height as number,
+        depth as number,
+        { originY: 0.62, alpha: alpha as number },
+      );
+    });
+
+    const cliffPieces = [
+      ['cliff_edge_north', bounds.centerX, bounds.top.y - tileH * 0.92, bounds.boardWidth * 1.18, tileH * 5.1, bounds.top.y - tileH * 0.9],
+      ['cliff_edge_west', bounds.left.x - tileW * 1.32, bounds.centerY - tileH * 0.42, tileW * 7.2, bounds.boardHeight * 0.78, bounds.centerY - tileH * 0.8],
+      ['cliff_edge_east', bounds.right.x + tileW * 1.32, bounds.centerY - tileH * 0.42, tileW * 7.2, bounds.boardHeight * 0.78, bounds.centerY - tileH * 0.8],
+      ['cliff_edge_south', bounds.centerX, bounds.bottom.y + tileH * 0.98, bounds.boardWidth * 1.12, tileH * 5.8, bounds.bottom.y - tileH * 0.12],
+      ['cliff_corner_nw', bounds.left.x - tileW * 1.55, bounds.top.y - tileH * 0.35, tileW * 7.2, tileH * 8.6, bounds.top.y - tileH * 0.86],
+      ['cliff_corner_ne', bounds.right.x + tileW * 1.55, bounds.top.y - tileH * 0.35, tileW * 7.2, tileH * 8.6, bounds.top.y - tileH * 0.86],
+      ['cliff_corner_sw', bounds.left.x - tileW * 1.62, bounds.bottom.y + tileH * 1.24, tileW * 7.4, tileH * 8.4, bounds.bottom.y - tileH * 0.16],
+      ['cliff_corner_se', bounds.right.x + tileW * 1.62, bounds.bottom.y + tileH * 1.24, tileW * 7.4, tileH * 8.4, bounds.bottom.y - tileH * 0.16],
+      ['cliff_wall_front', bounds.centerX, bounds.bottom.y + tileH * 1.18, bounds.boardWidth * 0.74, tileH * 4.8, bounds.bottom.y + tileH * 0.05],
+      ['grass_lip_front', bounds.centerX, bounds.bottom.y + tileH * 0.74, bounds.boardWidth * 0.82, tileH * 3.2, bounds.bottom.y - tileH * 0.28],
+      ['island_edge_broken_a', bounds.left.x - tileW * 0.18, bounds.bottom.y + tileH * 0.48, tileW * 6.3, tileH * 4.8, bounds.bottom.y - tileH * 0.18],
+      ['island_edge_broken_b', bounds.right.x + tileW * 0.18, bounds.bottom.y + tileH * 0.48, tileW * 6.3, tileH * 4.8, bounds.bottom.y - tileH * 0.18],
+      ['cliff_wall_side', bounds.left.x - tileW * 1.12, bounds.bottom.y + tileH * 0.42, tileW * 6.2, tileH * 6.3, bounds.bottom.y - tileH * 0.22],
+      ['cliff_wall_side', bounds.right.x + tileW * 1.12, bounds.bottom.y + tileH * 0.42, tileW * 6.2, tileH * 6.3, bounds.bottom.y - tileH * 0.22],
+    ];
+    cliffPieces.forEach(([frame, x, y, width, height, depth]) => {
+      this.addEnvironmentFrameSprite(
+        this.edgeLayer,
+        frame as string,
+        x as number,
+        y as number,
+        width as number,
+        height as number,
+        depth as number,
+        { originY: 0.78 },
+      );
+    });
+
+    const waterPieces = [
+      ['river_straight', bounds.left.x - tileW * 5.2, bounds.top.y - tileH * 1.02, tileW * 11.8, tileH * 5.8, bounds.top.y - tileH * 0.42, 0.96],
+      ['river_corner', bounds.right.x + tileW * 3.1, bounds.top.y - tileH * 0.92, tileW * 10.2, tileH * 8.6, bounds.top.y - tileH * 0.36, 0.98],
+      ['pond_tile', bounds.left.x - tileW * 5.6, bounds.centerY + tileH * 2.2, tileW * 10.2, tileH * 8.6, bounds.centerY + tileH * 0.82, 0.95],
+      ['bridge_small', bounds.left.x - tileW * 4.25, bounds.top.y - tileH * 1.08, tileW * 4.8, tileH * 4.2, bounds.top.y - tileH * 0.18, 1],
+      ['waterfall_top', bounds.left.x - tileW * 5.28, bounds.top.y - tileH * 1.54, tileW * 6.8, tileH * 6.6, bounds.top.y - tileH * 0.52, 1],
+      ['waterfall_fall', bounds.left.x - tileW * 5.48, bounds.top.y + tileH * 0.16, tileW * 5.8, tileH * 10.8, bounds.centerY - tileH * 1.85, 0.98],
+      ['waterfall_splash', bounds.left.x - tileW * 5.58, bounds.top.y + tileH * 3.08, tileW * 5.2, tileH * 4.6, bounds.centerY - tileH * 0.72, 1],
+      ['waterfall_top', bounds.right.x + tileW * 4.26, bounds.bottom.y + tileH * 0.08, tileW * 6.6, tileH * 6.4, bounds.bottom.y - tileH * 0.32, 1],
+      ['waterfall_fall', bounds.right.x + tileW * 4.46, bounds.bottom.y + tileH * 1.78, tileW * 5.6, tileH * 10.4, bounds.bottom.y + tileH * 0.86, 0.98],
+      ['waterfall_splash', bounds.right.x + tileW * 4.66, bounds.bottom.y + tileH * 4.42, tileW * 5.4, tileH * 4.6, bounds.bottom.y + tileH * 2.22, 1],
+    ];
+    waterPieces.forEach(([frame, x, y, width, height, depth, alpha]) => {
+      this.addEnvironmentFrameSprite(
+        this.waterLayer,
+        frame as string,
+        x as number,
+        y as number,
+        width as number,
+        height as number,
+        depth as number,
+        { originY: 0.78, alpha: alpha as number },
+      );
+    });
+
+    const decorPieces = [
+      ['tree_cluster_edge', bounds.left.x - tileW * 4.85, bounds.top.y - tileH * 0.82, tileW * 8.8, tileH * 8.8, bounds.top.y + tileH * 0.16],
+      ['tree_cluster_edge', bounds.right.x + tileW * 4.7, bounds.top.y - tileH * 0.52, tileW * 8.8, tileH * 8.8, bounds.top.y + tileH * 0.16],
+      ['forest_cluster_back', bounds.centerX, bounds.top.y - tileH * 0.95, tileW * 8.4, tileH * 7.6, bounds.top.y + tileH * 0.08],
+      ['bush_foreground', bounds.left.x - tileW * 3.05, bounds.bottom.y + tileH * 0.88, tileW * 5.6, tileH * 4.6, bounds.bottom.y + tileH * 0.18],
+      ['bush_foreground', bounds.right.x + tileW * 3.05, bounds.bottom.y + tileH * 0.88, tileW * 5.6, tileH * 4.6, bounds.bottom.y + tileH * 0.18],
+      ['flower_patch_wild', bounds.left.x - tileW * 2.2, bounds.top.y - tileH * 0.05, tileW * 4.8, tileH * 3.6, bounds.top.y + tileH * 0.18],
+      ['flower_patch_wild', bounds.right.x + tileW * 2.2, bounds.top.y - tileH * 0.05, tileW * 4.8, tileH * 3.6, bounds.top.y + tileH * 0.18],
+      ['rock_cluster_round', bounds.left.x - tileW * 4.58, bounds.bottom.y + tileH * 2.22, tileW * 5.2, tileH * 4.6, bounds.bottom.y + tileH * 1.12],
+      ['rock_cluster_round', bounds.right.x + tileW * 4.58, bounds.bottom.y + tileH * 2.22, tileW * 5.2, tileH * 4.6, bounds.bottom.y + tileH * 1.12],
+      ['grass_tuft_patch', bounds.centerX - tileW * 3.7, bounds.bottom.y + tileH * 0.52, tileW * 4.2, tileH * 3.6, bounds.bottom.y + tileH * 0.16],
+      ['grass_tuft_patch', bounds.centerX + tileW * 3.7, bounds.bottom.y + tileH * 0.52, tileW * 4.2, tileH * 3.6, bounds.bottom.y + tileH * 0.16],
+      ['mushroom_patch', bounds.left.x - tileW * 1.6, bounds.centerY + tileH * 2.4, tileW * 4.8, tileH * 4.2, bounds.centerY + tileH * 1.34],
+      ['stone_scatter', bounds.right.x + tileW * 1.9, bounds.centerY + tileH * 2.3, tileW * 4.8, tileH * 4.0, bounds.centerY + tileH * 1.28],
+      ['rock_cluster_round', bounds.centerX - tileW * 5.4, bounds.top.y - tileH * 0.36, tileW * 4.4, tileH * 3.8, bounds.top.y + tileH * 0.26],
+      ['rock_cluster_round', bounds.centerX + tileW * 5.4, bounds.top.y - tileH * 0.36, tileW * 4.4, tileH * 3.8, bounds.top.y + tileH * 0.26],
+      ['path_edge_piece', bounds.centerX - tileW * 2.35, bounds.centerY + tileH * 1.92, tileW * 4.6, tileH * 3.3, bounds.centerY + tileH * 1.02],
+      ['path_edge_piece', bounds.centerX + tileW * 2.35, bounds.centerY - tileH * 1.52, tileW * 4.6, tileH * 3.3, bounds.centerY - tileH * 0.54],
+      ['fence_segment', bounds.centerX - tileW * 0.96, bounds.centerY - tileH * 1.22, tileW * 3.8, tileH * 2.8, bounds.centerY - tileH * 0.34],
+      ['lantern_post', bounds.centerX + tileW * 0.92, bounds.centerY + tileH * 0.94, tileW * 2.8, tileH * 4.4, bounds.centerY + tileH * 0.36],
+      ['sign_post', bounds.centerX - tileW * 4.15, bounds.centerY + tileH * 0.62, tileW * 3.1, tileH * 4.3, bounds.centerY - tileH * 0.02],
+    ];
+    decorPieces.forEach(([frame, x, y, width, height, depth]) => {
+      this.addEnvironmentFrameSprite(
+        this.decorLayer,
+        frame as string,
+        x as number,
+        y as number,
+        width as number,
+        height as number,
+        depth as number,
+        { originY: 0.82 },
+      );
     });
   }
 
@@ -782,38 +1006,55 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedWorldFog(bounds, tileW, tileH, texture) {
+    const fogDepth = 8;
     const fogPieces = [
       {
         frame: 'edge_fog_n_01',
         x: bounds.centerX,
-        y: bounds.top.y - tileH * 3.15,
-        width: bounds.boardWidth * 1.16,
-        height: tileH * 9.8,
-        alpha: 0.22,
+        y: bounds.top.y - tileH * 3.3,
+        width: bounds.boardWidth * 2.42,
+        height: tileH * 22.4,
+        alpha: 0.42,
+      },
+      {
+        frame: 'edge_fog_n_01',
+        x: bounds.centerX - bounds.boardWidth * 0.38,
+        y: bounds.top.y - tileH * 1.3,
+        width: bounds.boardWidth * 1.24,
+        height: tileH * 16.6,
+        alpha: 0.32,
+      },
+      {
+        frame: 'edge_fog_n_01',
+        x: bounds.centerX + bounds.boardWidth * 0.38,
+        y: bounds.top.y - tileH * 1.3,
+        width: bounds.boardWidth * 1.24,
+        height: tileH * 16.6,
+        alpha: 0.32,
       },
       {
         frame: 'edge_fog_e_01',
-        x: bounds.right.x + tileW * 2.65,
-        y: bounds.centerY + tileH * 0.18,
-        width: tileW * 8.3,
-        height: bounds.boardHeight * 0.96,
-        alpha: 0.2,
+        x: bounds.right.x + tileW * 4.9,
+        y: bounds.centerY + tileH * 0.12,
+        width: tileW * 18.4,
+        height: bounds.boardHeight * 1.62,
+        alpha: 0.28,
       },
       {
         frame: 'edge_fog_s_01',
         x: bounds.centerX,
-        y: bounds.bottom.y + tileH * 3.25,
-        width: bounds.boardWidth * 1.18,
-        height: tileH * 9.8,
-        alpha: 0.24,
+        y: bounds.bottom.y + tileH * 3.85,
+        width: bounds.boardWidth * 1.88,
+        height: tileH * 15.6,
+        alpha: 0.3,
       },
       {
         frame: 'edge_fog_w_01',
-        x: bounds.left.x - tileW * 2.65,
-        y: bounds.centerY + tileH * 0.18,
-        width: tileW * 8.3,
-        height: bounds.boardHeight * 0.96,
-        alpha: 0.2,
+        x: bounds.left.x - tileW * 4.9,
+        y: bounds.centerY + tileH * 0.12,
+        width: tileW * 18.4,
+        height: bounds.boardHeight * 1.62,
+        alpha: 0.28,
       },
     ];
     fogPieces.forEach((piece) => {
@@ -823,9 +1064,131 @@ class FairyGuildScene extends Phaser.Scene {
       const fog = this.add.image(piece.x, piece.y, 'worldEdgesAtlas', piece.frame)
         .setOrigin(0.5)
         .setDisplaySize(piece.width, piece.height)
-        .setDepth(bounds.top.y - tileH - 220)
+        .setDepth(fogDepth)
         .setAlpha(piece.alpha);
-      this.worldLayer.add(fog);
+      this.backgroundLayer.add(fog);
+    });
+  }
+
+  renderGeneratedWorldBackdrop(bounds, tileW, tileH, texture) {
+    const backdropDepth = 6;
+    const backdrops = [
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX,
+        y: bounds.top.y - tileH * 1.62,
+        width: bounds.boardWidth * 2.38,
+        height: tileH * 29.4,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX - bounds.boardWidth * 0.44,
+        y: bounds.top.y - tileH * 0.58,
+        width: bounds.boardWidth * 1.28,
+        height: tileH * 20.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX + bounds.boardWidth * 0.44,
+        y: bounds.top.y - tileH * 0.58,
+        width: bounds.boardWidth * 1.28,
+        height: tileH * 20.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX - bounds.boardWidth * 0.16,
+        y: bounds.top.y - tileH * 0.02,
+        width: bounds.boardWidth * 0.96,
+        height: tileH * 15.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX + bounds.boardWidth * 0.16,
+        y: bounds.top.y - tileH * 0.02,
+        width: bounds.boardWidth * 0.96,
+        height: tileH * 15.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX,
+        y: bounds.top.y + tileH * 0.58,
+        width: bounds.boardWidth * 1.14,
+        height: tileH * 13.2,
+      },
+      {
+        frame: 'edge_backdrop_w_01',
+        x: bounds.left.x - tileW * 6.4,
+        y: bounds.centerY - tileH * 1.45,
+        width: tileW * 17.2,
+        height: bounds.boardHeight * 1.26,
+      },
+      {
+        frame: 'edge_backdrop_w_01',
+        x: bounds.left.x - tileW * 6.3,
+        y: bounds.centerY + tileH * 2.35,
+        width: tileW * 17.4,
+        height: bounds.boardHeight * 1.18,
+      },
+      {
+        frame: 'edge_backdrop_e_01',
+        x: bounds.right.x + tileW * 6.4,
+        y: bounds.centerY - tileH * 1.45,
+        width: tileW * 17.2,
+        height: bounds.boardHeight * 1.26,
+      },
+      {
+        frame: 'edge_backdrop_e_01',
+        x: bounds.right.x + tileW * 6.3,
+        y: bounds.centerY + tileH * 2.35,
+        width: tileW * 17.4,
+        height: bounds.boardHeight * 1.18,
+      },
+      {
+        frame: 'edge_backdrop_s_01',
+        x: bounds.centerX,
+        y: bounds.bottom.y + tileH * 5.1,
+        width: bounds.boardWidth * 1.96,
+        height: tileH * 18.4,
+      },
+      {
+        frame: 'edge_backdrop_nw_01',
+        x: bounds.left.x - tileW * 4.7,
+        y: bounds.top.y - tileH * 0.66,
+        width: tileW * 21.4,
+        height: tileH * 25.2,
+      },
+      {
+        frame: 'edge_backdrop_ne_01',
+        x: bounds.right.x + tileW * 4.7,
+        y: bounds.top.y - tileH * 0.66,
+        width: tileW * 21.4,
+        height: tileH * 25.2,
+      },
+      {
+        frame: 'edge_backdrop_sw_01',
+        x: bounds.left.x - tileW * 5.8,
+        y: bounds.bottom.y + tileH * 4.35,
+        width: tileW * 15.8,
+        height: tileH * 18.4,
+      },
+      {
+        frame: 'edge_backdrop_se_01',
+        x: bounds.right.x + tileW * 5.8,
+        y: bounds.bottom.y + tileH * 4.35,
+        width: tileW * 15.8,
+        height: tileH * 18.4,
+      },
+    ];
+    backdrops.forEach((piece) => {
+      if (!texture.has(piece.frame)) {
+        return;
+      }
+      const backdrop = this.add.image(piece.x, piece.y, 'worldEdgesAtlas', piece.frame)
+        .setOrigin(0.5, 0.72)
+        .setDisplaySize(piece.width, piece.height)
+        .setDepth(backdropDepth)
+        .setAlpha(1);
+      this.backgroundLayer.add(backdrop);
     });
   }
 
@@ -841,9 +1204,9 @@ class FairyGuildScene extends Phaser.Scene {
     )
       .setOrigin(0.5)
       .setDisplaySize(bounds.boardWidth * 1.18, Math.max(tileH * 9, bounds.boardHeight * 0.42))
-      .setDepth(bounds.top.y - tileH - 180)
+      .setDepth(10)
       .setAlpha(0.44);
-    this.worldLayer.add(shadow);
+    this.shadowLayer.add(shadow);
   }
 
   renderGeneratedWorldEdgeClusters() {
@@ -856,31 +1219,91 @@ class FairyGuildScene extends Phaser.Scene {
     if (!bounds) {
       return;
     }
-    const size = this.scaleGeneratedSize([318, 274]);
+    const size = this.scaleGeneratedSize([524, 454]);
     const clusters = [
       {
         frame: 'edge_cluster_nw_01',
-        x: bounds.left.x - tileW * 1.55,
-        y: bounds.top.y + tileH * 1.58,
-        depth: bounds.top.y + tileH * 0.28,
+        x: bounds.left.x - tileW * 2.9,
+        y: bounds.top.y + tileH * 1.15,
+        depth: bounds.top.y + tileH * 0.34,
       },
       {
         frame: 'edge_cluster_ne_01',
-        x: bounds.right.x + tileW * 1.55,
-        y: bounds.top.y + tileH * 1.58,
-        depth: bounds.top.y + tileH * 0.28,
+        x: bounds.right.x + tileW * 2.9,
+        y: bounds.top.y + tileH * 1.15,
+        depth: bounds.top.y + tileH * 0.34,
+      },
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.centerX - bounds.boardWidth * 0.3,
+        y: bounds.top.y - tileH * 0.08,
+        depth: bounds.top.y + tileH * 0.18,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.centerX + bounds.boardWidth * 0.3,
+        y: bounds.top.y - tileH * 0.08,
+        depth: bounds.top.y + tileH * 0.18,
+      },
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.centerX - tileW * 1.9,
+        y: bounds.top.y - tileH * 0.42,
+        depth: bounds.top.y + tileH * 0.08,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.centerX + tileW * 1.9,
+        y: bounds.top.y - tileH * 0.42,
+        depth: bounds.top.y + tileH * 0.08,
+      },
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.left.x - tileW * 4.25,
+        y: bounds.centerY - tileH * 2.75,
+        depth: bounds.centerY - tileH * 2.15,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.right.x + tileW * 4.25,
+        y: bounds.centerY - tileH * 2.75,
+        depth: bounds.centerY - tileH * 2.15,
       },
       {
         frame: 'edge_cluster_sw_01',
-        x: bounds.left.x - tileW * 1.55,
-        y: bounds.bottom.y + tileH * 2.34,
-        depth: bounds.bottom.y + tileH * 1.42,
+        x: bounds.left.x - tileW * 4.25,
+        y: bounds.centerY + tileH * 3.05,
+        depth: bounds.centerY + tileH * 2.2,
       },
       {
         frame: 'edge_cluster_se_01',
-        x: bounds.right.x + tileW * 1.55,
-        y: bounds.bottom.y + tileH * 2.34,
-        depth: bounds.bottom.y + tileH * 1.42,
+        x: bounds.right.x + tileW * 4.25,
+        y: bounds.centerY + tileH * 3.05,
+        depth: bounds.centerY + tileH * 2.2,
+      },
+      {
+        frame: 'edge_cluster_sw_01',
+        x: bounds.left.x - tileW * 2.9,
+        y: bounds.bottom.y + tileH * 3.15,
+        depth: bounds.bottom.y + tileH * 1.72,
+      },
+      {
+        frame: 'edge_cluster_se_01',
+        x: bounds.right.x + tileW * 2.9,
+        y: bounds.bottom.y + tileH * 3.15,
+        depth: bounds.bottom.y + tileH * 1.72,
+      },
+      {
+        frame: 'edge_cluster_sw_01',
+        x: bounds.centerX - bounds.boardWidth * 0.2,
+        y: bounds.bottom.y + tileH * 3.55,
+        depth: bounds.bottom.y + tileH * 1.84,
+      },
+      {
+        frame: 'edge_cluster_se_01',
+        x: bounds.centerX + bounds.boardWidth * 0.2,
+        y: bounds.bottom.y + tileH * 3.55,
+        depth: bounds.bottom.y + tileH * 1.84,
       },
     ];
     clusters.forEach((cluster) => {
@@ -892,7 +1315,7 @@ class FairyGuildScene extends Phaser.Scene {
         .setDisplaySize(size[0], size[1])
         .setDepth(cluster.depth)
         .setAlpha(0.98);
-      this.worldLayer.add(decoration);
+      this.decorLayer.add(decoration);
     });
   }
 
@@ -1602,7 +2025,7 @@ class FairyGuildScene extends Phaser.Scene {
     }
 
     this.controlsHint?.setVisible(false);
-    const container = this.add.container(0, 0).setDepth(7700);
+    const container = this.add.container(0, 0).setDepth(7700).setScrollFactor(0);
     const joystickCenter = { x: 132, y: HEIGHT - 118 };
     const joystickZone = this.add.zone(joystickCenter.x, joystickCenter.y, 190, 190)
       .setOrigin(0.5)
@@ -1633,6 +2056,7 @@ class FairyGuildScene extends Phaser.Scene {
 
     const portraitOverlay = this.createPortraitOverlay();
     container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons)]);
+    this.touchLayer.add([container, portraitOverlay]);
     this.touchControls = {
       container,
       joystickBase,
@@ -1691,7 +2115,7 @@ class FairyGuildScene extends Phaser.Scene {
     icon: TouchActionIcon,
     color: number,
   ) {
-    const button = this.add.container(x, y);
+    const button = this.add.container(x, y).setScrollFactor(0);
     const hit = this.add.zone(0, 0, 78, 82)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
@@ -1717,7 +2141,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createPortraitOverlay() {
-    const overlay = this.add.container(0, 0).setDepth(7950).setVisible(false);
+    const overlay = this.add.container(0, 0).setDepth(7950).setVisible(false).setScrollFactor(0);
     const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x17344f, 0.76);
     const panel = this.add.graphics();
     panel.fillStyle(0xfff7df, 0.96);
