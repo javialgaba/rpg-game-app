@@ -1,6 +1,6 @@
 const worldSheet = 'public/assets/world-ui-sheet.png';
 const generatedUiSheet = 'public/assets/atlas-sources/generated/ui-touch-hud.png';
-const generatedSourceDir = 'public/assets/atlas-sources/generated';
+const generatedIslandSheet = 'public/assets/atlas-sources/generated/island-border-sheet.png';
 
 export const atlasManifest = {
   worldTiles: {
@@ -21,8 +21,15 @@ export const atlasManifest = {
       { name: 'fence_01', source: worldSheet, crop: [1223, 414, 144, 143], padding: 36, align: 'bottom' },
       { name: 'sign_01', source: worldSheet, crop: [1373, 377, 120, 193], padding: 34, align: 'bottom' },
       { name: 'chest_closed_01', source: worldSheet, crop: [1018, 809, 183, 180], padding: 34, align: 'bottom' },
-      { name: 'island_border_01', source: `${generatedSourceDir}/island_border_source.png`, padding: 8, align: 'center' },
-      { name: 'island_corner_01', source: `${generatedSourceDir}/island_corner_source.png`, padding: 8, align: 'center' },
+      { name: 'island_edge_nw_01', source: generatedIslandSheet, crop: [50, 108, 380, 286], padding: 8, align: 'center' },
+      { name: 'island_corner_n_01', source: generatedIslandSheet, crop: [516, 168, 224, 180], padding: 8, align: 'center' },
+      { name: 'island_edge_ne_01', source: generatedIslandSheet, crop: [824, 108, 392, 286], padding: 8, align: 'center' },
+      { name: 'island_corner_w_01', source: generatedIslandSheet, crop: [142, 514, 156, 236], padding: 8, align: 'center' },
+      { name: 'island_shadow_01', source: generatedIslandSheet, crop: [438, 558, 380, 132], padding: 8, align: 'center' },
+      { name: 'island_corner_e_01', source: generatedIslandSheet, crop: [956, 514, 164, 236], padding: 8, align: 'center' },
+      { name: 'island_edge_sw_01', source: generatedIslandSheet, crop: [50, 846, 386, 314], padding: 8, align: 'center' },
+      { name: 'island_corner_s_01', source: generatedIslandSheet, crop: [520, 936, 216, 178], padding: 8, align: 'center' },
+      { name: 'island_edge_se_01', source: generatedIslandSheet, crop: [824, 846, 400, 314], padding: 8, align: 'center' },
     ],
   },
   buildings: {
@@ -125,8 +132,15 @@ export const requiredFrames = {
     'fence_01',
     'sign_01',
     'chest_closed_01',
-    'island_border_01',
-    'island_corner_01',
+    'island_edge_ne_01',
+    'island_edge_nw_01',
+    'island_edge_se_01',
+    'island_edge_sw_01',
+    'island_corner_n_01',
+    'island_corner_e_01',
+    'island_corner_s_01',
+    'island_corner_w_01',
+    'island_shadow_01',
   ],
   buildings: ['castle_01', 'house_orange_01', 'bakery_blue_01', 'market_01', 'well_01'],
   ui: [

@@ -725,27 +725,94 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel || !this.textures.exists('worldTilesAtlas')) {
       return;
     }
-    const { tileH } = this.getIsoMetrics();
+    const texture = this.textures.get('worldTilesAtlas');
+    const { tileW, tileH } = this.getIsoMetrics();
+    this.renderGeneratedIslandShadow(tileW, tileH);
     this.generatedLevel.terrain.forEach((placement) => {
       if (!this.isGeneratedBoardEdgeCell(placement.grid)) {
         return;
       }
-      const isCorner = (placement.grid.x === 0 || placement.grid.x === this.generatedLevel.width - 1)
-        && (placement.grid.y === 0 || placement.grid.y === this.generatedLevel.height - 1);
+      const frame = this.getGeneratedIslandBorderFrame(placement.grid);
+      if (!frame || !texture.has(frame)) {
+        return;
+      }
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
-      const size = this.scaleGeneratedSize(isCorner ? [172, 172] : [184, 184]);
+      const offset = this.getGeneratedIslandBorderOffset(placement.grid, tileW, tileH);
+      const isCorner = frame.includes('corner');
+      const size = this.scaleGeneratedSize(isCorner ? [158, 132] : [190, 124]);
       const border = this.add.image(
-        center.x,
-        center.y + tileH * 0.22,
+        center.x + offset.x,
+        center.y + offset.y,
         'worldTilesAtlas',
-        isCorner ? 'island_corner_01' : 'island_border_01',
+        frame,
       )
-        .setOrigin(0.5, 0.62)
+        .setOrigin(0.5, 0.35)
         .setDisplaySize(size[0], size[1])
-        .setDepth(center.y - tileH - 18)
+        .setDepth(center.y - tileH - 28)
         .setAlpha(1);
       this.worldLayer.add(border);
     });
+  }
+
+  renderGeneratedIslandShadow(tileW, tileH) {
+    if (!this.generatedLevel) {
+      return;
+    }
+    const texture = this.textures.get('worldTilesAtlas');
+    if (!texture.has('island_shadow_01')) {
+      return;
+    }
+    const topCenter = this.isoToScreen(0, 0);
+    const rightCenter = this.isoToScreen(this.generatedLevel.width - 1, 0);
+    const bottomCenter = this.isoToScreen(this.generatedLevel.width - 1, this.generatedLevel.height - 1);
+    const leftCenter = this.isoToScreen(0, this.generatedLevel.height - 1);
+    const boardWidth = Math.abs(rightCenter.x - leftCenter.x) + tileW * 2.2;
+    const boardHeight = Math.abs(bottomCenter.y - topCenter.y) + tileH * 2;
+    const shadow = this.add.image(
+      (leftCenter.x + rightCenter.x) / 2,
+      bottomCenter.y + tileH * 1.18,
+      'worldTilesAtlas',
+      'island_shadow_01',
+    )
+      .setOrigin(0.5)
+      .setDisplaySize(boardWidth, Math.max(tileH * 7.5, boardHeight * 0.34))
+      .setDepth(topCenter.y - tileH - 90)
+      .setAlpha(0.34);
+    this.worldLayer.add(shadow);
+  }
+
+  getGeneratedIslandBorderFrame(grid) {
+    if (!this.generatedLevel) {
+      return null;
+    }
+    const maxX = this.generatedLevel.width - 1;
+    const maxY = this.generatedLevel.height - 1;
+    if (grid.x === 0 && grid.y === 0) {return 'island_corner_n_01';}
+    if (grid.x === maxX && grid.y === 0) {return 'island_corner_e_01';}
+    if (grid.x === maxX && grid.y === maxY) {return 'island_corner_s_01';}
+    if (grid.x === 0 && grid.y === maxY) {return 'island_corner_w_01';}
+    if (grid.y === 0) {return 'island_edge_nw_01';}
+    if (grid.x === maxX) {return 'island_edge_ne_01';}
+    if (grid.y === maxY) {return 'island_edge_se_01';}
+    if (grid.x === 0) {return 'island_edge_sw_01';}
+    return null;
+  }
+
+  getGeneratedIslandBorderOffset(grid, tileW, tileH) {
+    if (!this.generatedLevel) {
+      return { x: 0, y: 0 };
+    }
+    const maxX = this.generatedLevel.width - 1;
+    const maxY = this.generatedLevel.height - 1;
+    if (grid.x === 0 && grid.y === 0) {return { x: 0, y: tileH * 0.34 };}
+    if (grid.x === maxX && grid.y === 0) {return { x: tileW * 0.24, y: tileH * 0.52 };}
+    if (grid.x === maxX && grid.y === maxY) {return { x: 0, y: tileH * 0.86 };}
+    if (grid.x === 0 && grid.y === maxY) {return { x: -tileW * 0.24, y: tileH * 0.52 };}
+    if (grid.y === 0) {return { x: tileW * 0.12, y: tileH * 0.22 };}
+    if (grid.x === maxX) {return { x: tileW * 0.18, y: tileH * 0.54 };}
+    if (grid.y === maxY) {return { x: -tileW * 0.12, y: tileH * 0.82 };}
+    if (grid.x === 0) {return { x: -tileW * 0.18, y: tileH * 0.54 };}
+    return { x: 0, y: 0 };
   }
 
   isGeneratedBoardEdgeCell(grid) {

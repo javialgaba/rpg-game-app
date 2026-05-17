@@ -11,40 +11,8 @@ const repoRoot = process.cwd();
 const resolvePath = (filePath) => path.resolve(repoRoot, filePath);
 const generatedSourceDir = 'public/assets/atlas-sources/generated';
 
-const makeSvg = (body) => (
-  `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">${body}</svg>`
-);
-
 const ensureGeneratedSourceAssets = async () => {
   await fs.mkdir(resolvePath(generatedSourceDir), { recursive: true });
-  const sources = {
-    'island_border_source.png': makeSvg(`
-      <ellipse cx="160" cy="226" rx="116" ry="28" fill="#2e5a3d" opacity=".18"/>
-      <path d="M40 126 L160 66 L280 126 L160 194 Z" fill="#83c94a"/>
-      <path d="M52 128 L160 77 L268 128 L160 181 Z" fill="#a8df5f"/>
-      <path d="M40 126 L160 194 L160 238 L40 168 Z" fill="#8b5a30"/>
-      <path d="M280 126 L160 194 L160 238 L280 168 Z" fill="#6d4328"/>
-      <path d="M40 126 L160 194 L280 126" fill="none" stroke="#4d7b39" stroke-width="5" stroke-linejoin="round"/>
-      <path d="M47 166 L160 229 L273 166" fill="none" stroke="#54331f" stroke-width="4" opacity=".65"/>
-      <circle cx="96" cy="121" r="5" fill="#d8e574"/>
-      <circle cx="218" cy="128" r="4" fill="#f1e9a0"/>
-      <circle cx="132" cy="102" r="3" fill="#f7f6d3"/>
-    `),
-    'island_corner_source.png': makeSvg(`
-      <ellipse cx="160" cy="230" rx="98" ry="25" fill="#2e5a3d" opacity=".16"/>
-      <path d="M72 126 L160 78 L248 126 L160 178 Z" fill="#a8df5f"/>
-      <path d="M72 126 L160 178 L160 232 L72 172 Z" fill="#8b5a30"/>
-      <path d="M248 126 L160 178 L160 232 L248 172 Z" fill="#6d4328"/>
-      <path d="M72 126 L160 178 L248 126" fill="none" stroke="#4d7b39" stroke-width="5" stroke-linejoin="round"/>
-      <path d="M88 171 L160 218 L232 171" fill="none" stroke="#54331f" stroke-width="4" opacity=".65"/>
-      <circle cx="126" cy="118" r="5" fill="#d8e574"/>
-      <circle cx="189" cy="117" r="4" fill="#f1e9a0"/>
-    `),
-  };
-
-  await Promise.all(Object.entries(sources).map(([filename, svg]) => (
-    sharp(Buffer.from(svg)).png().toFile(resolvePath(`${generatedSourceDir}/${filename}`))
-  )));
 };
 
 const getAlphaBounds = async (image) => {

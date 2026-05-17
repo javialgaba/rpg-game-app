@@ -203,7 +203,7 @@ The project-bound assets were generated with Image Gen / GPT Image 2 and copied 
 
 Atlas split rules:
 
-- `world_tiles_atlas`: terrain, full world props, chests, and island-edge/border frames.
+- `world_tiles_atlas`: terrain, full world props, chests, and directional island side-wall/corner/shadow frames.
 - `buildings_atlas`: castle, houses, market, bakery, and well frames.
 - `ui_atlas`: square gameplay and inventory icons only.
 - `touch_controls_atlas`: touch button icons only, used by the Phaser mobile overlay.
