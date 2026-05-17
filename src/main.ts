@@ -123,7 +123,10 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
-    this.load.image('worldSheet', '/assets/world-ui-sheet.png');
+    this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
+    this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
+    this.load.atlas('uiAtlas', '/assets/ui_atlas.png', '/assets/ui_atlas.json');
+    this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
   }
 
   create() {
@@ -131,7 +134,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.createAudio();
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
     this.registerSheetFrames('monsterSheet', 8, 5, 'monster');
-    this.registerSheetFrames('worldSheet', 6, 4, 'world');
     this.registerUiArtFrames();
     this.createGeneratedTextures();
 
@@ -278,27 +280,6 @@ class FairyGuildScene extends Phaser.Scene {
     addFrame(status, 'panel', 34, 310, 1764, 250);
     const notes = this.textures.get('guildNotesUI');
     addFrame(notes, 'panel', 94, 126, 1352, 770);
-    const world = this.textures.get('worldSheet');
-    addFrame(world, 'world-grass-tile', 0, 44, 190, 210);
-    addFrame(world, 'world-path-tile', 196, 72, 205, 190);
-    addFrame(world, 'world-garden-tile', 410, 58, 206, 196);
-    addFrame(world, 'world-forest-cluster', 624, 12, 180, 244);
-    addFrame(world, 'world-castle', 764, 0, 270, 280);
-    addFrame(world, 'world-house-orange', 1020, 50, 250, 240);
-    addFrame(world, 'world-bakery-blue', 1260, 50, 276, 240);
-    addFrame(world, 'world-market', 4, 282, 252, 274);
-    addFrame(world, 'world-well', 268, 300, 174, 252);
-    addFrame(world, 'world-lamp', 438, 302, 92, 250);
-    addFrame(world, 'world-tree-oak', 536, 260, 254, 294);
-    addFrame(world, 'world-pine', 790, 282, 138, 248);
-    addFrame(world, 'world-pine-full', 772, 276, 190, 302);
-    addFrame(world, 'world-magic-plant', 920, 320, 150, 220);
-    addFrame(world, 'world-mushroom', 1068, 340, 150, 190);
-    addFrame(world, 'world-fence', 1190, 318, 172, 188);
-    addFrame(world, 'world-sign', 1350, 288, 176, 220);
-    addFrame(world, 'level-sword-icon', 28, 611, 136, 134);
-    addFrame(world, 'level-bow-icon', 330, 611, 133, 134);
-    addFrame(world, 'level-spell-icon', 479, 611, 135, 135);
   }
 
   createGeneratedTextures() {
@@ -705,12 +686,24 @@ class FairyGuildScene extends Phaser.Scene {
     }
     const { tileW, tileH } = this.getIsoMetrics();
     this.generatedLevel.terrain.forEach((placement) => {
-      if (this.isGeneratedBoardEdgeCell(placement.grid)) {
+      const center = this.isoToScreen(placement.iso.x, placement.iso.y);
+      const render = placement.render ?? {};
+      const texture = render.textureKey ? this.textures.get(render.textureKey) : null;
+      if (render.textureKey && texture && (!render.frameKey || texture.has(render.frameKey))) {
+        const size = this.scaleGeneratedSize(render.displaySize ?? [160, 160]);
+        const sprite = this.add.image(center.x, center.y, render.textureKey, render.frameKey)
+          .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.62)
+          .setDisplaySize(size[0], size[1])
+          .setDepth(center.y - tileH)
+          .setAlpha(1);
+        if (this.generatedTerrainMask) {
+          sprite.setMask(this.generatedTerrainMask);
+        }
+        this.worldLayer.add(sprite);
         return;
       }
-      const center = this.isoToScreen(placement.iso.x, placement.iso.y);
-      const fill = placement.render?.terrainFill ?? COLORS.grassA;
-      const stroke = placement.render?.terrainStroke ?? 0x5dbb65;
+      const fill = render.terrainFill ?? COLORS.grassA;
+      const stroke = render.terrainStroke ?? 0x5dbb65;
       this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, 1, 0);
     });
     this.createPathStones();
@@ -2155,8 +2148,10 @@ class FairyGuildScene extends Phaser.Scene {
 
   spawnChest(x, y, reward = 'gold') {
     const p = this.isoToScreen(x, y, 10);
-    const chestSize = this.generatedLevelActive ? this.scaleGeneratedSize([58, 58]) : [58, 58];
-    const sprite = this.add.image(p.x, p.y, 'chestTexture')
+    const chestTexture = this.generatedLevelActive ? 'worldTilesAtlas' : 'chestTexture';
+    const chestFrame = this.generatedLevelActive ? 'chest_closed_01' : undefined;
+    const chestSize = this.generatedLevelActive ? this.scaleGeneratedSize([101, 103]) : [58, 58];
+    const sprite = this.add.image(p.x, p.y, chestTexture, chestFrame)
       .setOrigin(0.5, 0.78)
       .setDisplaySize(chestSize[0], chestSize[1])
       .setDepth(p.y + 60);
@@ -3265,7 +3260,7 @@ class FairyGuildScene extends Phaser.Scene {
         key: 'melee',
         label: 'Melee Damage',
         detail: '+1 sword power',
-        icon: { texture: 'worldSheet', frame: 'level-sword-icon' },
+        icon: { texture: 'uiAtlas', frame: 'sword_icon_01' },
         stat: 'swordPower',
         color: 0xf4bc3f,
         stageColor: 0xb94136,
@@ -3279,7 +3274,7 @@ class FairyGuildScene extends Phaser.Scene {
         key: 'range',
         label: 'Range Damage',
         detail: '+1 bow power',
-        icon: { texture: 'worldSheet', frame: 'level-bow-icon' },
+        icon: { texture: 'uiAtlas', frame: 'bow_icon_01' },
         stat: 'bowPower',
         color: 0x72c96d,
         stageColor: 0x397f4a,
@@ -3293,7 +3288,7 @@ class FairyGuildScene extends Phaser.Scene {
         key: 'magic',
         label: 'Magic Damage',
         detail: '+1 spell power',
-        icon: { texture: 'worldSheet', frame: 'level-spell-icon' },
+        icon: { texture: 'uiAtlas', frame: 'spell_icon_01' },
         stat: 'spellPower',
         color: 0x6cc5ff,
         stageColor: 0x3267c9,

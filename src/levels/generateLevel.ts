@@ -16,9 +16,9 @@ import { SeededRandom } from './seededRandom';
 
 const PROTECTED_EDGE_PADDING = 4;
 const MIN_SPAWN_TARGET_PATH = 10;
-const FULL_TREE_FRAMES = new Set(['world-pine-full', 'world-tree-oak']);
+const FULL_TREE_FRAMES = new Set(['pine_tree_01', 'oak_tree_01']);
 const PARTIAL_TREE_FRAMES = new Set(['world-forest-cluster', 'world-pine']);
-const VALID_TERRAIN_FRAMES = new Set(['world-grass-tile', 'world-path-tile', 'world-garden-tile']);
+const VALID_TERRAIN_FRAMES = new Set(['grass_01', 'grass_02', 'stone_path_01', 'flower_bed_01']);
 
 const clonePoint = (point: GridPoint) => ({ x: point.x, y: point.y });
 
@@ -135,7 +135,7 @@ const getTerrainEntry = (entry: AssetRegistryEntry, registry: AssetRegistry) => 
     return registry.P;
   }
   if (entry.token === 'D') {
-    return registry.G;
+    return registry.D;
   }
   if (entry.token === 'SP') {
     return registry.SP;
@@ -424,67 +424,67 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   };
 
   const mushroomRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-mushroom',
-    displaySize: [46, 42],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'mushroom_cluster_01',
+    displaySize: [131, 99],
     origin: [0.5, 0.84],
-    alpha: 0.86,
+    alpha: 1,
     z: 7,
   };
   const magicPlantRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-magic-plant',
-    displaySize: [44, 62],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'magic_plant_01',
+    displaySize: [119, 115],
     origin: [0.5, 0.86],
-    alpha: 0.82,
+    alpha: 1,
     z: 8,
   };
   const saplingRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-pine-full',
-    displaySize: [68, 102],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'pine_tree_01',
+    displaySize: [168, 144],
     origin: [0.5, 0.84],
-    alpha: 0.82,
+    alpha: 1,
     z: 11,
   };
   const fullTreeRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-pine-full',
-    displaySize: [82, 124],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'pine_tree_01',
+    displaySize: [204, 175],
     origin: [0.5, 0.84],
-    alpha: 0.86,
+    alpha: 1,
     z: 12,
   };
   const oakTreeRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-tree-oak',
-    displaySize: [106, 122],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'oak_tree_01',
+    displaySize: [135, 140],
     origin: [0.5, 0.84],
-    alpha: 0.84,
+    alpha: 1,
     z: 12,
   };
   const lampRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-lamp',
-    displaySize: [30, 70],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'lamp_01',
+    displaySize: [135, 101],
     origin: [0.5, 0.86],
-    alpha: 0.86,
+    alpha: 1,
     z: 9,
   };
   const fenceRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-fence',
-    displaySize: [70, 46],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'fence_01',
+    displaySize: [156, 103],
     origin: [0.5, 0.82],
-    alpha: 0.84,
+    alpha: 1,
     z: 8,
   };
   const signRender: AssetRenderMetadata = {
-    textureKey: 'worldSheet',
-    frameKey: 'world-sign',
-    displaySize: [54, 64],
+    textureKey: 'worldTilesAtlas',
+    frameKey: 'sign_01',
+    displaySize: [144, 106],
     origin: [0.5, 0.86],
-    alpha: 0.86,
+    alpha: 1,
     z: 9,
   };
 

@@ -63,7 +63,7 @@ Buildings keep their damage between levels. Press `T` to ready the Repair Kit, t
 
 Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
 
-The procedural level foundation lives in `src/levels/`. Procedural maps are now the default game map on every fresh start. The default village is a larger 19x19 designer-authored matrix with `tileSize: 54`, a two-cell forest buffer, edge-only `SP` spawn cells, and protected buildings placed away from the border. `?generatedLevel=festival-village` renders a second catalog level using the same larger layout rules, while `?staticMap=1` temporarily restores the older painted board for comparison. Level catalog entries live in `levelCatalog.ts`; designers can also preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. Generated maps honor `tileSize` by scaling the isometric diamond spacing and generated object art while leaving the static painted board path unchanged. The generator validates edge spawns, protected-building edge padding, and spawn-to-target path length, then adds deterministic nonblocking flowers, mushrooms, saplings, sparkles, and magical plants around designer-authored structure. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, validation routes, chests, decorations, and live enemy paths. The `B` balance panel also shows defeat quota progress, pending spawns, live target counts, tile metrics, and route scores so designers can see why monsters prefer a building. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
+The procedural level foundation lives in `src/levels/`. Procedural maps are now the default game map on every fresh start. The default village is a larger 19x19 designer-authored matrix with `tileSize: 44`, a two-cell forest buffer, edge-only `SP` spawn cells, and protected buildings placed away from the border. `?generatedLevel=festival-village` renders a second catalog level using the same larger layout rules, while `?staticMap=1` temporarily restores the older painted board for comparison. Level catalog entries live in `levelCatalog.ts`; designers can also preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. Generated maps honor `tileSize` by scaling the isometric diamond spacing and generated object art while leaving the static painted board path unchanged. The generator validates edge spawns, protected-building edge padding, and spawn-to-target path length, then adds deterministic nonblocking flowers, mushrooms, saplings, sparkles, and magical plants around designer-authored structure. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, validation routes, chests, decorations, and live enemy paths. The `B` balance panel also shows defeat quota progress, pending spawns, live target counts, tile metrics, and route scores so designers can see why monsters prefer a building. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
 
 ## Getting Started
 
@@ -111,6 +111,13 @@ npm run lint
 npm run build
 ```
 
+Rebuild or validate the fixed-cell atlas assets:
+
+```bash
+npm run build:atlases
+npm run validate:atlases
+```
+
 Run the local test server script:
 
 ```bash
@@ -134,6 +141,10 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |   `-- base-prompt.md
 |-- public/
 |   `-- assets/
+|       |-- buildings_atlas.json
+|       |-- buildings_atlas.png
+|       |-- effects_atlas.json
+|       |-- effects_atlas.png
 |       |-- game-over-ui.png
 |       |-- game-over-ui-source.png
 |       |-- guild-notes-ui.png
@@ -147,7 +158,11 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- repair-tool.png
 |       |-- repair-tool-source.png
 |       |-- status-panel-ui.png
+|       |-- ui_atlas.json
+|       |-- ui_atlas.png
 |       |-- village-board.png
+|       |-- world_tiles_atlas.json
+|       |-- world_tiles_atlas.png
 |       |-- world-ui-sheet.png
 |       `-- world-ui-sheet-source.png
 |-- src/
@@ -167,13 +182,16 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |-- package.json
 |-- eslint.config.js
 |-- tsconfig.json
+|-- tools/
+|   |-- atlas-manifest.mjs
+|   `-- build-atlases.mjs
 |-- vercel.json
 `-- README.md
 ```
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current game uses the generated village board as the main scene backdrop, generated hero and monster sheets for characters, generated `status-panel-ui.png` and `guild-notes-ui-transparent.png` HUD frames, a standalone transparent `repair-tool.png` sprite, and generated textless `level-up-ui.png` and `game-over-ui.png` panels.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `buildings_atlas`, `ui_atlas`, and `effects_atlas`. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Large panel art remains standalone: generated `status-panel-ui.png`, `guild-notes-ui-transparent.png`, textless `level-up-ui.png`, and `game-over-ui.png`.
 
 Composable asset rule: keep UI panels textless and transparent. Swappable sprites, labels, hit areas, progress bars, live values, and colored card stages should remain Phaser-owned layers so future sprite swaps do not require regenerating panel art.
 
