@@ -30,6 +30,7 @@ export default [
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
+        Buffer: 'readonly',
         console: 'readonly',
         process: 'readonly',
       },

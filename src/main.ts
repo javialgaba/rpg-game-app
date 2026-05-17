@@ -36,6 +36,7 @@ import {
 } from './gameConfig';
 
 type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'use' | 'inventory';
+type TouchActionIcon = { texture: string; frame?: string } | null;
 
 interface TouchControlsState {
   container: Phaser.GameObjects.Container;
@@ -126,6 +127,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
     this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
     this.load.atlas('uiAtlas', '/assets/ui_atlas.png', '/assets/ui_atlas.json');
+    this.load.atlas('touchControlsAtlas', '/assets/touch_controls_atlas.png', '/assets/touch_controls_atlas.json');
+    this.load.atlas('hudUiAtlas', '/assets/hud_ui_atlas.png', '/assets/hud_ui_atlas.json');
+    this.load.atlas('hudBarsAtlas', '/assets/hud_bars_atlas.png', '/assets/hud_bars_atlas.json');
     this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
   }
 
@@ -685,6 +689,7 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     const { tileW, tileH } = this.getIsoMetrics();
+    this.renderGeneratedIslandBorder();
     this.generatedLevel.terrain.forEach((placement) => {
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
       const render = placement.render ?? {};
@@ -696,9 +701,6 @@ class FairyGuildScene extends Phaser.Scene {
           .setDisplaySize(size[0], size[1])
           .setDepth(center.y - tileH)
           .setAlpha(1);
-        if (this.generatedTerrainMask) {
-          sprite.setMask(this.generatedTerrainMask);
-        }
         this.worldLayer.add(sprite);
         return;
       }
@@ -717,6 +719,33 @@ class FairyGuildScene extends Phaser.Scene {
       }
     });
     this.generatedLevel.decorations.forEach((placement) => this.renderGeneratedDecoration(placement));
+  }
+
+  renderGeneratedIslandBorder() {
+    if (!this.generatedLevel || !this.textures.exists('worldTilesAtlas')) {
+      return;
+    }
+    const { tileH } = this.getIsoMetrics();
+    this.generatedLevel.terrain.forEach((placement) => {
+      if (!this.isGeneratedBoardEdgeCell(placement.grid)) {
+        return;
+      }
+      const isCorner = (placement.grid.x === 0 || placement.grid.x === this.generatedLevel.width - 1)
+        && (placement.grid.y === 0 || placement.grid.y === this.generatedLevel.height - 1);
+      const center = this.isoToScreen(placement.iso.x, placement.iso.y);
+      const size = this.scaleGeneratedSize(isCorner ? [172, 172] : [184, 184]);
+      const border = this.add.image(
+        center.x,
+        center.y + tileH * 0.22,
+        'worldTilesAtlas',
+        isCorner ? 'island_corner_01' : 'island_border_01',
+      )
+        .setOrigin(0.5, 0.62)
+        .setDisplaySize(size[0], size[1])
+        .setDepth(center.y - tileH - 18)
+        .setAlpha(1);
+      this.worldLayer.add(border);
+    });
   }
 
   isGeneratedBoardEdgeCell(grid) {
@@ -1403,19 +1432,19 @@ class FairyGuildScene extends Phaser.Scene {
     const buttons = {} as Record<TouchActionKey, Phaser.GameObjects.Container>;
 
     [
-      ['melee', WIDTH - 230, HEIGHT - 124, 'Sword', 'swordIconTexture', 0xf2bf52],
-      ['bow', WIDTH - 150, HEIGHT - 170, 'Bow', 'bowIconTexture', 0x8fd56c],
-      ['spell', WIDTH - 70, HEIGHT - 124, 'Spell', 'spellIconTexture', 0x75d8ff],
-      ['use', WIDTH - 230, HEIGHT - 64, 'Use', 'chestTexture', 0xffcf75],
-      ['repair', WIDTH - 150, HEIGHT - 64, 'Fix', 'repairTool', 0x9fe9bf],
-      ['inventory', WIDTH - 70, HEIGHT - 64, 'Bag', null, 0xd7b9ff],
+      ['melee', WIDTH - 230, HEIGHT - 124, 'Sword', { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }, 0xf2bf52],
+      ['bow', WIDTH - 150, HEIGHT - 170, 'Bow', { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }, 0x8fd56c],
+      ['spell', WIDTH - 70, HEIGHT - 124, 'Spell', { texture: 'touchControlsAtlas', frame: 'touch_spell_01' }, 0x75d8ff],
+      ['use', WIDTH - 230, HEIGHT - 64, 'Use', { texture: 'touchControlsAtlas', frame: 'touch_use_01' }, 0xffcf75],
+      ['repair', WIDTH - 150, HEIGHT - 64, 'Fix', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
+      ['inventory', WIDTH - 70, HEIGHT - 64, 'Bag', { texture: 'touchControlsAtlas', frame: 'touch_inventory_01' }, 0xd7b9ff],
     ].forEach(([action, x, y, label, icon, color]) => {
       buttons[action as TouchActionKey] = this.createTouchActionButton(
         action as TouchActionKey,
         x as number,
         y as number,
         label as string,
-        icon as string | null,
+        icon as TouchActionIcon,
         color as number,
       );
     });
@@ -1477,32 +1506,31 @@ class FairyGuildScene extends Phaser.Scene {
     x: number,
     y: number,
     label: string,
-    icon: string | null,
+    icon: TouchActionIcon,
     color: number,
   ) {
     const button = this.add.container(x, y);
-    const hit = this.add.zone(0, 0, 72, 72)
+    const hit = this.add.zone(0, 0, 78, 82)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    const bg = this.add.circle(0, 0, 31, 0x24364a, 0.72)
-      .setStrokeStyle(3, color, 0.92);
-    const shine = this.add.circle(-8, -9, 8, 0xffffff, 0.2);
-    const labelText = this.add.text(0, 27, label, {
+    const labelText = this.add.text(0, 34, label, {
       ...this.uiTextStyle(10, '#ffffff'),
       strokeThickness: 3,
     }).setOrigin(0.5);
     const glyph = icon
-      ? this.add.image(0, -4, icon).setDisplaySize(action === 'repair' ? 34 : 30, action === 'repair' ? 34 : 30)
+      ? this.add.image(0, -3, icon.texture, icon.frame).setDisplaySize(70, 70)
       : this.add.text(0, -5, 'I', {
         ...this.uiTextStyle(24, '#fff0b8'),
         strokeThickness: 4,
       }).setOrigin(0.5);
+    const focusRing = this.add.circle(0, -3, 34, 0xffffff, 0)
+      .setStrokeStyle(2, color, 0.28);
     hit.on('pointerdown', () => {
       this.ensureAudio();
       this.pulseTouchButton(button);
       this.handleTouchAction(action);
     });
-    button.add([hit, bg, shine, glyph, labelText]);
+    button.add([hit, focusRing, glyph, labelText]);
     return button;
   }
 

@@ -1,6 +1,6 @@
 {
   "frames": {
-    "sword_icon_01": {
+    "touch_sword_01": {
       "frame": {
         "x": 0,
         "y": 0,
@@ -20,7 +20,7 @@
         "h": 256
       }
     },
-    "magic_blade_icon_01": {
+    "touch_bow_01": {
       "frame": {
         "x": 256,
         "y": 0,
@@ -40,7 +40,7 @@
         "h": 256
       }
     },
-    "bow_icon_01": {
+    "touch_spell_01": {
       "frame": {
         "x": 512,
         "y": 0,
@@ -60,27 +60,7 @@
         "h": 256
       }
     },
-    "spell_icon_01": {
-      "frame": {
-        "x": 768,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "shield_icon_01": {
+    "touch_use_01": {
       "frame": {
         "x": 0,
         "y": 256,
@@ -100,7 +80,7 @@
         "h": 256
       }
     },
-    "boot_icon_01": {
+    "touch_repair_01": {
       "frame": {
         "x": 256,
         "y": 256,
@@ -120,70 +100,10 @@
         "h": 256
       }
     },
-    "empty_slot_01": {
+    "touch_inventory_01": {
       "frame": {
         "x": 512,
         "y": 256,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "chest_icon_01": {
-      "frame": {
-        "x": 768,
-        "y": 256,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "repair_icon_01": {
-      "frame": {
-        "x": 0,
-        "y": 512,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "inventory_icon_01": {
-      "frame": {
-        "x": 256,
-        "y": 512,
         "w": 256,
         "h": 256
       },
@@ -203,11 +123,11 @@
   },
   "meta": {
     "app": "fairy-guild-defense atlas builder",
-    "image": "ui_atlas.png",
+    "image": "touch_controls_atlas.png",
     "format": "RGBA8888",
     "size": {
-      "w": 1024,
-      "h": 768
+      "w": 768,
+      "h": 512
     },
     "scale": "1"
   }

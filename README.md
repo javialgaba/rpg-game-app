@@ -141,6 +141,8 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |   `-- base-prompt.md
 |-- public/
 |   `-- assets/
+|       |-- atlas-sources/
+|       |   `-- generated/
 |       |-- buildings_atlas.json
 |       |-- buildings_atlas.png
 |       |-- effects_atlas.json
@@ -151,6 +153,10 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- guild-notes-ui-transparent.png
 |       |-- hero-sheet.png
 |       |-- hero-sheet-source.png
+|       |-- hud_bars_atlas.json
+|       |-- hud_bars_atlas.png
+|       |-- hud_ui_atlas.json
+|       |-- hud_ui_atlas.png
 |       |-- level-up-ui.png
 |       |-- level-up-ui-source.png
 |       |-- monster-pickup-sheet.png
@@ -158,6 +164,8 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- repair-tool.png
 |       |-- repair-tool-source.png
 |       |-- status-panel-ui.png
+|       |-- touch_controls_atlas.json
+|       |-- touch_controls_atlas.png
 |       |-- ui_atlas.json
 |       |-- ui_atlas.png
 |       |-- village-board.png
@@ -191,7 +199,19 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `buildings_atlas`, `ui_atlas`, and `effects_atlas`. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Large panel art remains standalone: generated `status-panel-ui.png`, `guild-notes-ui-transparent.png`, textless `level-up-ui.png`, and `game-over-ui.png`.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png` and its transparent `ui-touch-hud.png` cutout sheet.
+
+Atlas split rules:
+
+- `world_tiles_atlas`: terrain, full world props, chests, and island-edge/border frames.
+- `buildings_atlas`: castle, houses, market, bakery, and well frames.
+- `ui_atlas`: square gameplay and inventory icons only.
+- `touch_controls_atlas`: touch button icons only, used by the Phaser mobile overlay.
+- `hud_ui_atlas`: square/compact HUD badges such as coin, crown, and repair tool.
+- `hud_bars_atlas`: long HUD bar frames only, with a separate fixed rectangular cell size.
+- `effects_atlas`: smoke, sparkles, arrows, magic splashes, and shield glows.
+
+Large panel art remains standalone: generated `status-panel-ui.png`, `guild-notes-ui-transparent.png`, textless `level-up-ui.png`, and `game-over-ui.png`.
 
 Composable asset rule: keep UI panels textless and transparent. Swappable sprites, labels, hit areas, progress bars, live values, and colored card stages should remain Phaser-owned layers so future sprite swaps do not require regenerating panel art.
 

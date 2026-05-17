@@ -1,4 +1,6 @@
 const worldSheet = 'public/assets/world-ui-sheet.png';
+const generatedUiSheet = 'public/assets/atlas-sources/generated/ui-touch-hud.png';
+const generatedSourceDir = 'public/assets/atlas-sources/generated';
 
 export const atlasManifest = {
   worldTiles: {
@@ -19,6 +21,8 @@ export const atlasManifest = {
       { name: 'fence_01', source: worldSheet, crop: [1223, 414, 144, 143], padding: 36, align: 'bottom' },
       { name: 'sign_01', source: worldSheet, crop: [1373, 377, 120, 193], padding: 34, align: 'bottom' },
       { name: 'chest_closed_01', source: worldSheet, crop: [1018, 809, 183, 180], padding: 34, align: 'bottom' },
+      { name: 'island_border_01', source: `${generatedSourceDir}/island_border_source.png`, padding: 8, align: 'center' },
+      { name: 'island_corner_01', source: `${generatedSourceDir}/island_corner_source.png`, padding: 8, align: 'center' },
     ],
   },
   buildings: {
@@ -40,19 +44,53 @@ export const atlasManifest = {
     cellSize: 256,
     columns: 4,
     frames: [
-      { name: 'sword_icon_01', source: worldSheet, crop: [28, 611, 136, 134], padding: 18, align: 'center' },
+      { name: 'sword_icon_01', source: generatedUiSheet, crop: [54, 52, 231, 239], padding: 18, align: 'center' },
       { name: 'magic_blade_icon_01', source: worldSheet, crop: [180, 611, 136, 134], padding: 18, align: 'center' },
-      { name: 'bow_icon_01', source: worldSheet, crop: [330, 611, 133, 134], padding: 18, align: 'center' },
-      { name: 'spell_icon_01', source: worldSheet, crop: [479, 611, 135, 135], padding: 18, align: 'center' },
+      { name: 'bow_icon_01', source: generatedUiSheet, crop: [306, 53, 230, 238], padding: 18, align: 'center' },
+      { name: 'spell_icon_01', source: generatedUiSheet, crop: [547, 53, 229, 239], padding: 18, align: 'center' },
       { name: 'shield_icon_01', source: worldSheet, crop: [625, 611, 135, 135], padding: 18, align: 'center' },
       { name: 'boot_icon_01', source: worldSheet, crop: [770, 611, 135, 135], padding: 18, align: 'center' },
       { name: 'empty_slot_01', source: worldSheet, crop: [930, 590, 170, 180], padding: 10, align: 'center' },
-      { name: 'heart_bar_01', source: worldSheet, crop: [1080, 600, 270, 70], padding: 16, align: 'center' },
-      { name: 'mana_bar_01', source: worldSheet, crop: [1080, 672, 270, 70], padding: 16, align: 'center' },
-      { name: 'xp_bar_01', source: worldSheet, crop: [1080, 746, 270, 70], padding: 16, align: 'center' },
-      { name: 'coin_panel_01', source: worldSheet, crop: [1350, 602, 176, 104], padding: 18, align: 'center' },
-      { name: 'crown_badge_01', source: worldSheet, crop: [1350, 716, 170, 138], padding: 18, align: 'center' },
-      { name: 'repair_tool_01', source: 'public/assets/repair-tool.png', padding: 22, align: 'center' },
+      { name: 'chest_icon_01', source: generatedUiSheet, crop: [781, 54, 229, 239], padding: 18, align: 'center' },
+      { name: 'repair_icon_01', source: generatedUiSheet, crop: [1014, 54, 229, 239], padding: 18, align: 'center' },
+      { name: 'inventory_icon_01', source: generatedUiSheet, crop: [1249, 53, 232, 240], padding: 18, align: 'center' },
+    ],
+  },
+  touchControls: {
+    image: 'public/assets/touch_controls_atlas.png',
+    json: 'public/assets/touch_controls_atlas.json',
+    cellSize: 256,
+    columns: 3,
+    frames: [
+      { name: 'touch_sword_01', source: generatedUiSheet, crop: [54, 52, 231, 239], padding: 8, align: 'center' },
+      { name: 'touch_bow_01', source: generatedUiSheet, crop: [306, 53, 230, 238], padding: 8, align: 'center' },
+      { name: 'touch_spell_01', source: generatedUiSheet, crop: [547, 53, 229, 239], padding: 8, align: 'center' },
+      { name: 'touch_use_01', source: generatedUiSheet, crop: [781, 54, 229, 239], padding: 8, align: 'center' },
+      { name: 'touch_repair_01', source: generatedUiSheet, crop: [1014, 54, 229, 239], padding: 8, align: 'center' },
+      { name: 'touch_inventory_01', source: generatedUiSheet, crop: [1249, 53, 232, 240], padding: 8, align: 'center' },
+    ],
+  },
+  hudUi: {
+    image: 'public/assets/hud_ui_atlas.png',
+    json: 'public/assets/hud_ui_atlas.json',
+    cellSize: 256,
+    columns: 3,
+    frames: [
+      { name: 'coin_panel_01', source: generatedUiSheet, crop: [466, 313, 243, 253], padding: 8, align: 'center' },
+      { name: 'crown_badge_01', source: generatedUiSheet, crop: [772, 313, 245, 254], padding: 8, align: 'center' },
+      { name: 'repair_tool_01', source: generatedUiSheet, crop: [1014, 54, 229, 239], padding: 8, align: 'center' },
+    ],
+  },
+  hudBars: {
+    image: 'public/assets/hud_bars_atlas.png',
+    json: 'public/assets/hud_bars_atlas.json',
+    cellWidth: 1024,
+    cellHeight: 160,
+    columns: 1,
+    frames: [
+      { name: 'heart_bar_01', source: generatedUiSheet, crop: [280, 596, 975, 109], padding: 10, align: 'center' },
+      { name: 'mana_bar_01', source: generatedUiSheet, crop: [278, 722, 976, 109], padding: 10, align: 'center' },
+      { name: 'xp_bar_01', source: generatedUiSheet, crop: [277, 848, 977, 109], padding: 10, align: 'center' },
     ],
   },
   effects: {
@@ -87,6 +125,8 @@ export const requiredFrames = {
     'fence_01',
     'sign_01',
     'chest_closed_01',
+    'island_border_01',
+    'island_corner_01',
   ],
   buildings: ['castle_01', 'house_orange_01', 'bakery_blue_01', 'market_01', 'well_01'],
   ui: [
@@ -97,13 +137,24 @@ export const requiredFrames = {
     'shield_icon_01',
     'boot_icon_01',
     'empty_slot_01',
-    'heart_bar_01',
-    'mana_bar_01',
-    'xp_bar_01',
+    'chest_icon_01',
+    'repair_icon_01',
+    'inventory_icon_01',
+  ],
+  touchControls: [
+    'touch_sword_01',
+    'touch_bow_01',
+    'touch_spell_01',
+    'touch_use_01',
+    'touch_repair_01',
+    'touch_inventory_01',
+  ],
+  hudUi: [
     'coin_panel_01',
     'crown_badge_01',
     'repair_tool_01',
   ],
+  hudBars: ['heart_bar_01', 'mana_bar_01', 'xp_bar_01'],
   effects: [
     'smoke_puff_01',
     'sparkle_burst_01',
