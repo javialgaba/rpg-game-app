@@ -5,6 +5,7 @@ const generatedWorldEdgesAtmosphereSheet = 'public/assets/atlas-sources/generate
 const generatedWorldEdgesBackdropSheet = 'public/assets/atlas-sources/generated/world-edges-backdrop.png';
 const generatedEnvironmentStructuralSheet = 'public/assets/atlas-sources/generated/environment-structural.png';
 const generatedEnvironmentAtmosphericSheet = 'public/assets/atlas-sources/generated/environment-atmospheric.png';
+const generatedEnvironmentSurroundSheet = 'public/assets/atlas-sources/generated/environment-surround.png';
 
 const envCellXs = [0, 314, 627, 940];
 const envCellYs = [0, 314, 627, 940];
@@ -109,7 +110,20 @@ export const atlasManifest = {
       { name: 'grass_tuft_patch', source: generatedEnvironmentAtmosphericSheet, crop: envSheetCrop(1, 3), padding: 18, align: 'bottom' },
       { name: 'stone_scatter', source: generatedEnvironmentAtmosphericSheet, crop: envSheetCrop(2, 3), padding: 18, align: 'bottom' },
       { name: 'mushroom_patch', source: generatedEnvironmentAtmosphericSheet, crop: envSheetCrop(3, 3), padding: 18, align: 'bottom' },
-      { name: 'path_edge_piece', source: worldSheet, crop: [235, 95, 205, 167], padding: 18, align: 'bottom' },
+      { name: 'surround_top_left_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(0, 0), padding: 18, align: 'bottom' },
+      { name: 'surround_top_center_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(1, 0), padding: 18, align: 'bottom' },
+      { name: 'surround_top_right_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(2, 0), padding: 18, align: 'bottom' },
+      { name: 'surround_water_fill_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(3, 0), padding: 18, align: 'center' },
+      { name: 'surround_left_upper_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(0, 1), padding: 18, align: 'bottom' },
+      { name: 'surround_left_lower_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(1, 1), padding: 18, align: 'bottom' },
+      { name: 'surround_right_upper_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(2, 1), padding: 18, align: 'bottom' },
+      { name: 'surround_right_lower_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(3, 1), padding: 18, align: 'bottom' },
+      { name: 'surround_bottom_left_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(0, 2), padding: 18, align: 'bottom' },
+      { name: 'surround_bottom_center_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(1, 2), padding: 18, align: 'bottom' },
+      { name: 'surround_bottom_right_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(2, 2), padding: 18, align: 'bottom' },
+      { name: 'surround_mist_fill_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(3, 2), padding: 18, align: 'center' },
+      { name: 'surround_forest_mass_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(0, 3), padding: 18, align: 'bottom' },
+      { name: 'surround_cliff_filler_01', source: generatedEnvironmentSurroundSheet, crop: envSheetCrop(1, 3), padding: 18, align: 'bottom' },
       { name: 'fence_segment', source: worldSheet, crop: [1223, 414, 144, 143], padding: 28, align: 'bottom' },
       { name: 'sign_post', source: worldSheet, crop: [1373, 377, 120, 193], padding: 24, align: 'bottom' },
       { name: 'lantern_post', source: worldSheet, crop: [461, 336, 71, 221], padding: 26, align: 'bottom' },
@@ -276,7 +290,20 @@ export const requiredFrames = {
     'grass_tuft_patch',
     'stone_scatter',
     'mushroom_patch',
-    'path_edge_piece',
+    'surround_top_left_01',
+    'surround_top_center_01',
+    'surround_top_right_01',
+    'surround_water_fill_01',
+    'surround_left_upper_01',
+    'surround_left_lower_01',
+    'surround_right_upper_01',
+    'surround_right_lower_01',
+    'surround_bottom_left_01',
+    'surround_bottom_center_01',
+    'surround_bottom_right_01',
+    'surround_mist_fill_01',
+    'surround_forest_mass_01',
+    'surround_cliff_filler_01',
     'fence_segment',
     'sign_post',
     'lantern_post',

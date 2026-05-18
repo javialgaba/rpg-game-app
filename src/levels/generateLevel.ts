@@ -388,7 +388,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       || spawnGrid[grid.y][grid.x]
       || decorationGrid[grid.y][grid.x]
       || roadPlan.roadGrid[grid.y][grid.x]
-      || (!options?.allowNearEdge && edgeDistance < 3)
+      || (!options?.allowNearEdge && edgeDistance < 4)
+      || (options?.allowNearEdge && edgeDistance < 1)
       || token === 'P'
       || token === 'V'
       || token === 'PS'
@@ -574,14 +575,13 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
 
   terrain.forEach((placement) => {
     const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
-    const isEdge = placement.grid.x <= 1
-      || placement.grid.y <= 1
-      || placement.grid.x >= width - 2
-      || placement.grid.y >= height - 2;
-    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.12)) {
+    const edgeDistance = getEdgeDistance(placement.grid, width, height);
+    const isNearEdge = edgeDistance <= 2;
+    const isInnerEdgeBand = edgeDistance >= 1 && edgeDistance <= 2;
+    if (token === 'G' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.12)) {
       addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender, { allowNearEdge: true });
     }
-    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.46)) {
+    if (token === 'G' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.42)) {
       addDecoration(
         placement.grid,
         rng.chance(0.64) ? 'treeCluster' : 'fullTree',
@@ -590,7 +590,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         { allowNearEdge: true },
       );
     }
-    if (token === 'G' && isEdge && rng.chance(config.decorationDensity * 0.26)) {
+    if (token === 'G' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.22)) {
       const edgeRender = rng.chance(0.58) ? bushRender : rockClusterRender;
       addDecoration(
         placement.grid,
@@ -600,10 +600,13 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         { allowNearEdge: true },
       );
     }
-    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.13)) {
+    if (token === 'G' && isNearEdge && rng.chance(config.decorationDensity * 0.1)) {
+      addDecoration(placement.grid, 'flowers', 'Soft Edge Flowers', flowerPatchRender, { allowNearEdge: true });
+    }
+    if (token === 'G' && !isNearEdge && rng.chance(config.decorationDensity * 0.13)) {
       addDecoration(placement.grid, 'sapling', 'Young Pine', saplingRender);
     }
-    if (token === 'G' && !isEdge && rng.chance(config.decorationDensity * 0.10)) {
+    if (token === 'G' && !isNearEdge && rng.chance(config.decorationDensity * 0.10)) {
       const interiorRender = rng.chance(0.52) ? bushRender : flowerPatchRender;
       addDecoration(
         placement.grid,
