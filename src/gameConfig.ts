@@ -170,8 +170,12 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
   bossDefeat: string;
   eliteAssetKey: string;
   eliteFramePrefix: string;
+  eliteIdleFrames: number[];
+  eliteDefeatFrame: number;
   bossAssetKey: string;
   bossFramePrefix: string;
+  bossIdleFrames: number[];
+  bossDefeatFrame: number;
   eliteSpawnChance: number;
   preferredArchetypes: string[];
   ambientTint: number | null;
@@ -183,8 +187,12 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossDefeat: 'Spring is safe. Summer stirs beyond the clouds!',
     eliteAssetKey: 'worldElite_day_spring',
     eliteFramePrefix: 'world-elite-day-spring',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
     bossAssetKey: 'worldBoss_day_spring',
     bossFramePrefix: 'world-boss-day-spring',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
     eliteSpawnChance: 0.34,
     preferredArchetypes: ['sprite', 'blob', 'mushroom'],
     ambientTint: 0xffe7f4,
@@ -196,8 +204,12 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossDefeat: 'Summer bows out. Twilight settles over the village!',
     eliteAssetKey: 'worldElite_afternoon_summer',
     eliteFramePrefix: 'world-elite-afternoon-summer',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
     bossAssetKey: 'worldBoss_afternoon_summer',
     bossFramePrefix: 'world-boss-afternoon-summer',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
     eliteSpawnChance: 0.38,
     preferredArchetypes: ['lizard', 'blob', 'acorn'],
     ambientTint: 0xffe2a6,
@@ -209,8 +221,12 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossDefeat: 'The twilight guardian fades. Winter winds answer next.',
     eliteAssetKey: 'worldElite_night_spring',
     eliteFramePrefix: 'world-elite-night-spring',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
     bossAssetKey: 'worldBoss_night_spring',
     bossFramePrefix: 'world-boss-night-spring',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
     eliteSpawnChance: 0.42,
     preferredArchetypes: ['sprite', 'mushroom', 'acorn'],
     ambientTint: 0xb8c7ff,
@@ -222,8 +238,12 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossDefeat: 'Winter is quiet again. Spring will bloom once more.',
     eliteAssetKey: 'worldElite_noon_winter',
     eliteFramePrefix: 'world-elite-noon-winter',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
     bossAssetKey: 'worldBoss_noon_winter',
     bossFramePrefix: 'world-boss-noon-winter',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
     eliteSpawnChance: 0.42,
     preferredArchetypes: ['mushroom', 'acorn', 'blob'],
     ambientTint: 0xe6f7ff,

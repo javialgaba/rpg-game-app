@@ -214,14 +214,16 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   preloadWorldEnemyAssets() {
+    const assetVersion = import.meta.env.DEV ? `${Date.now()}` : '20260519-world-enemies';
     WORLD_SEQUENCE.forEach((worldKey) => {
+      const theme = WORLD_ENEMY_THEMES[worldKey];
       this.load.image(
-        WORLD_ENEMY_THEMES[worldKey].eliteAssetKey,
-        `/assets/world-monsters/${worldKey}-elite.png`,
+        theme.eliteAssetKey,
+        `/assets/world-monsters/${worldKey}-elite.png?v=${assetVersion}`,
       );
       this.load.image(
-        WORLD_ENEMY_THEMES[worldKey].bossAssetKey,
-        `/assets/world-bosses/${worldKey}-boss.png`,
+        theme.bossAssetKey,
+        `/assets/world-bosses/${worldKey}-boss.png?v=${assetVersion}`,
       );
     });
   }
@@ -3945,6 +3947,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   spawnEnemy(level) {
     if (this.state.phase !== 'playing') {return false;}
+    const theme = this.getCurrentWorldTheme();
     let route = null;
     let target = this.getEnemyTarget();
     if (!target) {return false;}
@@ -3998,7 +4001,10 @@ class FairyGuildScene extends Phaser.Scene {
     const shadow = this.add.ellipse(p.x, p.y + 13, size * 0.58, size * 0.22, 0x315133, 0.2);
     const frameRow = visual.frameRow ?? archetype.row;
     const framePrefix = visual.framePrefix ?? 'monster';
-    const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${framePrefix}-${frameRow}-${Phaser.Math.Between(0, 3)}`)
+    const idleFrames = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteIdleFrames : [0, 1, 2, 3];
+    const initialFrame = Phaser.Utils.Array.GetRandom(idleFrames);
+    const defeatFrame = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDefeatFrame : 7;
+    const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${framePrefix}-${frameRow}-${initialFrame}`)
       .setOrigin(0.5, 0.76)
       .setDisplaySize(size, size)
       .setDepth(p.y + 50);
@@ -4024,6 +4030,7 @@ class FairyGuildScene extends Phaser.Scene {
       rewardXp: Math.round((archetype.rewardXp + levelBonus * 2) * variant.reward),
       touchCooldown: 0,
       heroTouchCooldown: 0,
+      defeatFrame,
       dazedUntil: 0,
       wobble: Math.random() * Math.PI * 2,
       path: route?.pathIso ?? null,
@@ -4093,7 +4100,8 @@ class FairyGuildScene extends Phaser.Scene {
     const maxHp = Math.round(bossConfig.hp + levelBonus * 3 + this.state.worldIndex * 3 + this.state.worldCycle * 8);
     const size = bossConfig.size + this.state.worldIndex * 3 + this.state.worldCycle * 4;
     const shadow = this.add.ellipse(p.x, p.y + 14, size * 0.62, size * 0.24, 0x243829, 0.24);
-    const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${visual.framePrefix}-${visual.frameRow}-${Phaser.Math.Between(0, 3)}`)
+    const initialFrame = Phaser.Utils.Array.GetRandom(theme.bossIdleFrames);
+    const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${visual.framePrefix}-${visual.frameRow}-${initialFrame}`)
       .setOrigin(0.5, 0.76)
       .setDisplaySize(size, size)
       .setDepth(p.y + 54);
@@ -4125,6 +4133,7 @@ class FairyGuildScene extends Phaser.Scene {
       rewardXp: bossConfig.rewardXp + this.state.worldCycle * 12 + this.state.worldIndex * 6,
       touchCooldown: 0,
       heroTouchCooldown: 0,
+      defeatFrame: theme.bossDefeatFrame,
       dazedUntil: 0,
       wobble: Math.random() * Math.PI * 2,
       path: route?.pathIso ?? null,
@@ -4244,7 +4253,7 @@ class FairyGuildScene extends Phaser.Scene {
       }
       this.levelEnemiesRemaining = Math.max(0, this.levelRequiredDefeats - this.levelDefeatsThisRound);
       enemy.retreating = true;
-      enemy.sprite.setFrame(this.getEnemyFrameKey(enemy, Phaser.Math.Between(4, 7)));
+      enemy.sprite.setFrame(this.getEnemyFrameKey(enemy, enemy.defeatFrame ?? 7));
       enemy.sprite.setTint(0xffffff);
       enemy.speed += 0.55;
       this.gainXp(enemy.rewardXp);
