@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "phaser": {
+      "source": "OpusGameLabs/game-creator",
+      "sourceType": "github",
+      "skillPath": "skills/phaser/SKILL.md",
+      "computedHash": "2e8bd40c41fc4b367678e86f02b0eb4ba7aaa1770ad42cfe30b7ce74c4913364"
+    },
+    "phaser-best-practices": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/phaser-best-practices/SKILL.md",
+      "computedHash": "a539e2e870871576e32d4c85f3b09823615ea158e4ae65d28494f34eeac79de8"
+    }
+  }
+}
