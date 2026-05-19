@@ -9,6 +9,7 @@ import type {
   LevelPlacement,
   LevelToken,
   LevelValidationResult,
+  PlayableBounds,
   ProtectedTargetPlacement,
 } from './levelTypes';
 import { findGridPath, pathCost } from './pathfinding';
@@ -43,6 +44,32 @@ const isInside = (point: GridPoint, width: number, height: number) => (
 
 const isInsideLevel = (level: GeneratedLevel, point: GridPoint) => isInside(point, level.width, level.height);
 
+const resolvePlayableBounds = (config: LevelConfig): PlayableBounds => {
+  const height = config.matrix.length;
+  const width = config.matrix[0]?.length ?? 0;
+  if (!config.playableBounds) {
+    return {
+      minX: 0,
+      minY: 0,
+      maxX: Math.max(0, width - 1),
+      maxY: Math.max(0, height - 1),
+    };
+  }
+  return {
+    minX: Math.max(0, Math.min(width - 1, config.playableBounds.minX)),
+    minY: Math.max(0, Math.min(height - 1, config.playableBounds.minY)),
+    maxX: Math.max(0, Math.min(width - 1, config.playableBounds.maxX)),
+    maxY: Math.max(0, Math.min(height - 1, config.playableBounds.maxY)),
+  };
+};
+
+const isInsidePlayableBounds = (point: GridPoint, bounds: PlayableBounds) => (
+  point.x >= bounds.minX
+  && point.y >= bounds.minY
+  && point.x <= bounds.maxX
+  && point.y <= bounds.maxY
+);
+
 const isOuterEdgeCell = (point: GridPoint, width: number, height: number) => (
   point.x === 0 || point.y === 0 || point.x === width - 1 || point.y === height - 1
 );
@@ -52,6 +79,13 @@ const getEdgeDistance = (point: GridPoint, width: number, height: number) => Mat
   point.y,
   width - 1 - point.x,
   height - 1 - point.y,
+);
+
+const getBoundsEdgeDistance = (point: GridPoint, bounds: PlayableBounds) => Math.min(
+  point.x - bounds.minX,
+  point.y - bounds.minY,
+  bounds.maxX - point.x,
+  bounds.maxY - point.y,
 );
 
 const pointKey = (point: GridPoint) => `${point.x},${point.y}`;
@@ -153,6 +187,7 @@ const createRoadPlan = (
   const matrix = config.matrix.map((row) => [...row]);
   const height = matrix.length;
   const width = matrix[0]?.length ?? 0;
+  const playableBounds = resolvePlayableBounds(config);
   const blockedGrid = makeGrid(width, height, false);
   const warnings: string[] = [];
   const protectedAnchors: GridPoint[] = [];
@@ -162,6 +197,9 @@ const createRoadPlan = (
 
   matrix.forEach((row, y) => {
     row.forEach((token, x) => {
+      if (!isInsidePlayableBounds({ x, y }, playableBounds)) {
+        return;
+      }
       const entry = registry[token];
       if (!entry) {
         return;
@@ -187,9 +225,13 @@ const createRoadPlan = (
     });
   });
 
-  const center = playerSpawn ?? { x: Math.floor(width / 2), y: Math.floor(height / 2) };
+  const center = playerSpawn ?? {
+    x: Math.floor((playableBounds.minX + playableBounds.maxX) / 2),
+    y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2),
+  };
   const isRoadable = (point: GridPoint) => (
     isInside(point, width, height)
+    && isInsidePlayableBounds(point, playableBounds)
     && !blockedGrid[point.y][point.x]
     && canCarveRoadToken(matrix[point.y]?.[point.x])
   );
@@ -262,6 +304,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   const generatedConfig = { ...config, matrix: roadPlan.matrix };
   const height = generatedConfig.matrix.length;
   const width = generatedConfig.matrix[0]?.length ?? 0;
+  const playableBounds = resolvePlayableBounds(generatedConfig);
   const rng = new SeededRandom(config.seed);
   const walkableGrid = makeGrid(width, height, true);
   const blockedGrid = makeGrid(width, height, false);
@@ -280,11 +323,23 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   let playerSpawn: GridPoint | null = null;
   warnings.push(...roadPlan.warnings);
 
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!isInsidePlayableBounds({ x, y }, playableBounds)) {
+        walkableGrid[y][x] = false;
+        blockedGrid[y][x] = true;
+      }
+    }
+  }
+
   generatedConfig.matrix.forEach((row, y) => {
     if (row.length !== width) {
       errors.push(`Row ${y} has ${row.length} cells; expected ${width}.`);
     }
     row.forEach((token, x) => {
+      if (!isInsidePlayableBounds({ x, y }, playableBounds)) {
+        return;
+      }
       const entry = registry[token];
       if (!entry) {
         errors.push(`Unknown token ${token} at ${x},${y}.`);
@@ -362,26 +417,32 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
 
   if (!playerSpawn) {
     warnings.push('No PS player spawn found; using village center fallback.');
-    playerSpawn = { x: Math.floor(width / 2), y: Math.floor(height / 2) };
+    playerSpawn = {
+      x: Math.floor((playableBounds.minX + playableBounds.maxX) / 2),
+      y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2),
+    };
   }
 
   if (!spawnPoints.length) {
     warnings.push('No SP monster spawns found; using edge fallback spawns.');
     spawnPoints.push(
-      { x: 0, y: Math.floor(height / 2) },
-      { x: width - 1, y: Math.floor(height / 2) },
+      { x: playableBounds.minX, y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2) },
+      { x: playableBounds.maxX, y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2) },
     );
   }
 
-  const center = { x: width / 2, y: height / 2 };
+  const center = {
+    x: (playableBounds.minX + playableBounds.maxX) / 2,
+    y: (playableBounds.minY + playableBounds.maxY) / 2,
+  };
   const attackCellKeys = new Set(protectedTargets.flatMap((target) => target.attackCells.map(pointKey)));
   const canDecorate = (grid: GridPoint, options?: { allowNearEdge?: boolean }) => {
-    if (!isInside(grid, width, height)) {
+    if (!isInside(grid, width, height) || !isInsidePlayableBounds(grid, playableBounds)) {
       return false;
     }
     const token = generatedConfig.matrix[grid.y]?.[grid.x];
     const distanceFromCenter = Math.abs(grid.x - center.x) + Math.abs(grid.y - center.y);
-    const edgeDistance = getEdgeDistance(grid, width, height);
+    const edgeDistance = getBoundsEdgeDistance(grid, playableBounds);
     if (
       blockedGrid[grid.y][grid.x]
       || attackCellKeys.has(pointKey(grid))
@@ -575,7 +636,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
 
   terrain.forEach((placement) => {
     const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
-    const edgeDistance = getEdgeDistance(placement.grid, width, height);
+    const edgeDistance = getBoundsEdgeDistance(placement.grid, playableBounds);
     const isNearEdge = edgeDistance <= 2;
     const isInnerEdgeBand = edgeDistance >= 1 && edgeDistance <= 2;
     if (token === 'G' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.12)) {
@@ -639,6 +700,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     config: generatedConfig,
     width,
     height,
+    playableBounds,
     walkableGrid,
     blockedGrid,
     buildingGrid,

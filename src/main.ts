@@ -5,6 +5,7 @@ import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import { findGridPath, pathCost } from './levels/pathfinding';
 import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
+import { resolveSceneVariantFromParams, type SceneVariantConfig } from './sceneVariants';
 import {
   COLORS,
   COMPACT_NOTE_MAX_CHARS,
@@ -138,6 +139,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayMist = null;
     this.lampGlowGraphics = null;
     this.timeOfDayOverride = null;
+    this.sceneVariant = null;
   }
 
   preload() {
@@ -158,6 +160,21 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.atlas('worldEdgesAtlas', '/assets/world_edges_atlas.png', '/assets/world_edges_atlas.json');
     this.load.atlas('environmentFrameAtlas', '/assets/environment_frame_atlas.png', '/assets/environment_frame_atlas.json');
     this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
+    this.preloadSceneVariantAssets();
+  }
+
+  preloadSceneVariantAssets() {
+    const variantKeys = ['day_spring', 'afternoon_summer', 'night_spring', 'noon_winter'];
+    variantKeys.forEach((variantKey) => {
+      this.load.image(`sceneVariantBackground_${variantKey}`, `/assets/scene-variants/${variantKey}-bg.png`);
+      this.load.image(`sceneVariantFrame_${variantKey}`, `/assets/scene-variants/${variantKey}-frame.png`);
+      this.load.image(`sceneVariantForeground_${variantKey}`, `/assets/scene-variants/${variantKey}-fg.png`);
+    });
+    this.load.image('winter_grass_01', '/assets/scene-variants/winter-grass-01.png');
+    this.load.image('winter_path_01', '/assets/scene-variants/winter-path-01.png');
+    this.load.image('winter_pine_01', '/assets/scene-variants/winter-pine-01.png');
+    this.load.image('winter_oak_01', '/assets/scene-variants/winter-oak-01.png');
+    this.load.image('winter_flower_patch_01', '/assets/scene-variants/winter-flower-patch-01.png');
   }
 
   create() {
@@ -273,6 +290,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayMist = null;
     this.lampGlowGraphics = null;
     this.timeOfDayOverride = null;
+    this.sceneVariant = null;
   }
 
   update(time, delta) {
@@ -642,31 +660,17 @@ class FairyGuildScene extends Phaser.Scene {
 
   createBackground() {
     const useGeneratedMap = this.shouldRenderGeneratedLevel();
+    const sceneVariant = this.sceneVariant ?? resolveSceneVariantFromParams(new URLSearchParams(window.location.search));
+    this.sceneVariant = sceneVariant;
     const bg = this.add.graphics();
-    bg.fillGradientStyle(
-      useGeneratedMap ? 0xa5cfd5 : 0x7fc8f4,
-      useGeneratedMap ? 0xa5cfd5 : 0x7fc8f4,
-      useGeneratedMap ? 0xe5efe7 : 0xd6f3ff,
-      useGeneratedMap ? 0xe5efe7 : 0xd6f3ff,
-      1,
-    );
+    const topColor = useGeneratedMap ? 0xb2d9ec : 0x7fc8f4;
+    const bottomColor = useGeneratedMap ? 0xe7f1ef : 0xd6f3ff;
+    bg.fillGradientStyle(topColor, topColor, bottomColor, bottomColor, 1);
     bg.fillRect(0, 0, WIDTH, HEIGHT);
-    bg.fillStyle(0x67c176, 1);
+    bg.fillStyle(sceneVariant.key === 'night_spring' ? 0x29345a : 0x67c176, useGeneratedMap ? 0.48 : 1);
     bg.fillEllipse(WIDTH / 2, 700, 1320, 316);
-    bg.fillStyle(0xbfeef2, 0.42);
-    bg.fillEllipse(188, 106, 210, 42);
-    bg.fillEllipse(1020, 78, 270, 52);
-    bg.fillEllipse(704, 142, 220, 40);
     this.backgroundLayer.add(bg);
     if (useGeneratedMap) {
-      const boardBase = this.add.graphics();
-      boardBase.fillStyle(0x4c8e62, 0.32);
-      boardBase.fillEllipse(WIDTH / 2, 426, 1380, 760);
-      boardBase.fillStyle(0xbce6d4, 0.18);
-      boardBase.fillEllipse(WIDTH / 2, 384, 1180, 620);
-      boardBase.fillStyle(0xcfb3ff, 0.14);
-      boardBase.fillEllipse(WIDTH / 2, 474, 1080, 430);
-      this.shadowLayer.add(boardBase);
       this.renderGeneratedScreenBackdropFill();
       return;
     }
@@ -678,6 +682,156 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderGeneratedScreenBackdropFill() {
     // Scenic surround is now composed in world space around the generated board.
+  }
+
+  getActiveSceneVariant() {
+    if (this.sceneVariant) {
+      return this.sceneVariant as SceneVariantConfig;
+    }
+    const resolved = resolveSceneVariantFromParams(new URLSearchParams(window.location.search));
+    this.sceneVariant = resolved;
+    return resolved;
+  }
+
+  getSceneVariantTerrainTexture(token) {
+    const variant = this.getActiveSceneVariant();
+    if (variant.key === 'noon_winter') {
+      if (token === 'P' || token === 'V' || token === 'PS') {
+        return { textureKey: 'winter_path_01', frameKey: undefined };
+      }
+      return { textureKey: 'winter_grass_01', frameKey: undefined };
+    }
+    if (token === 'P' || token === 'V' || token === 'PS') {
+      return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.path[0] };
+    }
+    return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.grass[0] };
+  }
+
+  getSceneVariantPropTexture(placement) {
+    const variant = this.getActiveSceneVariant();
+    if (variant.key !== 'noon_winter') {
+      return null;
+    }
+    if (placement.token === 'T') {
+      return { textureKey: 'winter_pine_01', frameKey: undefined };
+    }
+    if (placement.type === 'terrain' && placement.token === 'D') {
+      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
+    }
+    return null;
+  }
+
+  getSceneVariantDecorationTexture(placement) {
+    const variant = this.getActiveSceneVariant();
+    if (variant.key !== 'noon_winter') {
+      return null;
+    }
+    if (placement.decorationKind === 'flowers' || placement.decorationKind === 'grassPatch') {
+      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
+    }
+    if (placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree' || placement.decorationKind === 'treeCluster') {
+      return { textureKey: 'winter_pine_01', frameKey: undefined };
+    }
+    return null;
+  }
+
+  addSceneVariantImage(
+    layer,
+    textureKey,
+    x,
+    y,
+    uniformScale,
+    depth,
+    options: { alpha?: number; originX?: number; originY?: number; tint?: number } = {},
+  ) {
+    if (!this.textures.exists(textureKey)) {
+      return null;
+    }
+    const sprite = this.add.image(x, y, textureKey)
+      .setOrigin(options.originX ?? 0.5, options.originY ?? 0.5)
+      .setScale(uniformScale)
+      .setDepth(depth)
+      .setAlpha(options.alpha ?? 1);
+    if (options.tint) {
+      sprite.setTint(options.tint);
+    }
+    layer.add(sprite);
+    return sprite;
+  }
+
+  hasStaticSceneVariantFrame(config) {
+    return Boolean(config)
+      && this.textures.exists(config.backgroundAssetKey)
+      && this.textures.exists(config.exteriorFrameAssetKey);
+  }
+
+  renderSceneVariantBackground(config, bounds) {
+    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
+    this.addSceneVariantImage(
+      this.backgroundLayer,
+      config.backgroundAssetKey,
+      bounds.centerX,
+      bounds.centerY - 24,
+      baseScale * 1.04,
+      2,
+      { alpha: 1 },
+    );
+  }
+
+  renderSceneVariantFrame(config, bounds) {
+    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
+    this.addSceneVariantImage(
+      this.edgeLayer,
+      config.exteriorFrameAssetKey,
+      bounds.centerX,
+      bounds.centerY - 20,
+      baseScale * 1.04,
+      70,
+      { alpha: 1 },
+    );
+  }
+
+  renderSceneVariantForeground(config, bounds) {
+    if (!config.foregroundFogAssetKey) {
+      return;
+    }
+    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
+    this.addSceneVariantImage(
+      this.lightingLayer,
+      config.foregroundFogAssetKey,
+      bounds.centerX,
+      bounds.centerY - 20,
+      baseScale * 1.04,
+      4705,
+      { alpha: config.key === 'night_spring' ? 0.9 : 0.72 },
+    );
+  }
+
+  renderSceneVariantOverlapDecor(config, bounds, tileW, tileH) {
+    config.overlapDecorAnchors.forEach((anchor) => {
+      const x = bounds.centerX + anchor.x * tileW;
+      const y = bounds.centerY + anchor.y * tileH;
+      this.addEnvironmentUniformSprite(
+        this.edgeLayer,
+        anchor.frame,
+        x,
+        y,
+        anchor.scale,
+        bounds.centerY + anchor.depthBias,
+        { alpha: anchor.alpha, originY: 0.82 },
+      );
+    });
+  }
+
+  applySceneVariantAmbient(config) {
+    if (config.ambientAlpha <= 0) {
+      return;
+    }
+    const ambient = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, config.ambientTint, config.ambientAlpha)
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(4701);
+    this.lightingLayer.add(ambient);
   }
 
   createVillage() {
@@ -706,10 +860,13 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   prepareGeneratedLevel() {
-    const selection = resolveLevelConfigFromParams(new URLSearchParams(window.location.search));
+    const params = new URLSearchParams(window.location.search);
+    const selection = resolveLevelConfigFromParams(params);
     this.generatedLevelConfigId = selection.id;
     this.generatedLevelConfigLabel = selection.label;
     this.generatedLevelSelectionWarnings = selection.warnings;
+    this.sceneVariant = resolveSceneVariantFromParams(params);
+    selection.config.playableBounds = this.sceneVariant.playableBounds;
     this.generatedLevel = generateLevel(selection.config, ASSET_REGISTRY);
     this.generatedLevelValidation = validateGeneratedLevel(this.generatedLevel);
     if (!this.generatedLevelValidation.valid) {
@@ -749,16 +906,27 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return;
     }
-    this.renderGeneratedWorldEdges();
-    this.renderGeneratedEnvironmentFrame();
+    const variant = this.getActiveSceneVariant();
     const { tileW, tileH } = this.getIsoMetrics();
+    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
+    const usesStaticSceneFrame = this.hasStaticSceneVariantFrame(variant);
+    if (bounds) {
+      this.renderSceneVariantBackground(variant, bounds);
+      if (!usesStaticSceneFrame) {
+        this.renderGeneratedWorldEdges();
+      }
+      this.renderSceneVariantFrame(variant, bounds);
+    }
     this.generatedLevel.terrain.forEach((placement) => {
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
       const render = placement.render ?? {};
-      const texture = render.textureKey ? this.textures.get(render.textureKey) : null;
-      if (render.textureKey && texture && (!render.frameKey || texture.has(render.frameKey))) {
+      const terrainTexture = this.getSceneVariantTerrainTexture(placement.token);
+      const textureKey = terrainTexture?.textureKey ?? render.textureKey;
+      const frameKey = terrainTexture?.frameKey ?? render.frameKey;
+      const texture = textureKey ? this.textures.get(textureKey) : null;
+      if (textureKey && texture && (!frameKey || texture.has(frameKey))) {
         const size = this.scaleGeneratedSize(render.displaySize ?? [160, 160]);
-        const sprite = this.add.image(center.x, center.y, render.textureKey, render.frameKey)
+        const sprite = this.add.image(center.x, center.y, textureKey, frameKey)
           .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.62)
           .setDisplaySize(size[0], size[1])
           .setDepth(center.y - tileH)
@@ -770,6 +938,9 @@ class FairyGuildScene extends Phaser.Scene {
       const stroke = render.terrainStroke ?? 0x5dbb65;
       this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, 1, 0);
     });
+    if (bounds) {
+      this.renderSceneVariantOverlapDecor(variant, bounds, tileW, tileH);
+    }
     this.createPathStones();
     this.generatedLevel.objects.forEach((placement) => {
       if (placement.type === 'building') {
@@ -781,6 +952,10 @@ class FairyGuildScene extends Phaser.Scene {
       }
     });
     this.generatedLevel.decorations.forEach((placement) => this.renderGeneratedDecoration(placement));
+    if (bounds) {
+      this.renderSceneVariantForeground(variant, bounds);
+      this.applySceneVariantAmbient(variant);
+    }
   }
 
   renderGeneratedWorldEdges() {
@@ -827,13 +1002,12 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return false;
     }
-    const maxX = this.generatedLevel.width - 1;
-    const maxY = this.generatedLevel.height - 1;
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
     const isCorner = (
-      (grid.x === 0 && grid.y === 0)
-      || (grid.x === maxX && grid.y === 0)
+      (grid.x === minX && grid.y === minY)
+      || (grid.x === maxX && grid.y === minY)
       || (grid.x === maxX && grid.y === maxY)
-      || (grid.x === 0 && grid.y === maxY)
+      || (grid.x === minX && grid.y === maxY)
     );
     if (isCorner) {
       return true;
@@ -841,11 +1015,11 @@ class FairyGuildScene extends Phaser.Scene {
     if (grid.y === maxY) {
       return true;
     }
-    if (grid.y === 0) {
+    if (grid.y === minY) {
       return false;
     }
-    if (grid.x === 0 || grid.x === maxX) {
-      return grid.y >= Math.max(4, Math.floor(maxY * 0.28));
+    if (grid.x === minX || grid.x === maxX) {
+      return grid.y >= Math.max(minY + 4, minY + Math.floor((maxY - minY) * 0.28));
     }
     return false;
   }
@@ -1025,25 +1199,18 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedEnvironmentFrame() {
-    if (!this.generatedLevel || !this.textures.exists('environmentFrameAtlas')) {
-      return;
-    }
-    const { tileW, tileH } = this.getIsoMetrics();
-    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
-    if (!bounds) {
-      return;
-    }
-    this.renderGeneratedSceneSurround(bounds, tileW, tileH);
+    // Retained for compatibility while the hybrid scene variant frame owns the perimeter.
   }
 
   getGeneratedWorldBounds(tileW, tileH) {
     if (!this.generatedLevel) {
       return null;
     }
-    const top = this.isoToScreen(0, 0);
-    const right = this.isoToScreen(this.generatedLevel.width - 1, 0);
-    const bottom = this.isoToScreen(this.generatedLevel.width - 1, this.generatedLevel.height - 1);
-    const left = this.isoToScreen(0, this.generatedLevel.height - 1);
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const top = this.isoToScreen(minX, minY);
+    const right = this.isoToScreen(maxX, minY);
+    const bottom = this.isoToScreen(maxX, maxY);
+    const left = this.isoToScreen(minX, maxY);
     return {
       top,
       right,
@@ -1374,16 +1541,15 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return null;
     }
-    const maxX = this.generatedLevel.width - 1;
-    const maxY = this.generatedLevel.height - 1;
-    if (grid.x === 0 && grid.y === 0) {return 'edge_corner_n_01';}
-    if (grid.x === maxX && grid.y === 0) {return 'edge_corner_e_01';}
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    if (grid.x === minX && grid.y === minY) {return 'edge_corner_n_01';}
+    if (grid.x === maxX && grid.y === minY) {return 'edge_corner_e_01';}
     if (grid.x === maxX && grid.y === maxY) {return 'edge_corner_s_01';}
-    if (grid.x === 0 && grid.y === maxY) {return 'edge_corner_w_01';}
-    if (grid.y === 0) {return 'edge_cliff_nw_01';}
+    if (grid.x === minX && grid.y === maxY) {return 'edge_corner_w_01';}
+    if (grid.y === minY) {return 'edge_cliff_nw_01';}
     if (grid.x === maxX) {return 'edge_cliff_ne_01';}
     if (grid.y === maxY) {return 'edge_cliff_se_01';}
-    if (grid.x === 0) {return 'edge_cliff_sw_01';}
+    if (grid.x === minX) {return 'edge_cliff_sw_01';}
     return null;
   }
 
@@ -1391,16 +1557,15 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return { x: 0, y: 0 };
     }
-    const maxX = this.generatedLevel.width - 1;
-    const maxY = this.generatedLevel.height - 1;
-    if (grid.x === 0 && grid.y === 0) {return { x: 0, y: tileH * 0.72 };}
-    if (grid.x === maxX && grid.y === 0) {return { x: tileW * 0.54, y: tileH * 0.92 };}
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    if (grid.x === minX && grid.y === minY) {return { x: 0, y: tileH * 0.72 };}
+    if (grid.x === maxX && grid.y === minY) {return { x: tileW * 0.54, y: tileH * 0.92 };}
     if (grid.x === maxX && grid.y === maxY) {return { x: 0, y: tileH * 1.46 };}
-    if (grid.x === 0 && grid.y === maxY) {return { x: -tileW * 0.54, y: tileH * 0.92 };}
-    if (grid.y === 0) {return { x: tileW * 0.16, y: tileH * 0.52 };}
+    if (grid.x === minX && grid.y === maxY) {return { x: -tileW * 0.54, y: tileH * 0.92 };}
+    if (grid.y === minY) {return { x: tileW * 0.16, y: tileH * 0.52 };}
     if (grid.x === maxX) {return { x: tileW * 0.48, y: tileH * 0.92 };}
     if (grid.y === maxY) {return { x: -tileW * 0.16, y: tileH * 1.3 };}
-    if (grid.x === 0) {return { x: -tileW * 0.48, y: tileH * 0.92 };}
+    if (grid.x === minX) {return { x: -tileW * 0.48, y: tileH * 0.92 };}
     return { x: 0, y: 0 };
   }
 
@@ -1408,10 +1573,11 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return false;
     }
-    return grid.x === 0
-      || grid.y === 0
-      || grid.x === this.generatedLevel.width - 1
-      || grid.y === this.generatedLevel.height - 1;
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    return grid.x === minX
+      || grid.y === minY
+      || grid.x === maxX
+      || grid.y === maxY;
   }
 
   createGeneratedTerrainMask() {
@@ -1420,10 +1586,11 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.generatedTerrainMaskGraphics?.destroy();
     const { tileW, tileH } = this.getIsoMetrics();
-    const topCenter = this.isoToScreen(0, 0);
-    const rightCenter = this.isoToScreen(this.generatedLevel.width - 1, 0);
-    const bottomCenter = this.isoToScreen(this.generatedLevel.width - 1, this.generatedLevel.height - 1);
-    const leftCenter = this.isoToScreen(0, this.generatedLevel.height - 1);
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const topCenter = this.isoToScreen(minX, minY);
+    const rightCenter = this.isoToScreen(maxX, minY);
+    const bottomCenter = this.isoToScreen(maxX, maxY);
+    const leftCenter = this.isoToScreen(minX, maxY);
     const top = new Phaser.Geom.Point(topCenter.x, topCenter.y - tileH / 2);
     const right = new Phaser.Geom.Point(rightCenter.x + tileW / 2, rightCenter.y);
     const bottom = new Phaser.Geom.Point(bottomCenter.x, bottomCenter.y + tileH / 2);
@@ -1488,12 +1655,15 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     const render = placement.render;
-    if (!render?.textureKey) {
+    const override = this.getSceneVariantPropTexture(placement);
+    const textureKey = override?.textureKey ?? render?.textureKey;
+    const frameKey = override?.frameKey ?? render?.frameKey;
+    if (!textureKey) {
       return;
     }
     const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
     const size = this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
-    const sprite = this.add.image(p.x, p.y, render.textureKey, render.frameKey)
+    const sprite = this.add.image(p.x, p.y, textureKey, frameKey)
       .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
       .setDisplaySize(size[0], size[1])
       .setDepth(p.y + 8)
@@ -1502,11 +1672,17 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedDecoration(placement) {
-    if (placement.render?.textureKey) {
+    const override = this.getSceneVariantDecorationTexture(placement);
+    if (placement.render?.textureKey || override?.textureKey) {
       const render = placement.render;
       const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
       const size = this.scaleGeneratedSize(render.displaySize ?? [36, 36]);
-      const sprite = this.add.image(p.x, p.y, render.textureKey, render.frameKey)
+      const sprite = this.add.image(
+        p.x,
+        p.y,
+        override?.textureKey ?? render.textureKey,
+        override?.frameKey ?? render.frameKey,
+      )
         .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
         .setDisplaySize(size[0], size[1])
         .setDepth(p.y + 6)
@@ -1581,6 +1757,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayOverlay = null;
     this.timeOfDayMist = null;
     this.lampGlowGraphics = null;
+    if (this.generatedLevelActive && this.sceneVariant) {
+      return;
+    }
     const profile = TIME_OF_DAY_PROFILES[this.getActiveTimeOfDay()];
     const layerItems = [];
 

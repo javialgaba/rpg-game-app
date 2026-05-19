@@ -1,4 +1,5 @@
 import type { LevelConfig } from './levelTypes';
+import { DEFAULT_PLAYABLE_BOUNDS } from '../sceneVariants';
 
 export const DEFAULT_VILLAGE_LEVEL: LevelConfig = {
   seed: 'village-001',
@@ -6,6 +7,7 @@ export const DEFAULT_VILLAGE_LEVEL: LevelConfig = {
   tileSize: 44,
   decorationDensity: 0.48,
   difficulty: 1,
+  playableBounds: DEFAULT_PLAYABLE_BOUNDS,
   matrix: [
     ['T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T', 'T'],
     ['T', 'T', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'T', 'T'],

@@ -24,6 +24,13 @@ export interface GridPoint {
   y: number;
 }
 
+export interface PlayableBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 export interface Footprint {
   w: number;
   h: number;
@@ -36,6 +43,7 @@ export interface LevelConfig {
   decorationDensity: number;
   difficulty: number;
   matrix: LevelToken[][];
+  playableBounds?: PlayableBounds;
 }
 
 export interface AssetRenderMetadata {
@@ -90,6 +98,7 @@ export interface GeneratedLevel {
   config: LevelConfig;
   width: number;
   height: number;
+  playableBounds: PlayableBounds;
   walkableGrid: boolean[][];
   blockedGrid: boolean[][];
   buildingGrid: (ProtectedTargetPlacement | null)[][];

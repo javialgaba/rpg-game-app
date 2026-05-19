@@ -40,6 +40,7 @@ export const LEVEL_CATALOG: Record<string, LevelCatalogEntry> = {
 
 const cloneLevelConfig = (config: LevelConfig): LevelConfig => ({
   ...config,
+  playableBounds: config.playableBounds ? { ...config.playableBounds } : undefined,
   matrix: config.matrix.map((row) => [...row]),
 });
 
