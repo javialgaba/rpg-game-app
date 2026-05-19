@@ -1,21 +1,21 @@
 export type LevelToken =
-  | 'G'
-  | 'P'
-  | 'C'
-  | 'H1'
-  | 'H2'
-  | 'M'
-  | 'W'
-  | 'T'
-  | 'D'
-  | 'CH'
-  | 'SP'
-  | 'V'
-  | 'L'
-  | 'F'
-  | 'S'
-  | 'B'
-  | 'PS';
+  | 'grass'
+  | 'path'
+  | 'castle'
+  | 'house-1'
+  | 'house-2'
+  | 'market'
+  | 'well'
+  | 'tree'
+  | 'decoration'
+  | 'chest'
+  | 'monster-spawn'
+  | 'village-center'
+  | 'lamp'
+  | 'fence'
+  | 'sign'
+  | 'blocker'
+  | 'player-spawn';
 
 export type TimeOfDay = 'morning' | 'noon' | 'afternoon' | 'night';
 

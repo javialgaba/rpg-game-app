@@ -2,15 +2,15 @@ import { COLORS } from '../gameConfig';
 import type { AssetRegistry } from './levelTypes';
 
 export const BUILDING_IMPORTANCE = {
-  C: 100,
-  M: 70,
-  H1: 50,
-  H2: 50,
+  'castle': 100,
+  'market': 70,
+  'house-1': 50,
+  'house-2': 50,
 };
 
 export const ASSET_REGISTRY: AssetRegistry = {
-  G: {
-    token: 'G',
+  'grass': {
+    token: 'grass',
     type: 'terrain',
     label: 'Grass',
     walkable: true,
@@ -24,8 +24,8 @@ export const ASSET_REGISTRY: AssetRegistry = {
       terrainStroke: 0x5dbb65,
     },
   },
-  P: {
-    token: 'P',
+  'path': {
+    token: 'path',
     type: 'path',
     label: 'Cobblestone Path',
     walkable: true,
@@ -39,56 +39,56 @@ export const ASSET_REGISTRY: AssetRegistry = {
       terrainStroke: COLORS.pathEdge,
     },
   },
-  C: {
-    token: 'C',
+  'castle': {
+    token: 'castle',
     type: 'building',
     label: 'Castle',
     walkable: false,
     blocksMovement: true,
     footprint: { w: 3, h: 3 },
     protected: true,
-    importance: BUILDING_IMPORTANCE.C,
+    importance: BUILDING_IMPORTANCE['castle'],
     maxHealth: 110,
     render: { textureKey: 'buildingsAtlas', frameKey: 'castle_01', displaySize: [299, 190], origin: [0.5, 0.84], alpha: 1, z: 18 },
   },
-  H1: {
-    token: 'H1',
+  'house-1': {
+    token: 'house-1',
     type: 'building',
     label: 'Cottage',
     walkable: false,
     blocksMovement: true,
     footprint: { w: 3, h: 2 },
     protected: true,
-    importance: BUILDING_IMPORTANCE.H1,
+    importance: BUILDING_IMPORTANCE['house-1'],
     maxHealth: 74,
     render: { textureKey: 'buildingsAtlas', frameKey: 'house_orange_01', displaySize: [237, 155], origin: [0.5, 0.84], alpha: 1, z: 18 },
   },
-  H2: {
-    token: 'H2',
+  'house-2': {
+    token: 'house-2',
     type: 'building',
     label: 'Bakery',
     walkable: false,
     blocksMovement: true,
     footprint: { w: 3, h: 2 },
     protected: true,
-    importance: BUILDING_IMPORTANCE.H2,
+    importance: BUILDING_IMPORTANCE['house-2'],
     maxHealth: 76,
     render: { textureKey: 'buildingsAtlas', frameKey: 'bakery_blue_01', displaySize: [235, 185], origin: [0.5, 0.84], alpha: 1, z: 18 },
   },
-  M: {
-    token: 'M',
+  'market': {
+    token: 'market',
     type: 'building',
     label: 'Market',
     walkable: false,
     blocksMovement: true,
     footprint: { w: 3, h: 2 },
     protected: true,
-    importance: BUILDING_IMPORTANCE.M,
+    importance: BUILDING_IMPORTANCE['market'],
     maxHealth: 68,
     render: { textureKey: 'buildingsAtlas', frameKey: 'market_01', displaySize: [220, 187], origin: [0.5, 0.86], alpha: 1, z: 18 },
   },
-  W: {
-    token: 'W',
+  'well': {
+    token: 'well',
     type: 'prop',
     label: 'Well',
     walkable: false,
@@ -96,8 +96,8 @@ export const ASSET_REGISTRY: AssetRegistry = {
     footprint: { w: 2, h: 2 },
     render: { textureKey: 'buildingsAtlas', frameKey: 'well_01', displaySize: [203, 157], origin: [0.5, 0.82], alpha: 1, z: 7 },
   },
-  T: {
-    token: 'T',
+  'tree': {
+    token: 'tree',
     type: 'prop',
     label: 'Forest Tree',
     walkable: false,
@@ -105,8 +105,8 @@ export const ASSET_REGISTRY: AssetRegistry = {
     footprint: { w: 1, h: 1 },
     render: { textureKey: 'worldTilesAtlas', frameKey: 'pine_tree_01', displaySize: [204, 175], origin: [0.5, 0.84], alpha: 1, z: 12 },
   },
-  D: {
-    token: 'D',
+  'decoration': {
+    token: 'decoration',
     type: 'terrain',
     label: 'Garden Decoration',
     walkable: true,
@@ -120,8 +120,8 @@ export const ASSET_REGISTRY: AssetRegistry = {
       terrainStroke: 0xdf729f,
     },
   },
-  CH: {
-    token: 'CH',
+  'chest': {
+    token: 'chest',
     type: 'interactable',
     label: 'Treasure Chest',
     walkable: true,
@@ -129,24 +129,24 @@ export const ASSET_REGISTRY: AssetRegistry = {
     footprint: { w: 1, h: 1 },
     render: { textureKey: 'worldTilesAtlas', frameKey: 'chest_closed_01', displaySize: [101, 103], origin: [0.5, 0.78], z: 10 },
   },
-  SP: {
-    token: 'SP',
+  'monster-spawn': {
+    token: 'monster-spawn',
     type: 'spawn',
     label: 'Monster Spawn',
     walkable: true,
     blocksMovement: false,
     render: { terrainFill: COLORS.forest, terrainStroke: 0x3e965e },
   },
-  V: {
-    token: 'V',
+  'village-center': {
+    token: 'village-center',
     type: 'marker',
     label: 'Village Center',
     walkable: true,
     blocksMovement: false,
     render: { terrainFill: COLORS.path, terrainStroke: COLORS.pathEdge },
   },
-  L: {
-    token: 'L',
+  'lamp': {
+    token: 'lamp',
     type: 'prop',
     label: 'Lamp',
     walkable: false,
@@ -154,8 +154,8 @@ export const ASSET_REGISTRY: AssetRegistry = {
     footprint: { w: 1, h: 1 },
     render: { textureKey: 'worldTilesAtlas', frameKey: 'lamp_01', displaySize: [162, 124], origin: [0.5, 0.86], alpha: 1, z: 7 },
   },
-  F: {
-    token: 'F',
+  'fence': {
+    token: 'fence',
     type: 'prop',
     label: 'Fence',
     walkable: false,
@@ -163,8 +163,8 @@ export const ASSET_REGISTRY: AssetRegistry = {
     footprint: { w: 1, h: 1 },
     render: { textureKey: 'worldTilesAtlas', frameKey: 'fence_01', displaySize: [156, 103], origin: [0.5, 0.82], alpha: 1, z: 6 },
   },
-  S: {
-    token: 'S',
+  'sign': {
+    token: 'sign',
     type: 'prop',
     label: 'Sign',
     walkable: false,
@@ -172,16 +172,16 @@ export const ASSET_REGISTRY: AssetRegistry = {
     footprint: { w: 1, h: 1 },
     render: { textureKey: 'worldTilesAtlas', frameKey: 'sign_01', displaySize: [144, 106], origin: [0.5, 0.86], alpha: 1, z: 7 },
   },
-  B: {
-    token: 'B',
+  'blocker': {
+    token: 'blocker',
     type: 'blocker',
     label: 'Generic Blocker',
     walkable: false,
     blocksMovement: true,
     footprint: { w: 1, h: 1 },
   },
-  PS: {
-    token: 'PS',
+  'player-spawn': {
+    token: 'player-spawn',
     type: 'marker',
     label: 'Player Spawn',
     walkable: true,

@@ -880,12 +880,12 @@ class FairyGuildScene extends Phaser.Scene {
   getSceneVariantTerrainTexture(token) {
     const variant = this.getActiveSceneVariant();
     if (variant.key === 'noon_winter') {
-      if (token === 'P' || token === 'V' || token === 'PS') {
+      if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
         return { textureKey: 'winter_path_01', frameKey: undefined };
       }
       return { textureKey: 'winter_grass_01', frameKey: undefined };
     }
-    if (token === 'P' || token === 'V' || token === 'PS') {
+    if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
       return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.path[0] };
     }
     return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.grass[0] };
@@ -896,10 +896,10 @@ class FairyGuildScene extends Phaser.Scene {
     if (variant.key !== 'noon_winter') {
       return null;
     }
-    if (placement.token === 'T') {
+    if (placement.token === 'tree') {
       return { textureKey: 'winter_pine_01', frameKey: undefined };
     }
-    if (placement.type === 'terrain' && placement.token === 'D') {
+    if (placement.type === 'terrain' && placement.token === 'decoration') {
       return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
     }
     return null;
@@ -1840,7 +1840,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedProp(placement) {
-    if (this.generatedLevelActive && this.generatedLevel && placement.token === 'T' && this.isGeneratedBoardEdgeCell(placement.grid)) {
+    if (this.generatedLevelActive && this.generatedLevel && placement.token === 'tree' && this.isGeneratedBoardEdgeCell(placement.grid)) {
       return;
     }
     const render = placement.render;
@@ -1925,7 +1925,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.generatedLevelActive && this.generatedLevel) {
       return [
         ...this.generatedLevel.objects
-          .filter((placement) => placement.token === 'L')
+          .filter((placement) => placement.token === 'lamp')
           .map((placement) => placement.iso),
         ...this.generatedLevel.decorations
           .filter((placement) => placement.decorationKind === 'magicPlant')

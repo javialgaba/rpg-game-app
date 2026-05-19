@@ -6,8 +6,8 @@ import type {
   GeneratedLevel,
   GridPoint,
   LevelConfig,
-  LevelPlacement,
   LevelToken,
+  LevelPlacement,
   LevelValidationResult,
   PlayableBounds,
   ProtectedTargetPlacement,
@@ -114,11 +114,15 @@ const getCardinalNeighborCells = (point: GridPoint) => [
 ];
 
 const canCarveRoadToken = (token: LevelToken | undefined) => (
-  token === 'G' || token === 'D' || token === 'P' || token === 'V' || token === 'PS'
+  token === 'grass'
+  || token === 'decoration'
+  || token === 'path'
+  || token === 'village-center'
+  || token === 'player-spawn'
 );
 
 const isRoadToken = (token: LevelToken | undefined) => (
-  token === 'P' || token === 'V' || token === 'PS'
+  token === 'path' || token === 'village-center' || token === 'player-spawn'
 );
 
 const getAttackCells = (
@@ -168,19 +172,19 @@ const createPlacement = (
 };
 
 const getTerrainEntry = (entry: AssetRegistryEntry, registry: AssetRegistry) => {
-  if (entry.type === 'path' || entry.token === 'V' || entry.token === 'PS') {
-    return registry.P;
+  if (entry.type === 'path' || entry.token === 'village-center' || entry.token === 'player-spawn') {
+    return registry.path;
   }
-  if (entry.token === 'D') {
-    return registry.D;
+  if (entry.token === 'decoration') {
+    return registry.decoration;
   }
-  if (entry.token === 'SP') {
-    return registry.SP;
+  if (entry.token === 'monster-spawn') {
+    return registry['monster-spawn'];
   }
-  if (entry.token === 'T') {
-    return registry.G;
+  if (entry.token === 'tree') {
+    return registry.grass;
   }
-  return registry.G;
+  return registry.grass;
 };
 
 const createRoadPlan = (
@@ -207,14 +211,14 @@ const createRoadPlan = (
       if (!entry) {
         return;
       }
-      if (token === 'PS') {
+      if (token === 'player-spawn') {
         playerSpawn = { x, y };
       }
       if (entry.protected) {
         protectedAnchors.push({ x, y });
-      } else if (token === 'W') {
+      } else if (token === 'well') {
         utilityAnchors.push({ x, y });
-      } else if (token === 'CH') {
+      } else if (token === 'chest') {
         chestAnchors.push({ x, y });
       }
       if (!entry.blocksMovement) {
@@ -245,8 +249,8 @@ const createRoadPlan = (
       return;
     }
     const token = matrix[point.y][point.x];
-    if (token === 'G' || token === 'D' || token === 'V') {
-      matrix[point.y][point.x] = 'P';
+    if (token === 'grass' || token === 'decoration' || token === 'village-center') {
+      matrix[point.y][point.x] = 'path';
     }
   };
 
@@ -352,10 +356,10 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       const terrainEntry = getTerrainEntry(entry, registry);
       terrain.push(createPlacement(`terrain-${x}-${y}`, terrainEntry.token, terrainEntry, { x, y }));
 
-      if (token === 'PS') {
+      if (token === 'player-spawn') {
         playerSpawn = { x, y };
       }
-      if (token === 'SP') {
+      if (token === 'monster-spawn') {
         spawnPoints.push({ x, y });
         spawnGrid[y][x] = true;
       }
@@ -419,7 +423,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   });
 
   if (!playerSpawn) {
-    warnings.push('No PS player spawn found; using village center fallback.');
+    warnings.push('No player-spawn token found; using village center fallback.');
     playerSpawn = {
       x: Math.floor((playableBounds.minX + playableBounds.maxX) / 2),
       y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2),
@@ -427,7 +431,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   }
 
   if (!spawnPoints.length) {
-    warnings.push('No SP monster spawns found; using edge fallback spawns.');
+    warnings.push('No monster-spawn tokens found; using edge fallback spawns.');
     spawnPoints.push(
       { x: playableBounds.minX, y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2) },
       { x: Math.floor((playableBounds.minX + playableBounds.maxX) / 2), y: playableBounds.minY },
@@ -456,11 +460,11 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       || roadPlan.roadGrid[grid.y][grid.x]
       || (!options?.allowNearEdge && edgeDistance < 4)
       || (options?.allowNearEdge && edgeDistance < 1)
-      || token === 'P'
-      || token === 'V'
-      || token === 'PS'
-      || token === 'SP'
-      || token === 'CH'
+      || token === 'path'
+      || token === 'village-center'
+      || token === 'player-spawn'
+      || token === 'monster-spawn'
+      || token === 'chest'
       || (playerSpawn && grid.x === playerSpawn.x && grid.y === playerSpawn.y)
       || distanceFromCenter < 2.6
     ) {
@@ -480,7 +484,12 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       return false;
     }
     const decoration = {
-      ...createPlacement(`deco-${decorationKind}-${grid.x}-${grid.y}-${decorations.length}`, 'D', registry.D, grid),
+      ...createPlacement(
+        `deco-${decorationKind}-${grid.x}-${grid.y}-${decorations.length}`,
+        'decoration',
+        registry.decoration,
+        grid,
+      ),
       label,
       decorationKind,
       render,
@@ -598,7 +607,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
 
   terrain.forEach((placement) => {
     const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
-    if ((token === 'G' || token === 'D') && rng.chance(config.decorationDensity * 0.15)) {
+    if ((token === 'grass' || token === 'decoration') && rng.chance(config.decorationDensity * 0.15)) {
       const roll = rng.next();
       if (roll < 0.52) {
         addDecoration(placement.grid, 'flowers', 'Wildflower Patch', flowerPatchRender);
@@ -616,14 +625,14 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         const render = rng.chance(0.68) ? flowerPatchRender : bushRender;
         addDecoration(cell, render === bushRender ? 'bush' : 'flowers', `${target.label} Garden`, render);
       }
-      if ((target.token === 'H1' || target.token === 'H2' || target.token === 'M') && rng.chance(config.decorationDensity * 0.10)) {
+      if ((target.token === 'house-1' || target.token === 'house-2' || target.token === 'market') && rng.chance(config.decorationDensity * 0.10)) {
         addDecoration(cell, 'fence', `${target.label} Fence`, fenceSegmentRender);
       }
     });
   });
 
   objects
-    .filter((placement) => placement.token === 'T')
+    .filter((placement) => placement.token === 'tree')
     .forEach((tree) => {
       getNeighborCells(tree.grid, 1).forEach((cell) => {
         if (!rng.chance(config.decorationDensity * 0.18)) {
@@ -644,10 +653,10 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     const edgeDistance = getBoundsEdgeDistance(placement.grid, playableBounds);
     const isNearEdge = edgeDistance <= 2;
     const isInnerEdgeBand = edgeDistance >= 1 && edgeDistance <= 2;
-    if (token === 'G' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.12)) {
+    if (token === 'grass' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.12)) {
       addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender, { allowNearEdge: true });
     }
-    if (token === 'G' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.42)) {
+    if (token === 'grass' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.42)) {
       addDecoration(
         placement.grid,
         rng.chance(0.64) ? 'treeCluster' : 'fullTree',
@@ -656,7 +665,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         { allowNearEdge: true },
       );
     }
-    if (token === 'G' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.22)) {
+    if (token === 'grass' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.22)) {
       const edgeRender = rng.chance(0.58) ? bushRender : rockClusterRender;
       addDecoration(
         placement.grid,
@@ -666,13 +675,13 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         { allowNearEdge: true },
       );
     }
-    if (token === 'G' && isNearEdge && rng.chance(config.decorationDensity * 0.1)) {
+    if (token === 'grass' && isNearEdge && rng.chance(config.decorationDensity * 0.1)) {
       addDecoration(placement.grid, 'flowers', 'Soft Edge Flowers', flowerPatchRender, { allowNearEdge: true });
     }
-    if (token === 'G' && !isNearEdge && rng.chance(config.decorationDensity * 0.13)) {
+    if (token === 'grass' && !isNearEdge && rng.chance(config.decorationDensity * 0.13)) {
       addDecoration(placement.grid, 'sapling', 'Young Pine', saplingRender);
     }
-    if (token === 'G' && !isNearEdge && rng.chance(config.decorationDensity * 0.10)) {
+    if (token === 'grass' && !isNearEdge && rng.chance(config.decorationDensity * 0.10)) {
       const interiorRender = rng.chance(0.52) ? bushRender : flowerPatchRender;
       addDecoration(
         placement.grid,
@@ -681,7 +690,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         interiorRender,
       );
     }
-    if (token === 'G' && rng.chance(config.decorationDensity * 0.035)) {
+    if (token === 'grass' && rng.chance(config.decorationDensity * 0.035)) {
       addDecoration(placement.grid, 'sparkles', 'Fairy Sparkles');
     }
   });
@@ -746,8 +755,8 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
   if (!level.protectedTargets.length) {
     errors.push('At least one protected building is required.');
   }
-  if (!level.protectedTargets.some((target) => target.token === 'C')) {
-    errors.push('A castle token (C) is required for this defense mode.');
+  if (!level.protectedTargets.some((target) => target.token === 'castle')) {
+    errors.push('A Castle token is required for this defense mode.');
   }
 
   const allAttackCells = level.protectedTargets.flatMap((target) => target.attackCells);
@@ -828,7 +837,7 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       errors.push(`${placement.label} is outside board bounds.`);
     }
     const frameKey = placement.render?.frameKey;
-    if ((placement.token === 'T' || placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree') && !FULL_TREE_FRAMES.has(frameKey ?? '')) {
+    if ((placement.token === 'tree' || placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree') && !FULL_TREE_FRAMES.has(frameKey ?? '')) {
       errors.push(`${placement.label} must use a full-tree frame, not ${frameKey ?? 'an unnamed frame'}.`);
     }
     if (frameKey && PARTIAL_TREE_FRAMES.has(frameKey) && placement.decorationKind !== 'fullTree') {
