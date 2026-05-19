@@ -70,8 +70,11 @@ const isInsidePlayableBounds = (point: GridPoint, bounds: PlayableBounds) => (
   && point.y <= bounds.maxY
 );
 
-const isOuterEdgeCell = (point: GridPoint, width: number, height: number) => (
-  point.x === 0 || point.y === 0 || point.x === width - 1 || point.y === height - 1
+const isPlayableBoundsEdgeCell = (point: GridPoint, bounds: PlayableBounds) => (
+  point.x === bounds.minX
+  || point.y === bounds.minY
+  || point.x === bounds.maxX
+  || point.y === bounds.maxY
 );
 
 const getEdgeDistance = (point: GridPoint, width: number, height: number) => Math.min(
@@ -427,7 +430,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     warnings.push('No SP monster spawns found; using edge fallback spawns.');
     spawnPoints.push(
       { x: playableBounds.minX, y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2) },
+      { x: Math.floor((playableBounds.minX + playableBounds.maxX) / 2), y: playableBounds.minY },
       { x: playableBounds.maxX, y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2) },
+      { x: Math.floor((playableBounds.minX + playableBounds.maxX) / 2), y: playableBounds.maxY },
     );
   }
 
@@ -755,8 +760,8 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       errors.push(`Monster spawn ${spawn.x},${spawn.y} is blocked.`);
       return;
     }
-    if (!isOuterEdgeCell(spawn, level.width, level.height)) {
-      errors.push(`Monster spawn ${spawn.x},${spawn.y} must be on the outer map edge.`);
+    if (!isPlayableBoundsEdgeCell(spawn, level.playableBounds)) {
+      errors.push(`Monster spawn ${spawn.x},${spawn.y} must be on the playable region edge.`);
     }
     const path = findGridPath(level.walkableGrid, spawn, allAttackCells);
     if (!path) {

@@ -1,3 +1,5 @@
+import type { SeasonPreset } from './sceneVariants';
+
 export const WIDTH = 1280;
 export const HEIGHT = 720;
 export const TILE_W = 92;
@@ -32,6 +34,8 @@ export const LEVEL_FIRST_SPAWN_DELAY = 740;
 export const LEVEL_SPAWN_INTERVAL_BASE = 820;
 export const LEVEL_SPAWN_INTERVAL_STEP = 28;
 export const LEVEL_SPAWN_INTERVAL_MIN = 300;
+export const ROUNDS_PER_WORLD = 4;
+export const BOSS_ROUND_INDEX = 4;
 
 export const COMPACT_NOTES_MAX_VISIBLE = 2;
 export const DESKTOP_NOTES_MAX_VISIBLE = 3;
@@ -151,6 +155,147 @@ export const ENEMY_VARIANTS = [
     reward: 1.55,
   },
 ];
+
+export const WORLD_SEQUENCE: SeasonPreset[] = [
+  'day_spring',
+  'afternoon_summer',
+  'night_spring',
+  'noon_winter',
+];
+
+export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
+  label: string;
+  bossLabel: string;
+  bossIntro: string;
+  bossDefeat: string;
+  eliteAssetKey: string;
+  eliteFramePrefix: string;
+  bossAssetKey: string;
+  bossFramePrefix: string;
+  eliteSpawnChance: number;
+  preferredArchetypes: string[];
+  ambientTint: number | null;
+}> = {
+  day_spring: {
+    label: 'Spring',
+    bossLabel: 'Spring Boss',
+    bossIntro: 'The Blossom Guardian appears!',
+    bossDefeat: 'Spring is safe. Summer stirs beyond the clouds!',
+    eliteAssetKey: 'worldElite_day_spring',
+    eliteFramePrefix: 'world-elite-day-spring',
+    bossAssetKey: 'worldBoss_day_spring',
+    bossFramePrefix: 'world-boss-day-spring',
+    eliteSpawnChance: 0.34,
+    preferredArchetypes: ['sprite', 'blob', 'mushroom'],
+    ambientTint: 0xffe7f4,
+  },
+  afternoon_summer: {
+    label: 'Summer',
+    bossLabel: 'Summer Boss',
+    bossIntro: 'A Sun-Bramble Guardian charges from the grove!',
+    bossDefeat: 'Summer bows out. Twilight settles over the village!',
+    eliteAssetKey: 'worldElite_afternoon_summer',
+    eliteFramePrefix: 'world-elite-afternoon-summer',
+    bossAssetKey: 'worldBoss_afternoon_summer',
+    bossFramePrefix: 'world-boss-afternoon-summer',
+    eliteSpawnChance: 0.38,
+    preferredArchetypes: ['lizard', 'blob', 'acorn'],
+    ambientTint: 0xffe2a6,
+  },
+  night_spring: {
+    label: 'Twilight',
+    bossLabel: 'Twilight Boss',
+    bossIntro: 'A Moonlit Guardian drifts into the lantern glow!',
+    bossDefeat: 'The twilight guardian fades. Winter winds answer next.',
+    eliteAssetKey: 'worldElite_night_spring',
+    eliteFramePrefix: 'world-elite-night-spring',
+    bossAssetKey: 'worldBoss_night_spring',
+    bossFramePrefix: 'world-boss-night-spring',
+    eliteSpawnChance: 0.42,
+    preferredArchetypes: ['sprite', 'mushroom', 'acorn'],
+    ambientTint: 0xb8c7ff,
+  },
+  noon_winter: {
+    label: 'Winter',
+    bossLabel: 'Winter Boss',
+    bossIntro: 'The Frost Guardian stomps across the snow!',
+    bossDefeat: 'Winter is quiet again. Spring will bloom once more.',
+    eliteAssetKey: 'worldElite_noon_winter',
+    eliteFramePrefix: 'world-elite-noon-winter',
+    bossAssetKey: 'worldBoss_noon_winter',
+    bossFramePrefix: 'world-boss-noon-winter',
+    eliteSpawnChance: 0.42,
+    preferredArchetypes: ['mushroom', 'acorn', 'blob'],
+    ambientTint: 0xe6f7ff,
+  },
+};
+
+export const BOSS_CONFIGS: Record<SeasonPreset, {
+  name: string;
+  hp: number;
+  speed: number;
+  size: number;
+  buildingDamage: number;
+  contactDamage: number;
+  rewardGold: [number, number];
+  rewardXp: number;
+  clearGold: number;
+  clearXp: number;
+  tint: number | null;
+}> = {
+  day_spring: {
+    name: 'Blossom Guardian',
+    hp: 22,
+    speed: 0.56,
+    size: 118,
+    buildingDamage: 11,
+    contactDamage: 1,
+    rewardGold: [22, 34],
+    rewardXp: 52,
+    clearGold: 58,
+    clearXp: 72,
+    tint: null,
+  },
+  afternoon_summer: {
+    name: 'Sun-Bramble Guardian',
+    hp: 26,
+    speed: 0.62,
+    size: 124,
+    buildingDamage: 12,
+    contactDamage: 1,
+    rewardGold: [26, 39],
+    rewardXp: 60,
+    clearGold: 66,
+    clearXp: 84,
+    tint: 0xffd385,
+  },
+  night_spring: {
+    name: 'Moonlit Guardian',
+    hp: 30,
+    speed: 0.58,
+    size: 130,
+    buildingDamage: 13,
+    contactDamage: 1,
+    rewardGold: [30, 44],
+    rewardXp: 72,
+    clearGold: 74,
+    clearXp: 96,
+    tint: 0xd5deff,
+  },
+  noon_winter: {
+    name: 'Frost Guardian',
+    hp: 34,
+    speed: 0.54,
+    size: 138,
+    buildingDamage: 14,
+    contactDamage: 1,
+    rewardGold: [34, 48],
+    rewardXp: 84,
+    clearGold: 84,
+    clearXp: 108,
+    tint: 0xe7ffff,
+  },
+};
 
 export const COLORS = {
   skyTop: 0x8bd6ff,
