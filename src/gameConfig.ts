@@ -172,10 +172,14 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
   eliteFramePrefix: string;
   eliteIdleFrames: number[];
   eliteDefeatFrame: number;
+  eliteDisplayScaleX: number;
+  eliteDisplayScaleY: number;
   bossAssetKey: string;
   bossFramePrefix: string;
   bossIdleFrames: number[];
   bossDefeatFrame: number;
+  bossDisplayScaleX: number;
+  bossDisplayScaleY: number;
   eliteSpawnChance: number;
   preferredArchetypes: string[];
   ambientTint: number | null;
@@ -189,10 +193,14 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     eliteFramePrefix: 'world-elite-day-spring',
     eliteIdleFrames: [0, 1, 2, 3],
     eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 1.95,
+    eliteDisplayScaleY: 0.98,
     bossAssetKey: 'worldBoss_day_spring',
     bossFramePrefix: 'world-boss-day-spring',
     bossIdleFrames: [0, 1, 2, 3],
     bossDefeatFrame: 7,
+    bossDisplayScaleX: 2.15,
+    bossDisplayScaleY: 1,
     eliteSpawnChance: 0.34,
     preferredArchetypes: ['sprite', 'blob', 'mushroom'],
     ambientTint: 0xffe7f4,
@@ -206,10 +214,14 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     eliteFramePrefix: 'world-elite-afternoon-summer',
     eliteIdleFrames: [0, 1, 2, 3],
     eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 1.95,
+    eliteDisplayScaleY: 0.98,
     bossAssetKey: 'worldBoss_afternoon_summer',
     bossFramePrefix: 'world-boss-afternoon-summer',
     bossIdleFrames: [0, 1, 2, 3],
     bossDefeatFrame: 7,
+    bossDisplayScaleX: 2.15,
+    bossDisplayScaleY: 1,
     eliteSpawnChance: 0.38,
     preferredArchetypes: ['lizard', 'blob', 'acorn'],
     ambientTint: 0xffe2a6,
@@ -223,10 +235,14 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     eliteFramePrefix: 'world-elite-night-spring',
     eliteIdleFrames: [0, 1, 2, 3],
     eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 2.05,
+    eliteDisplayScaleY: 0.98,
     bossAssetKey: 'worldBoss_night_spring',
     bossFramePrefix: 'world-boss-night-spring',
     bossIdleFrames: [0, 1, 2, 3],
     bossDefeatFrame: 7,
+    bossDisplayScaleX: 1.95,
+    bossDisplayScaleY: 1,
     eliteSpawnChance: 0.42,
     preferredArchetypes: ['sprite', 'mushroom', 'acorn'],
     ambientTint: 0xb8c7ff,
@@ -240,10 +256,14 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     eliteFramePrefix: 'world-elite-noon-winter',
     eliteIdleFrames: [0, 1, 2, 3],
     eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 2.25,
+    eliteDisplayScaleY: 0.98,
     bossAssetKey: 'worldBoss_noon_winter',
     bossFramePrefix: 'world-boss-noon-winter',
     bossIdleFrames: [0, 1, 2, 3],
     bossDefeatFrame: 7,
+    bossDisplayScaleX: 1.95,
+    bossDisplayScaleY: 1,
     eliteSpawnChance: 0.42,
     preferredArchetypes: ['mushroom', 'acorn', 'blob'],
     ambientTint: 0xe6f7ff,

@@ -3998,7 +3998,9 @@ class FairyGuildScene extends Phaser.Scene {
     const speed = Math.min(1.72, (archetype.speed + levelBonus * 0.035) * variant.speed);
     const buildingDamage = Math.max(1, Math.round((archetype.buildingDamage + Math.floor(levelBonus / 3)) * variant.buildingDamage));
     const contactDamage = Math.max(1, Math.round(archetype.contactDamage * variant.contactDamage));
-    const shadow = this.add.ellipse(p.x, p.y + 13, size * 0.58, size * 0.22, 0x315133, 0.2);
+    const displayScaleX = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDisplayScaleX : 1;
+    const displayScaleY = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDisplayScaleY : 1;
+    const shadow = this.add.ellipse(p.x, p.y + 13, size * displayScaleX * 0.42, size * displayScaleY * 0.22, 0x315133, 0.2);
     const frameRow = visual.frameRow ?? archetype.row;
     const framePrefix = visual.framePrefix ?? 'monster';
     const idleFrames = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteIdleFrames : [0, 1, 2, 3];
@@ -4006,7 +4008,7 @@ class FairyGuildScene extends Phaser.Scene {
     const defeatFrame = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDefeatFrame : 7;
     const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${framePrefix}-${frameRow}-${initialFrame}`)
       .setOrigin(0.5, 0.76)
-      .setDisplaySize(size, size)
+      .setDisplaySize(size * displayScaleX, size * displayScaleY)
       .setDepth(p.y + 50);
     if (visual.tint) {sprite.setTint(visual.tint);}
     const enemy = {
@@ -4099,11 +4101,13 @@ class FairyGuildScene extends Phaser.Scene {
     const cycleBonus = this.state.worldCycle * 0.18;
     const maxHp = Math.round(bossConfig.hp + levelBonus * 3 + this.state.worldIndex * 3 + this.state.worldCycle * 8);
     const size = bossConfig.size + this.state.worldIndex * 3 + this.state.worldCycle * 4;
-    const shadow = this.add.ellipse(p.x, p.y + 14, size * 0.62, size * 0.24, 0x243829, 0.24);
+    const displayScaleX = theme.bossDisplayScaleX;
+    const displayScaleY = theme.bossDisplayScaleY;
+    const shadow = this.add.ellipse(p.x, p.y + 14, size * displayScaleX * 0.42, size * displayScaleY * 0.24, 0x243829, 0.24);
     const initialFrame = Phaser.Utils.Array.GetRandom(theme.bossIdleFrames);
     const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${visual.framePrefix}-${visual.frameRow}-${initialFrame}`)
       .setOrigin(0.5, 0.76)
-      .setDisplaySize(size, size)
+      .setDisplaySize(size * displayScaleX, size * displayScaleY)
       .setDepth(p.y + 54);
     if (visual.tint) {
       sprite.setTint(visual.tint);
