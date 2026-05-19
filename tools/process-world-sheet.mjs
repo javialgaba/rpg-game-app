@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import path from 'node:path';
 
-const [, , inputPath, outputPath, cellSizeArg] = process.argv;
+const [, , inputPath, outputPath, cellSizeArg, targetAspectArg] = process.argv;
 
 if (!inputPath || !outputPath) {
   console.error('Usage: node tools/process-world-sheet.mjs <input> <output> [targetWidth]');
@@ -10,6 +10,7 @@ if (!inputPath || !outputPath) {
 
 const frameCount = 8;
 const cellSize = Number(cellSizeArg ?? 256);
+const targetAspect = Number.isFinite(Number(targetAspectArg)) ? Number(targetAspectArg) : null;
 const magenta = { r: 255, g: 0, b: 255 };
 const transparentDistance = 42;
 const featherDistance = 92;
@@ -69,8 +70,12 @@ for (let col = 0; col < frameCount; col += 1) {
   const sourceWidth = (hasTrimmedPixels ? metadata.width : extractedWidth) ?? extractedWidth;
   const sourceHeight = (hasTrimmedPixels ? metadata.height : info.height) ?? info.height;
   const scale = Math.min(usableCell / sourceWidth, usableCell / sourceHeight);
-  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
-  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const proportionalWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const proportionalHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const targetHeight = proportionalHeight;
+  const targetWidth = targetAspect
+    ? Math.max(proportionalWidth, Math.min(usableCell, Math.round(targetHeight * targetAspect)))
+    : proportionalWidth;
   const rendered = await source
     .resize({
       width: targetWidth,
