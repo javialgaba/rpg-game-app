@@ -158,13 +158,17 @@ const createPlacement = (
 ) => {
   const footprint = entry.footprint ?? { w: 1, h: 1 };
   const cells = getAnchorFootprintCells(grid, footprint);
+  const iso = {
+    x: cells.reduce((sum, cell) => sum + cell.x, 0) / cells.length,
+    y: cells.reduce((sum, cell) => sum + cell.y, 0) / cells.length,
+  };
   return {
     id,
     token,
     label: entry.label,
     type: entry.type,
     grid: clonePoint(grid),
-    iso: clonePoint(grid),
+    iso,
     footprint,
     cells,
     render: entry.render,

@@ -179,6 +179,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelConfigId = '';
     this.generatedLevelConfigLabel = '';
     this.generatedLevelSelectionWarnings = [];
+    this.levelDebugLayer = null;
     this.levelDebugGraphics = null;
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
@@ -283,6 +284,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.buildingLayer = this.add.layer().setDepth(300);
     this.characterLayer = this.add.layer().setDepth(360);
     this.effectsLayer = this.add.layer().setDepth(440);
+    this.levelDebugLayer = this.add.layer().setDepth(4600);
     this.lightingLayer = this.add.layer().setDepth(4700);
     this.hudLayer = this.add.layer().setDepth(5000);
     this.touchLayer = this.add.layer().setDepth(7700);
@@ -411,6 +413,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelConfigId = '';
     this.generatedLevelConfigLabel = '';
     this.generatedLevelSelectionWarnings = [];
+    this.levelDebugLayer = null;
     this.levelDebugGraphics = null;
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
@@ -767,6 +770,15 @@ class FairyGuildScene extends Phaser.Scene {
       x: origin.x + (x - y) * (tileW / 2),
       y: origin.y + (x + y) * (tileH / 2) - z * scale,
     };
+  }
+
+  isoToGroundedEntityScreen(x, y, z = 18) {
+    const point = this.isoToScreen(x, y, this.generatedLevelActive ? 0 : z);
+    if (!this.generatedLevelActive) {
+      return point;
+    }
+    const { tileH } = this.getIsoMetrics();
+    return { x: point.x, y: point.y + tileH / 2 };
   }
 
   screenToIso(x, y) {
@@ -2024,7 +2036,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderGeneratedBuilding(placement) {
     const render = placement.render ?? {};
-    const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 18);
+    const p = this.isoToGroundedEntityScreen(placement.iso.x, placement.iso.y, 0);
     const size = this.scaleGeneratedSize(render.displaySize ?? [80, 70]);
     const base = this.add.graphics();
     base.fillStyle(0x8f7346, 0.14);
@@ -2077,7 +2089,9 @@ class FairyGuildScene extends Phaser.Scene {
     if (!textureKey) {
       return;
     }
-    const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
+    const p = textureKey === 'buildingsAtlas'
+      ? this.isoToGroundedEntityScreen(placement.iso.x, placement.iso.y, 0)
+      : this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
     const size = this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
     const sprite = this.add.image(p.x, p.y, textureKey, frameKey)
       .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
@@ -2291,7 +2305,7 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     this.levelDebugGraphics?.destroy();
-    const gfx = this.add.graphics().setDepth(4600);
+    const gfx = this.add.graphics().setDepth(0);
     this.levelDebugGraphics = gfx;
     for (let y = 0; y < this.generatedLevel.height; y += 1) {
       for (let x = 0; x < this.generatedLevel.width; x += 1) {
@@ -2337,7 +2351,7 @@ class FairyGuildScene extends Phaser.Scene {
           this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.target.iso), 0xfff15c, 0.42);
         }
       });
-    this.worldLayer.add(gfx);
+    this.levelDebugLayer.add(gfx);
   }
 
   toggleGeneratedLevelDebug() {
@@ -2534,7 +2548,7 @@ class FairyGuildScene extends Phaser.Scene {
     const playerSpawn = this.generatedLevelActive && this.generatedLevel?.playerSpawn
       ? this.generatedLevel.playerSpawn
       : { x: 7, y: 7 };
-    const start = this.isoToScreen(playerSpawn.x, playerSpawn.y, 18);
+    const start = this.isoToGroundedEntityScreen(playerSpawn.x, playerSpawn.y);
     const profile = this.getHeroProfile(this.heroChoice);
     this.ensureHeroAnimations(profile);
     this.player = {
@@ -2752,7 +2766,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.iso.y = point.y;
     this.clampIso(this.player.iso, 1.2);
     this.lastPointerIso = { x: this.player.iso.x, y: this.player.iso.y };
-    const position = this.isoToScreen(this.player.iso.x, this.player.iso.y, 18);
+    const position = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
     this.player.sprite.setPosition(position.x, position.y);
     this.player.shadow.setPosition(position.x, position.y + 15);
     return true;
@@ -3506,7 +3520,7 @@ class FairyGuildScene extends Phaser.Scene {
       this.castSpell(time);
     }
 
-    const p = this.isoToScreen(this.player.iso.x, this.player.iso.y, 18);
+    const p = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
     this.player.sprite.setPosition(p.x, p.y);
     this.player.shadow.setPosition(p.x, p.y + 15);
     this.player.sprite.setFlipX(this.player.facing.x < -0.05);
