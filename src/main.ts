@@ -1,10 +1,11 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import './style.css';
 import { ASSET_REGISTRY } from './levels/assetRegistry';
 import { buildSeasonBoardConfig } from './levels/buildSeasonBoard';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import { findGridPath, pathCost } from './levels/pathfinding';
+import { isFootprintWalkable } from './levels/playerFootprint';
 import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
 import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
@@ -45,6 +46,7 @@ import {
 type HeroChoice = 'male' | 'princess';
 type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'repairConfirm' | 'repairCancel';
 type TouchButtonSlot = 'left' | 'top' | 'right' | 'bottom';
+type UpgradePauseContext = 'roundClear' | 'chestBonus';
 type TouchActionIcon = { texture: string; frame?: string } | null;
 type GeneratedSurroundAnchor =
   | 'topLeft'
@@ -98,6 +100,19 @@ interface RunResumeStateSnapshot {
   heroChoice?: HeroChoice;
   upgradeLevels?: number[];
   note?: string;
+}
+
+interface DroppedChest {
+  iso: { x: number; y: number };
+  sprite: Phaser.GameObjects.Image;
+  glow: Phaser.GameObjects.Arc;
+  reward: string;
+  opened: boolean;
+  bob: number;
+  source: 'enemyDrop';
+  spawnedAt: number;
+  despawnAt: number;
+  blinkAt: number;
 }
 
 class FairyGuildScene extends Phaser.Scene {
@@ -776,21 +791,8 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevelActive || !this.generatedLevel) {
       return true;
     }
-    const samples = [
-      { x: iso.x, y: iso.y },
-      { x: iso.x + radius, y: iso.y },
-      { x: iso.x - radius, y: iso.y },
-      { x: iso.x, y: iso.y + radius },
-      { x: iso.x, y: iso.y - radius },
-      { x: iso.x + radius * 0.7, y: iso.y + radius * 0.7 },
-      { x: iso.x - radius * 0.7, y: iso.y + radius * 0.7 },
-      { x: iso.x + radius * 0.7, y: iso.y - radius * 0.7 },
-      { x: iso.x - radius * 0.7, y: iso.y - radius * 0.7 },
-    ];
-    return samples.every((sample) => {
-      const cell = this.isoToGridCell(sample);
-      return Boolean(this.generatedLevel.walkableGrid[cell.y]?.[cell.x]);
-    });
+    void radius;
+    return isFootprintWalkable(this.generatedLevel.walkableGrid, iso, this.generatedLevel.playableBounds);
   }
 
   createBackground() {
@@ -959,6 +961,8 @@ class FairyGuildScene extends Phaser.Scene {
       this.splashStartButton.setFillStyle(0xfff1b8, ready ? 0.18 : 0.03);
       if (ready && !this.splashStartButton.input) {
         this.splashStartButton.setInteractive({ useHandCursor: true });
+      } else if (!ready && this.splashStartButton.input) {
+        this.splashStartButton.disableInteractive();
       }
     }
     if (this.splashStartText) {
@@ -2660,46 +2664,254 @@ class FairyGuildScene extends Phaser.Scene {
     return new URLSearchParams(window.location.search).has('debugAutomation');
   }
 
+  getDebugAutomationHost() {
+    return document.querySelector('#game');
+  }
+
+  toDebugSlug(value) {
+    return String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  getDebugBuildingSummary() {
+    return this.buildings
+      .map((building) => `${this.toDebugSlug(building.levelPlacementId ?? building.name)}:${building.hp}/${building.max}`)
+      .join('|');
+  }
+
+  setDebugCommandResult(command, result) {
+    const host = this.getDebugAutomationHost();
+    if (!host) {
+      return;
+    }
+    host.setAttribute('data-debug-last-command', String(command));
+    host.setAttribute('data-debug-last-result', String(result));
+  }
+
+  findDebugBuilding(query) {
+    const normalized = this.toDebugSlug(query);
+    if (!normalized) {
+      return null;
+    }
+    return this.buildings.find((building) => {
+      const candidates = [
+        building.levelPlacementId,
+        building.name,
+      ].map((value) => this.toDebugSlug(value));
+      if (normalized === 'house') {
+        return candidates.includes('cottage') || candidates.includes('bakery') || candidates.includes('house-1') || candidates.includes('house-2');
+      }
+      return candidates.includes(normalized);
+    }) ?? null;
+  }
+
+  resolveDebugTeleportPoint(query) {
+    const normalized = this.toDebugSlug(query);
+    if (!this.player) {
+      return null;
+    }
+    if (!normalized || normalized === 'player') {
+      return { x: this.player.iso.x, y: this.player.iso.y };
+    }
+    if (normalized === 'spawn' || normalized === 'player-spawn') {
+      return this.generatedLevel?.playerSpawn
+        ? { x: this.generatedLevel.playerSpawn.x, y: this.generatedLevel.playerSpawn.y }
+        : { x: this.player.iso.x, y: this.player.iso.y };
+    }
+    if (normalized === 'center' && this.generatedLevel) {
+      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+      return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+    }
+    const building = this.findDebugBuilding(normalized);
+    if (!building) {
+      return null;
+    }
+    const footprintCells = building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
+    const minX = Math.min(...footprintCells.map((cell) => cell.x));
+    const maxX = Math.max(...footprintCells.map((cell) => cell.x));
+    const minY = Math.min(...footprintCells.map((cell) => cell.y));
+    const maxY = Math.max(...footprintCells.map((cell) => cell.y));
+    const candidates = [
+      { x: (minX + maxX) / 2, y: maxY + 1 },
+      { x: maxX + 1, y: (minY + maxY) / 2 },
+      { x: (minX + maxX) / 2, y: minY - 1 },
+      { x: minX - 1, y: (minY + maxY) / 2 },
+    ];
+    return candidates.find((point) => !this.generatedLevelActive || this.isGeneratedIsoWalkable(point)) ?? candidates[0];
+  }
+
+  teleportPlayerToDebugTarget(query) {
+    const point = this.resolveDebugTeleportPoint(query);
+    if (!point || !this.player) {
+      return false;
+    }
+    this.player.iso.x = point.x;
+    this.player.iso.y = point.y;
+    this.clampIso(this.player.iso, 1.2);
+    this.lastPointerIso = { x: this.player.iso.x, y: this.player.iso.y };
+    const position = this.isoToScreen(this.player.iso.x, this.player.iso.y, 18);
+    this.player.sprite.setPosition(position.x, position.y);
+    this.player.shadow.setPosition(position.x, position.y + 15);
+    return true;
+  }
+
+  triggerDebugSeasonTransition() {
+    const nextIndex = (this.state.worldIndex + 1) % WORLD_SEQUENCE.length;
+    const looped = nextIndex === 0;
+    const nextProgression = {
+      worldIndex: nextIndex,
+      worldKey: WORLD_SEQUENCE[nextIndex],
+      worldRound: 1,
+      bossRound: false,
+      worldCycle: this.state.worldCycle + (looped ? 1 : 0),
+    };
+    const theme = WORLD_ENEMY_THEMES[nextProgression.worldKey as SeasonPreset];
+    const transitionNote = `${theme.label} debug transition.`;
+    if (this.generatedLevelActive) {
+      const snapshot = this.createRunResumeSnapshot(nextProgression, transitionNote);
+      this.scene.restart({
+        resumeRunState: snapshot,
+        sceneVariantKey: nextProgression.worldKey,
+        resumeSkipSplash: true,
+      });
+      return `restart:${nextProgression.worldKey}`;
+    }
+    this.state = { ...this.state, ...nextProgression };
+    this.addGuildNote(transitionNote);
+    this.startLevelCountdown();
+    return `countdown:${nextProgression.worldKey}`;
+  }
+
   syncDevDiagnostics() {
     if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
       return;
     }
-    const host = document.querySelector('#game');
+    const host = this.getDebugAutomationHost();
     if (!host) {
       return;
     }
+    const repairTarget = this.state.repairMode && this.state.phase === 'playing'
+      ? this.getNearestDamagedBuilding()
+      : null;
     host.setAttribute('data-phase', String(this.state.phase ?? ''));
     host.setAttribute('data-level', String(this.state.level ?? 0));
+    host.setAttribute('data-gold', String(this.state.gold ?? 0));
+    host.setAttribute('data-xp', String(this.state.xp ?? 0));
     host.setAttribute('data-world-key', String(this.state.worldKey ?? ''));
     host.setAttribute('data-world-round', String(this.state.worldRound ?? 0));
+    host.setAttribute('data-world-cycle', String(this.state.worldCycle ?? 0));
     host.setAttribute('data-boss-round', this.state.bossRound ? '1' : '0');
+    host.setAttribute('data-hero-choice', String(this.heroChoice ?? ''));
+    host.setAttribute('data-pending-hero-choice', String(this.pendingHeroChoice ?? ''));
+    host.setAttribute('data-splash-ready', this.pendingHeroChoice ? '1' : '0');
+    host.setAttribute('data-repair-mode', this.state.repairMode ? '1' : '0');
+    host.setAttribute('data-repair-target', repairTarget ? this.toDebugSlug(repairTarget.name) : '');
+    host.setAttribute('data-repair-affordable', repairTarget ? (this.state.gold >= REPAIR_COST ? '1' : '0') : '');
+    host.setAttribute('data-upgrade-context', String(this.upgradePauseContext ?? ''));
     host.setAttribute('data-enemies', String(this.enemies.length));
+    host.setAttribute('data-chests', String(this.chests.filter((chest) => !chest.opened).length));
+    host.setAttribute('data-enemy-drop-chests', String(this.chests.filter((chest) => !chest.opened && chest.source === 'enemyDrop').length));
     host.setAttribute('data-level-spawns-pending', String(this.levelSpawnsPending));
     host.setAttribute('data-level-required-defeats', String(this.levelRequiredDefeats));
     host.setAttribute('data-level-defeats', String(this.levelDefeatsThisRound));
     host.setAttribute('data-level-spawned-count', String(this.levelSpawnedCount));
     host.setAttribute('data-valid-spawn-points', String(this.generatedValidSpawnPoints?.length ?? 0));
+    host.setAttribute('data-board-seed', String(this.generatedLevel?.config.seed ?? ''));
+    host.setAttribute('data-building-summary', this.getDebugBuildingSummary());
   }
 
   consumeDevCommand() {
     if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
       return;
     }
-    const host = document.querySelector('#game');
+    const host = this.getDebugAutomationHost();
     const command = host?.getAttribute('data-debug-command');
     if (!host || !command) {
       return;
     }
     host.removeAttribute('data-debug-command');
+    let result = 'unknown-command';
     if (command === 'clearRound') {
       this.enemies.slice().forEach((enemy) => this.damageEnemy(enemy, enemy.hp + 999, 'debug'));
-      return;
-    }
-    if (command.startsWith('chooseUpgrade:')) {
+      result = 'ok';
+    } else if (command.startsWith('chooseUpgrade:')) {
       const index = Number(command.split(':')[1]);
       if (this.state.phase === 'levelUp' && Number.isInteger(index)) {
         this.chooseLevelUpgrade(Phaser.Math.Clamp(index, 0, 2));
+        result = `upgrade:${Phaser.Math.Clamp(index, 0, 2)}`;
+      } else {
+        result = 'ignored-levelup-inactive';
       }
+    } else if (command.startsWith('chooseHero:')) {
+      const choice = command.split(':')[1];
+      if (choice === 'male' || choice === 'princess') {
+        this.selectHeroChoice(choice);
+        result = `hero:${choice}`;
+      } else {
+        result = 'invalid-hero';
+      }
+    } else if (command === 'startGame') {
+      this.startGameFromSplash();
+      result = this.state.phase === 'splash' ? 'awaiting-hero' : 'ok';
+    } else if (command === 'startRound') {
+      if (this.state.phase === 'countdown') {
+        this.startLevelRound();
+        result = 'ok';
+      } else {
+        result = 'ignored-countdown-inactive';
+      }
+    } else if (command.startsWith('setGold:')) {
+      const value = Number(command.split(':')[1]);
+      if (Number.isFinite(value)) {
+        this.state.gold = Math.max(0, Math.round(value));
+        this.rebuildInventoryPanel();
+        result = `gold:${this.state.gold}`;
+      } else {
+        result = 'invalid-gold';
+      }
+    } else if (command.startsWith('teleport:')) {
+      const target = command.split(':')[1];
+      result = this.teleportPlayerToDebugTarget(target) ? `teleport:${this.toDebugSlug(target)}` : 'missing-teleport-target';
+    } else if (command === 'spawnChest' || command === 'spawnChestAtPlayer') {
+      if (this.player) {
+        this.spawnChest(this.player.iso.x, this.player.iso.y, 'bonus-upgrade', { source: 'enemyDrop', lifetimeMs: 5000 });
+        result = 'chest:spawned';
+      } else {
+        result = 'missing-player';
+      }
+    } else if (command.startsWith('damageBuilding:')) {
+      const [, rawTarget, rawAmount] = command.split(':');
+      const building = this.findDebugBuilding(rawTarget);
+      if (!building) {
+        result = 'missing-building';
+      } else {
+        const requestedAmount = Number(rawAmount ?? '18');
+        const amount = Number.isFinite(requestedAmount) ? Math.max(1, Math.round(requestedAmount)) : 18;
+        const minHp = building.name === 'Castle' ? 1 : 0;
+        building.hp = Math.max(minHp, building.hp - amount);
+        building.underAttackUntil = this.time.now + 650;
+        this.updateBuildingRepairState(building);
+        this.updateVillageSafety();
+        result = `building:${this.toDebugSlug(building.name)}:${building.hp}`;
+      }
+    } else if (command === 'repairMode:on') {
+      this.setRepairMode(true, false);
+      result = 'repair:on';
+    } else if (command === 'repairMode:off') {
+      this.setRepairMode(false, false);
+      result = 'repair:off';
+    } else if (command === 'repairNearest') {
+      this.tryRepairBuilding();
+      result = 'repair:attempted';
+    } else if (command === 'advanceSeason') {
+      result = this.triggerDebugSeasonTransition();
+    }
+    this.setDebugCommandResult(command, result);
+    if (command === 'advanceSeason') {
+      return;
     }
   }
 
@@ -3504,7 +3716,7 @@ class FairyGuildScene extends Phaser.Scene {
     x,
     y,
     reward = 'bonus-upgrade',
-    options: { source?: 'enemyDrop' | 'static'; lifetimeMs?: number } = {},
+    options: { source?: 'enemyDrop'; lifetimeMs?: number } = {},
   ) {
     const p = this.isoToScreen(x, y, 10);
     const chestTexture = this.generatedLevelActive ? 'worldTilesAtlas' : 'chestTexture';
@@ -3534,15 +3746,15 @@ class FairyGuildScene extends Phaser.Scene {
       reward,
       opened: false,
       bob: Math.random() * 1000,
-      source: options.source ?? 'enemyDrop',
+      source: 'enemyDrop',
       spawnedAt,
       despawnAt: spawnedAt + lifetimeMs,
       blinkAt: spawnedAt + Math.max(2500, lifetimeMs - 1800),
-    });
+    } satisfies DroppedChest);
   }
 
   updateChests(time) {
-    this.chests.slice().forEach((chest) => {
+    (this.chests as DroppedChest[]).slice().forEach((chest) => {
       if (chest.opened) {return;}
       if (chest.despawnAt && time >= chest.despawnAt) {
         chest.opened = true;
@@ -3592,7 +3804,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.openChest(chest);
   }
 
-  openChest(chest) {
+  openChest(chest: DroppedChest) {
     if (!chest || chest.opened) {
       return;
     }
@@ -3625,7 +3837,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.state.phase !== 'playing') {
       return;
     }
-    this.upgradePauseContext = 'chestBonus';
+    this.upgradePauseContext = 'chestBonus' as UpgradePauseContext;
     this.state.phase = 'levelUp';
     this.state.inventoryOpen = false;
     this.setRepairMode(false, false);
@@ -3635,7 +3847,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   resumeRoundAfterChestBonus() {
-    this.upgradePauseContext = 'roundClear';
+    this.upgradePauseContext = 'roundClear' as UpgradePauseContext;
     this.levelTimers.forEach((timer) => {
       if (timer && !timer.hasDispatched) {
         timer.paused = false;
@@ -3691,82 +3903,28 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   showRepairModeIndicator() {
-    if (!this.player?.sprite) {return;}
-    if (this.repairModeIndicator) {
-      this.repairModeIndicator.setVisible(true);
-      return;
-    }
-    const indicator = this.add.container(this.player.sprite.x + 34, this.player.sprite.y - 58);
-    const glow = this.add.circle(0, 0, 22, 0xb8ffd5, 0.22)
-      .setStrokeStyle(2, 0xf8ffd7, 0.6);
-    const tool = this.add.image(0, 0, 'repairTool')
-      .setOrigin(0.5)
-      .setDisplaySize(50, 50)
-      .setAngle(-10);
-    indicator.add([glow, tool]);
-    (indicator as any).glow = glow;
-    (indicator as any).tool = tool;
-    this.fxLayer.add(indicator);
-    this.repairModeIndicator = indicator;
-    this.tweens.add({
-      targets: tool,
-      y: -4,
-      angle: 8,
-      yoyo: true,
-      repeat: -1,
-      duration: 820,
-      ease: 'Sine.inOut',
-    });
-    this.tweens.add({
-      targets: glow,
-      scale: 1.18,
-      alpha: 0.34,
-      yoyo: true,
-      repeat: -1,
-      duration: 940,
-      ease: 'Sine.inOut',
-    });
     this.updateRepairModeIndicator(this.time.now);
   }
 
   hideRepairModeIndicator() {
-    if (!this.repairModeIndicator) {return;}
-    this.tweens.killTweensOf([this.repairModeIndicator.tool, this.repairModeIndicator.glow]);
-    this.repairModeIndicator.destroy();
-    this.repairModeIndicator = null;
+    if (this.repairModeIndicator) {
+      this.repairModeIndicator.destroy();
+      this.repairModeIndicator = null;
+    }
     this.clearRepairModeOutline();
   }
 
   updateRepairModeIndicator(time) {
-    if (!this.repairModeIndicator || !this.player?.sprite) {return;}
+    void time;
     if (!this.state.repairMode || this.state.phase !== 'playing') {
       this.hideRepairModeIndicator();
       return;
     }
-    const bob = Math.sin(time / 180) * 3;
-    this.repairModeIndicator
-      .setPosition(this.player.sprite.x + 34, this.player.sprite.y - 58 + bob)
-      .setDepth(this.player.sprite.depth + 150);
     this.updateRepairModeOutline();
   }
 
   pulseRepairModeIndicator() {
-    if (!this.repairModeIndicator?.tool) {return;}
-    this.tweens.add({
-      targets: this.repairModeIndicator.tool,
-      displayWidth: 62,
-      displayHeight: 62,
-      x: 5,
-      yoyo: true,
-      repeat: 2,
-      duration: 70,
-      ease: 'Sine.easeInOut',
-      onComplete: () => {
-        if (this.repairModeIndicator?.tool) {
-          this.repairModeIndicator.tool.setDisplaySize(50, 50).setX(0);
-        }
-      },
-    });
+    this.updateRepairModeOutline();
   }
 
   getNearestDamagedBuilding(range = REPAIR_RANGE) {
@@ -5028,27 +5186,26 @@ class FairyGuildScene extends Phaser.Scene {
       const previewProfile = this.getHeroProfile(choice);
       this.ensureHeroAnimations(previewProfile);
       const card = this.add.container(x, 140);
-      const frame = this.add.rectangle(0, 0, 156, 132, 0xfff8de, 0.9)
+      const frame = this.add.rectangle(0, 0, 128, 112, 0xfff8de, 0.9)
         .setStrokeStyle(3, 0xd0a24b, 0.42);
-      const hit = this.add.rectangle(0, 0, 156, 132, 0xfff1b8, 0.04)
+      const hit = this.add.rectangle(0, 0, 128, 112, 0xfff1b8, 0.04)
         .setInteractive({ useHandCursor: true });
-      const preview = this.add.sprite(0, -10, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
-        .setDisplaySize(74, 74)
+      const preview = this.add.sprite(0, -6, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
+        .setDisplaySize(60, 60)
         .setOrigin(0.5, 0.76)
         .play(`${previewProfile.animPrefix}-idle`);
-      const caption = this.add.text(0, 44, label, this.uiTextStyle(16, '#7d6039')).setOrigin(0.5);
-      const badge = this.add.text(0, -52, 'Selected', this.uiTextStyle(12, '#5c7d3e'))
+      const caption = this.add.text(0, 30, label, this.uiTextStyle(16, '#7d6039')).setOrigin(0.5);
+      const badge = this.add.text(0, -42, 'Selected', this.uiTextStyle(12, '#5c7d3e'))
         .setOrigin(0.5)
         .setVisible(false);
       hit.on('pointerup', () => this.selectHeroChoice(choice));
       card.add([frame, hit, preview, caption, badge]);
       return { card, frame, hit, preview, label: caption, badge };
     };
-    const maleCard = makeHeroCard('male', -118, 'Village Hero');
-    const princessCard = makeHeroCard('princess', 118, 'Princess Hero');
-    const startButton = this.add.rectangle(0, 144, 250, 62, 0xfff1b8, 0.08)
-      .setInteractive({ useHandCursor: true });
-    const startText = this.add.text(0, 136, 'START', {
+    const maleCard = makeHeroCard('male', -220, 'Village Hero');
+    const princessCard = makeHeroCard('princess', 220, 'Princess Hero');
+    const startButton = this.add.rectangle(0, 148, 240, 54, 0xfff1b8, 0.08);
+    const startText = this.add.text(0, 140, 'START', {
       ...this.uiTextStyle(28, '#684315'),
       strokeThickness: 4,
     }).setOrigin(0.5);
@@ -5298,7 +5455,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.uiLayer.add(this.gameOverOverlay);
   }
 
-  showLevelUpScreen(context = 'roundClear') {
+  showLevelUpScreen(context: UpgradePauseContext = 'roundClear') {
     this.upgradePauseContext = context;
     this.levelUpTitleText.setText(context === 'chestBonus' ? 'Cheerful Surprise!' : 'Level Up!');
     this.levelUpRewardText.setText(context === 'chestBonus' ? 'Choose a bonus strength point' : 'Heart +1');
@@ -5319,7 +5476,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.state.phase !== 'levelUp') {return;}
     const choice = this.levelUpChoices[index];
     if (!choice) {return;}
-    const pauseContext = this.upgradePauseContext ?? 'roundClear';
+    const pauseContext = (this.upgradePauseContext ?? 'roundClear') as UpgradePauseContext;
     const wasBossRound = this.state.bossRound;
     if (pauseContext === 'roundClear') {
       this.playerStats.maxHealth += 1;

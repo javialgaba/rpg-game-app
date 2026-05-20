@@ -6,6 +6,8 @@ export type SeasonPreset =
   | 'night_spring'
   | 'noon_winter';
 
+export type OptionalBoardBuilding = 'market' | 'well' | 'house-2';
+
 export interface SceneVariantOverlapAnchor {
   frame: string;
   x: number;
@@ -27,7 +29,13 @@ export interface SceneVariantConfig {
   backgroundParallax: number;
   frameParallax: number;
   foregroundParallax: number;
+  boardTileSizeMin: number;
   playableBounds: PlayableBounds;
+  boardGeneration: {
+    optionalBuildings: Array<OptionalBoardBuilding | null>;
+    laneHalfWidth: number;
+    spawnPlazaOffsets: Array<{ x: number; y: number }>;
+  };
   overlapDecorAnchors: SceneVariantOverlapAnchor[];
   tilePalette: {
     grass: string[];
@@ -60,6 +68,18 @@ const baseOverlapDecorAnchors: SceneVariantOverlapAnchor[] = [
   { frame: 'flower_patch_wild', x: 4.25, y: 4.4, scale: 0.9, depthBias: 14, alpha: 0.9 },
 ];
 
+const DEFAULT_SPAWN_PLAZA_OFFSETS = [
+  { x: -1, y: -1 },
+  { x: 0, y: -1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 0 },
+  { x: 0, y: 0 },
+  { x: 1, y: 0 },
+  { x: -1, y: 1 },
+  { x: 0, y: 1 },
+  { x: 1, y: 1 },
+];
+
 export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
   day_spring: {
     key: 'day_spring',
@@ -69,11 +89,17 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     foregroundFogAssetKey: 'sceneVariantForeground_day_spring',
     ambientTint: 0xffffff,
     ambientAlpha: 0,
-    worldZoom: 1.16,
+    worldZoom: 1.22,
     backgroundParallax: 0.03,
     frameParallax: 0.06,
     foregroundParallax: 0.1,
+    boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
+    boardGeneration: {
+      optionalBuildings: [null, null, null, 'well'],
+      laneHalfWidth: 1,
+      spawnPlazaOffsets: DEFAULT_SPAWN_PLAZA_OFFSETS,
+    },
     overlapDecorAnchors: baseOverlapDecorAnchors,
     tilePalette: {
       grass: ['grass_01', 'grass_02'],
@@ -94,11 +120,17 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     foregroundFogAssetKey: 'sceneVariantForeground_afternoon_summer',
     ambientTint: 0xffe4b5,
     ambientAlpha: 0.08,
-    worldZoom: 1.18,
+    worldZoom: 1.24,
     backgroundParallax: 0.032,
     frameParallax: 0.065,
     foregroundParallax: 0.11,
+    boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
+    boardGeneration: {
+      optionalBuildings: [null, null, 'market', 'well'],
+      laneHalfWidth: 1,
+      spawnPlazaOffsets: DEFAULT_SPAWN_PLAZA_OFFSETS,
+    },
     overlapDecorAnchors: baseOverlapDecorAnchors,
     tilePalette: {
       grass: ['grass_02', 'grass_01'],
@@ -119,11 +151,17 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     foregroundFogAssetKey: 'sceneVariantForeground_night_spring',
     ambientTint: 0x8ba7ff,
     ambientAlpha: 0.2,
-    worldZoom: 1.15,
+    worldZoom: 1.21,
     backgroundParallax: 0.025,
     frameParallax: 0.055,
     foregroundParallax: 0.095,
+    boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
+    boardGeneration: {
+      optionalBuildings: [null, null, null, 'house-2'],
+      laneHalfWidth: 1,
+      spawnPlazaOffsets: DEFAULT_SPAWN_PLAZA_OFFSETS,
+    },
     overlapDecorAnchors: baseOverlapDecorAnchors,
     tilePalette: {
       grass: ['grass_01', 'grass_02'],
@@ -144,11 +182,17 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     foregroundFogAssetKey: 'sceneVariantForeground_noon_winter',
     ambientTint: 0xe6f3ff,
     ambientAlpha: 0.06,
-    worldZoom: 1.16,
+    worldZoom: 1.22,
     backgroundParallax: 0.03,
     frameParallax: 0.06,
     foregroundParallax: 0.1,
+    boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
+    boardGeneration: {
+      optionalBuildings: [null, null, 'well', 'house-2'],
+      laneHalfWidth: 1,
+      spawnPlazaOffsets: DEFAULT_SPAWN_PLAZA_OFFSETS,
+    },
     overlapDecorAnchors: baseOverlapDecorAnchors.map((anchor) => ({ ...anchor, alpha: Math.min(1, (anchor.alpha ?? 1) + 0.04) })),
     tilePalette: {
       grass: ['winter_grass_01'],

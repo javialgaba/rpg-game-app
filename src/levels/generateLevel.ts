@@ -13,6 +13,7 @@ import type {
   ProtectedTargetPlacement,
 } from './levelTypes';
 import { findGridPath, pathCost } from './pathfinding';
+import { buildPlayerWalkableGrid } from './playerFootprint';
 import { SeededRandom } from './seededRandom';
 
 const PROTECTED_EDGE_PADDING = 4;
@@ -713,12 +714,15 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     });
   });
 
+  const playerWalkableGrid = buildPlayerWalkableGrid(walkableGrid, playableBounds);
+
   return {
     config: generatedConfig,
     width,
     height,
     playableBounds,
     walkableGrid,
+    playerWalkableGrid,
     blockedGrid,
     buildingGrid,
     decorationGrid,
@@ -749,19 +753,19 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     errors.push('Player spawn is missing.');
   } else if (!isInsideLevel(level, level.playerSpawn)) {
     errors.push(`Player spawn ${level.playerSpawn.x},${level.playerSpawn.y} is outside level bounds.`);
-  } else if (level.blockedGrid[level.playerSpawn.y]?.[level.playerSpawn.x]) {
-    errors.push('Player spawn is blocked.');
+  } else if (!level.playerWalkableGrid[level.playerSpawn.y]?.[level.playerSpawn.x]) {
+    errors.push('Player spawn does not support the player footprint.');
   } else {
     const nearbyCells = getNeighborCells(level.playerSpawn, 1)
       .filter((cell) => isInsideLevel(level, cell));
     const walkableClearance = nearbyCells
-      .filter((cell) => level.walkableGrid[cell.y]?.[cell.x])
+      .filter((cell) => level.playerWalkableGrid[cell.y]?.[cell.x])
       .length;
     if (walkableClearance < 8) {
       errors.push('Player spawn does not have enough nearby clearance for smooth movement.');
     }
     const playerExitCount = getCardinalNeighborCells(level.playerSpawn)
-      .filter((cell) => isInsideLevel(level, cell) && level.walkableGrid[cell.y]?.[cell.x])
+      .filter((cell) => isInsideLevel(level, cell) && level.playerWalkableGrid[cell.y]?.[cell.x])
       .length;
     if (playerExitCount < 3) {
       errors.push('Player spawn does not have enough open exits for smooth movement.');
@@ -838,13 +842,18 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
 
   if (level.playerSpawn) {
     level.protectedTargets.forEach((target) => {
-      if (!findGridPath(level.walkableGrid, level.playerSpawn as GridPoint, target.attackCells)) {
+      const footprintSafeAttackCells = target.attackCells.filter((cell) => level.playerWalkableGrid[cell.y]?.[cell.x]);
+      if (!footprintSafeAttackCells.length) {
+        errors.push(`${target.label} is only reachable through cells narrower than the player footprint.`);
+        return;
+      }
+      if (!findGridPath(level.playerWalkableGrid, level.playerSpawn as GridPoint, footprintSafeAttackCells)) {
         errors.push(`Player spawn cannot reach ${target.label}.`);
       }
     });
 
     level.chests.forEach((chest) => {
-      const path = findGridPath(level.walkableGrid, level.playerSpawn as GridPoint, [chest.grid]);
+      const path = findGridPath(level.playerWalkableGrid, level.playerSpawn as GridPoint, [chest.grid]);
       if (!path) {
         warnings.push(`Chest ${chest.grid.x},${chest.grid.y} is not reachable from player spawn.`);
       }
@@ -879,10 +888,6 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       warnings.push(`${placement.label} terrain uses unexpected frame ${frameKey}.`);
     }
   });
-
-  if (!level.chests.length) {
-    warnings.push('No static treasure chests are placed in this level.');
-  }
 
   return {
     valid: errors.length === 0,

@@ -100,6 +100,7 @@ export interface GeneratedLevel {
   height: number;
   playableBounds: PlayableBounds;
   walkableGrid: boolean[][];
+  playerWalkableGrid: boolean[][];
   blockedGrid: boolean[][];
   buildingGrid: (ProtectedTargetPlacement | null)[][];
   decorationGrid: (LevelPlacement | null)[][];
