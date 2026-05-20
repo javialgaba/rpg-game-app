@@ -5,7 +5,6 @@ import { buildSeasonBoardConfig } from './levels/buildSeasonBoard';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import { findGridPath, pathCost } from './levels/pathfinding';
-import { isFootprintWalkable } from './levels/playerFootprint';
 import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
 import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
@@ -792,6 +791,12 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   clampIso(point, padding = 0.5) {
+    if (this.generatedLevelActive && this.generatedLevel) {
+      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+      point.x = Phaser.Math.Clamp(point.x, minX, maxX);
+      point.y = Phaser.Math.Clamp(point.y, minY, maxY);
+      return point;
+    }
     const maxX = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.width : MAP_W) - 1 - padding;
     const maxY = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.height : MAP_H) - 1 - padding;
     point.x = Phaser.Math.Clamp(point.x, padding, maxX);
@@ -799,12 +804,12 @@ class FairyGuildScene extends Phaser.Scene {
     return point;
   }
 
-  isGeneratedIsoWalkable(iso, radius = 0.26) {
+  isGeneratedIsoWalkable(iso) {
     if (!this.generatedLevelActive || !this.generatedLevel) {
       return true;
     }
-    void radius;
-    return isFootprintWalkable(this.generatedLevel.walkableGrid, iso, this.generatedLevel.playableBounds);
+    const cell = this.isoToGridCell(iso);
+    return Boolean(this.generatedLevel.playerWalkableGrid[cell.y]?.[cell.x]);
   }
 
   createBackground() {
