@@ -7,12 +7,14 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "build:atlases": "node tools/build-atlases.mjs",
+    "build:world-enemies": "node tools/build-world-enemy-sheets.mjs",
     "build:scene-variants": "node tools/build-scene-variants.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "validate:atlases": "node tools/build-atlases.mjs --validate-only",
-    "test": "npm run typecheck && npm run lint && npm run build"
+    "validate:world-enemies": "node tools/build-world-enemy-sheets.mjs --validate-only",
+    "test": "npm run validate:world-enemies && npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "phaser": "^3.90.0",

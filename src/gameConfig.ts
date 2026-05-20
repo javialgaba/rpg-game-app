@@ -168,6 +168,10 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
   bossLabel: string;
   bossIntro: string;
   bossDefeat: string;
+  frameCount: number;
+  eliteCellSize: number;
+  bossCellSize: number;
+  safeBorderPx: number;
   eliteAssetKey: string;
   eliteFramePrefix: string;
   eliteIdleFrames: number[];
@@ -189,6 +193,10 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossLabel: 'Spring Boss',
     bossIntro: 'The Blossom Guardian appears!',
     bossDefeat: 'Spring is safe. Summer stirs beyond the clouds!',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
     eliteAssetKey: 'worldElite_day_spring',
     eliteFramePrefix: 'world-elite-day-spring',
     eliteIdleFrames: [0, 1, 2, 3],
@@ -210,6 +218,10 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossLabel: 'Summer Boss',
     bossIntro: 'A Sun-Bramble Guardian charges from the grove!',
     bossDefeat: 'Summer bows out. Twilight settles over the village!',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
     eliteAssetKey: 'worldElite_afternoon_summer',
     eliteFramePrefix: 'world-elite-afternoon-summer',
     eliteIdleFrames: [0, 1, 2, 3],
@@ -231,6 +243,10 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossLabel: 'Twilight Boss',
     bossIntro: 'A Moonlit Guardian drifts into the lantern glow!',
     bossDefeat: 'The twilight guardian fades. Winter winds answer next.',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
     eliteAssetKey: 'worldElite_night_spring',
     eliteFramePrefix: 'world-elite-night-spring',
     eliteIdleFrames: [0, 1, 2, 3],
@@ -252,6 +268,10 @@ export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
     bossLabel: 'Winter Boss',
     bossIntro: 'The Frost Guardian stomps across the snow!',
     bossDefeat: 'Winter is quiet again. Spring will bloom once more.',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
     eliteAssetKey: 'worldElite_noon_winter',
     eliteFramePrefix: 'world-elite-noon-winter',
     eliteIdleFrames: [0, 1, 2, 3],

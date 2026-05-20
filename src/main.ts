@@ -298,12 +298,26 @@ class FairyGuildScene extends Phaser.Scene {
     WORLD_SEQUENCE.forEach((worldKey) => {
       const theme = WORLD_ENEMY_THEMES[worldKey];
       if (this.textures.exists(theme.eliteAssetKey)) {
-        this.registerSheetFrames(theme.eliteAssetKey, 8, 1, theme.eliteFramePrefix);
+        this.validateWorldEnemySheet(theme.eliteAssetKey, theme.eliteCellSize, theme.frameCount, worldKey, 'elite');
+        this.registerSheetFrames(theme.eliteAssetKey, theme.frameCount, 1, theme.eliteFramePrefix);
       }
       if (this.textures.exists(theme.bossAssetKey)) {
-        this.registerSheetFrames(theme.bossAssetKey, 8, 1, theme.bossFramePrefix);
+        this.validateWorldEnemySheet(theme.bossAssetKey, theme.bossCellSize, theme.frameCount, worldKey, 'boss');
+        this.registerSheetFrames(theme.bossAssetKey, theme.frameCount, 1, theme.bossFramePrefix);
       }
     });
+  }
+
+  validateWorldEnemySheet(textureKey: string, cellSize: number, frameCount: number, worldKey: string, kind: 'elite' | 'boss') {
+    const texture = this.textures.get(textureKey);
+    const image = texture.getSourceImage();
+    const expectedWidth = cellSize * frameCount;
+    const expectedHeight = cellSize;
+    if (image.width !== expectedWidth || image.height !== expectedHeight) {
+      console.warn(
+        `Unexpected ${kind} sheet geometry for ${worldKey}: expected ${expectedWidth}x${expectedHeight}, received ${image.width}x${image.height}.`,
+      );
+    }
   }
 
   resetRuntimeState() {
