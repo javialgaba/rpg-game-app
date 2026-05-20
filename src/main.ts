@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import './style.css';
 import { ASSET_REGISTRY } from './levels/assetRegistry';
+import { buildSeasonBoardConfig } from './levels/buildSeasonBoard';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import { findGridPath, pathCost } from './levels/pathfinding';
@@ -41,7 +42,9 @@ import {
   WORLD_SEQUENCE,
 } from './gameConfig';
 
-type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'use' | 'inventory';
+type HeroChoice = 'male' | 'princess';
+type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'repairConfirm' | 'repairCancel';
+type TouchButtonSlot = 'left' | 'top' | 'right' | 'bottom';
 type TouchActionIcon = { texture: string; frame?: string } | null;
 type GeneratedSurroundAnchor =
   | 'topLeft'
@@ -76,7 +79,8 @@ interface TouchControlsState {
   joystickVector: { x: number; y: number };
   joystickPointerId: number | null;
   joystickCenter: { x: number; y: number };
-  buttons: Record<TouchActionKey, Phaser.GameObjects.Container>;
+  buttons: Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
+  repairButtons: Phaser.GameObjects.Container[];
   portraitOverlay: Phaser.GameObjects.Container;
 }
 
@@ -91,6 +95,8 @@ interface RunResumeStateSnapshot {
   playerStats?: Partial<typeof PLAYER_BASE>;
   state?: Partial<FairyGuildScene['state']>;
   buildings?: RunResumeBuildingSnapshot[];
+  heroChoice?: HeroChoice;
+  upgradeLevels?: number[];
   note?: string;
 }
 
@@ -120,6 +126,8 @@ class FairyGuildScene extends Phaser.Scene {
       inventoryOpen: false,
       gameOverReason: '',
     };
+    this.heroChoice = this.resolveRequestedHeroChoice();
+    this.heroAnimPrefix = 'hero';
     this.keys = {};
     this.enemies = [];
     this.projectiles = [];
@@ -142,6 +150,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedValidSpawnPoints = [];
     this.lastRepairAt = 0;
     this.repairModeIndicator = null;
+    this.repairModeOutline = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
     this.touchDetection = null;
@@ -169,12 +178,16 @@ class FairyGuildScene extends Phaser.Scene {
     this.sceneVariantOverrideKey = null;
     this.resumeRunState = null as RunResumeStateSnapshot | null;
     this.resumeSkipSplash = false;
+    this.upgradePauseContext = 'roundClear';
+    this.pausedRoundTimers = [];
+    this.parallaxSprites = [];
   }
 
   init(data) {
     this.sceneVariantOverrideKey = data?.sceneVariantKey ?? null;
     this.resumeRunState = data?.resumeRunState ?? null;
     this.resumeSkipSplash = Boolean(data?.resumeSkipSplash);
+    this.heroChoice = data?.heroChoice ?? data?.resumeRunState?.heroChoice ?? this.resolveRequestedHeroChoice();
   }
 
   preload() {
@@ -185,6 +198,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('guildNotesUI', '/assets/guild-notes-ui-transparent.png');
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
+    this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
+    this.load.image('repairModeConfirmButton', '/assets/repair-mode-confirm.png');
+    this.load.image('repairModeCancelButton', '/assets/repair-mode-cancel.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
     this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
@@ -235,6 +251,9 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.createAudio();
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
+    if (this.textures.exists('princessHeroSheet')) {
+      this.registerSheetFrames('princessHeroSheet', 8, 4, 'princess');
+    }
     this.registerSheetFrames('monsterSheet', 8, 5, 'monster');
     this.registerWorldEnemySheets();
     this.registerUiArtFrames();
@@ -291,7 +310,7 @@ class FairyGuildScene extends Phaser.Scene {
     });
 
     this.addGuildNote('The village is safe for now!');
-    this.addGuildNote('Press E near a chest for a cheerful surprise.');
+    this.addGuildNote('Dropped chests open on contact and fade quickly.');
   }
 
   registerWorldEnemySheets() {
@@ -363,6 +382,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedValidSpawnPoints = [];
     this.lastRepairAt = 0;
     this.repairModeIndicator = null;
+    this.repairModeOutline = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
     this.touchDetection = null;
@@ -387,6 +407,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.lampGlowGraphics = null;
     this.timeOfDayOverride = null;
     this.sceneVariant = null;
+    this.upgradePauseContext = 'roundClear';
+    this.pausedRoundTimers = [];
+    this.parallaxSprites = [];
   }
 
   update(time, delta) {
@@ -408,6 +431,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateHud();
     this.updateDebugOverlay();
     this.updateGeneratedLevelDebug(time);
+    this.updateCinematicParallax();
     this.syncDevDiagnostics();
     this.consumeDevCommand();
   }
@@ -748,12 +772,25 @@ class FairyGuildScene extends Phaser.Scene {
     return point;
   }
 
-  isGeneratedIsoWalkable(iso) {
+  isGeneratedIsoWalkable(iso, radius = 0.26) {
     if (!this.generatedLevelActive || !this.generatedLevel) {
       return true;
     }
-    const cell = this.isoToGridCell(iso);
-    return Boolean(this.generatedLevel.walkableGrid[cell.y]?.[cell.x]);
+    const samples = [
+      { x: iso.x, y: iso.y },
+      { x: iso.x + radius, y: iso.y },
+      { x: iso.x - radius, y: iso.y },
+      { x: iso.x, y: iso.y + radius },
+      { x: iso.x, y: iso.y - radius },
+      { x: iso.x + radius * 0.7, y: iso.y + radius * 0.7 },
+      { x: iso.x - radius * 0.7, y: iso.y + radius * 0.7 },
+      { x: iso.x + radius * 0.7, y: iso.y - radius * 0.7 },
+      { x: iso.x - radius * 0.7, y: iso.y - radius * 0.7 },
+    ];
+    return samples.every((sample) => {
+      const cell = this.isoToGridCell(sample);
+      return Boolean(this.generatedLevel.walkableGrid[cell.y]?.[cell.x]);
+    });
   }
 
   createBackground() {
@@ -805,6 +842,156 @@ class FairyGuildScene extends Phaser.Scene {
     this.state.worldCycle = this.state.worldCycle || 0;
   }
 
+  resolveRequestedHeroChoice() {
+    const raw = new URLSearchParams(window.location.search).get('hero');
+    if (raw === 'princess') {
+      return 'princess' as HeroChoice;
+    }
+    if (raw === 'male') {
+      return 'male' as HeroChoice;
+    }
+    return 'male';
+  }
+
+  getHeroProfile(choice = this.heroChoice) {
+    const wantsPrincess = choice === 'princess' && this.textures.exists('princessHeroSheet');
+    const resolvedChoice = wantsPrincess ? 'princess' : 'male';
+    return {
+      choice: resolvedChoice as HeroChoice,
+      label: resolvedChoice === 'princess' ? 'Princess Hero' : 'Village Hero',
+      sheetKey: resolvedChoice === 'princess' ? 'princessHeroSheet' : 'heroSheet',
+      framePrefix: resolvedChoice === 'princess' ? 'princess' : 'hero',
+      animPrefix: resolvedChoice === 'princess' ? 'princess-hero' : 'male-hero',
+      displaySize: [76, 76] as [number, number],
+      origin: [0.5, 0.76] as [number, number],
+    };
+  }
+
+  getHeroAnimationKey(action, choice = this.heroChoice) {
+    return `${this.getHeroProfile(choice).animPrefix}-${action}`;
+  }
+
+  ensureHeroAnimations(profile) {
+    const idleKey = `${profile.animPrefix}-idle`;
+    if (!this.anims.exists(idleKey)) {
+      this.anims.create({
+        key: idleKey,
+        frames: [0, 1, 2, 3].map((col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-0-${col}` })),
+        frameRate: 3,
+        repeat: -1,
+      });
+    }
+    const walkKey = `${profile.animPrefix}-walk`;
+    if (!this.anims.exists(walkKey)) {
+      this.anims.create({
+        key: walkKey,
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-1-${col}` })),
+        frameRate: 9,
+        repeat: -1,
+      });
+    }
+    const meleeKey = `${profile.animPrefix}-melee`;
+    if (!this.anims.exists(meleeKey)) {
+      this.anims.create({
+        key: meleeKey,
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-2-${col}` })),
+        frameRate: 16,
+        repeat: 0,
+      });
+    }
+    const specialKey = `${profile.animPrefix}-special`;
+    if (!this.anims.exists(specialKey)) {
+      this.anims.create({
+        key: specialKey,
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-3-${col}` })),
+        frameRate: 12,
+        repeat: 0,
+      });
+    }
+  }
+
+  applyHeroChoice(choice, options: { announce?: boolean; restartIdle?: boolean } = {}) {
+    const { announce = false, restartIdle = true } = options;
+    const profile = this.getHeroProfile(choice);
+    this.heroChoice = profile.choice;
+    this.heroAnimPrefix = profile.animPrefix;
+    this.ensureHeroAnimations(profile);
+    if (this.player?.sprite) {
+      this.player.sheetKey = profile.sheetKey;
+      this.player.framePrefix = profile.framePrefix;
+      this.player.animPrefix = profile.animPrefix;
+      this.player.sprite
+        .setTexture(profile.sheetKey, `${profile.framePrefix}-0-0`)
+        .setOrigin(profile.origin[0], profile.origin[1])
+        .setDisplaySize(profile.displaySize[0], profile.displaySize[1]);
+      if (restartIdle || !this.player.sprite.anims.currentAnim) {
+        this.player.sprite.play(`${profile.animPrefix}-idle`, true);
+      }
+    }
+    if (announce) {
+      this.addGuildNote(profile.choice === 'princess' ? 'The princess joins the village watch!' : 'The village hero is ready to patrol!');
+    }
+    this.updateSplashHeroChoiceUi?.();
+    return profile;
+  }
+
+  selectHeroChoice(choice) {
+    this.pendingHeroChoice = choice;
+    this.applyHeroChoice(choice, { announce: false, restartIdle: true });
+    this.updateSplashHeroChoiceUi();
+  }
+
+  updateSplashHeroChoiceUi() {
+    const activeChoice = this.pendingHeroChoice ?? null;
+    ['male', 'princess'].forEach((choice) => {
+      const card = this.splashHeroCards?.[choice];
+      if (!card) {
+        return;
+      }
+      const selected = activeChoice === choice;
+      card.hit.setFillStyle(selected ? 0xfff1b8 : 0xfff1b8, selected ? 0.18 : 0.04);
+      card.frame.setStrokeStyle(3, selected ? 0xffd26d : 0xd0a24b, selected ? 0.95 : 0.42);
+      card.label.setColor(selected ? '#5f3b12' : '#7d6039');
+      card.badge?.setVisible(selected);
+    });
+    const ready = Boolean(activeChoice);
+    if (this.splashStartButton) {
+      this.splashStartButton.setFillStyle(0xfff1b8, ready ? 0.18 : 0.03);
+      if (ready && !this.splashStartButton.input) {
+        this.splashStartButton.setInteractive({ useHandCursor: true });
+      }
+    }
+    if (this.splashStartText) {
+      this.splashStartText.setAlpha(ready ? 1 : 0.45);
+    }
+    if (this.splashHeroChoiceText) {
+      this.splashHeroChoiceText.setText(
+        activeChoice
+          ? `Chosen hero: ${activeChoice === 'princess' ? 'Princess' : 'Village Adventurer'}`
+          : 'Choose your hero before you begin.',
+      );
+    }
+  }
+
+  updateCinematicParallax() {
+    if (!this.parallaxSprites?.length || !this.player || !this.generatedLevel) {
+      return;
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const spanX = Math.max(1, (maxX - minX) / 2);
+    const spanY = Math.max(1, (maxY - minY) / 2);
+    const nx = Phaser.Math.Clamp((this.player.iso.x - centerX) / spanX, -1, 1);
+    const ny = Phaser.Math.Clamp((this.player.iso.y - centerY) / spanY, -1, 1);
+    this.parallaxSprites.forEach((entry) => {
+      entry.sprite.setPosition(
+        entry.baseX - nx * 46 * entry.factor,
+        entry.baseY - ny * 30 * entry.factor,
+      );
+    });
+  }
+
   getCurrentWorldTheme() {
     return WORLD_ENEMY_THEMES[this.state.worldKey as SeasonPreset] ?? WORLD_ENEMY_THEMES.day_spring;
   }
@@ -847,7 +1034,7 @@ class FairyGuildScene extends Phaser.Scene {
         gold: this.state.gold,
         xp: this.state.xp,
         level: this.state.level,
-        villageSafety: this.state.villageSafety,
+        villageSafety: 100,
         equipped: this.state.equipped,
         repairMode: false,
         spell: this.state.spell,
@@ -855,12 +1042,9 @@ class FairyGuildScene extends Phaser.Scene {
         gameOverReason: '',
         ...nextProgression,
       },
-      buildings: this.buildings.map((building) => ({
-        id: building.levelPlacementId ?? building.name,
-        name: building.name,
-        hp: building.hp,
-        max: building.max,
-      })),
+      buildings: [],
+      heroChoice: this.heroChoice,
+      upgradeLevels: this.upgrades.map((upgrade) => upgrade.level),
       note,
     };
   }
@@ -872,8 +1056,18 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.resumeRunState.playerStats) {
       this.playerStats = { ...this.playerStats, ...this.resumeRunState.playerStats };
     }
+    if (this.resumeRunState.heroChoice) {
+      this.heroChoice = this.resumeRunState.heroChoice;
+    }
     if (this.resumeRunState.state) {
       this.state = { ...this.state, ...this.resumeRunState.state, phase: 'countdown', inventoryOpen: false, repairMode: false };
+    }
+    if (this.resumeRunState.upgradeLevels?.length) {
+      this.resumeRunState.upgradeLevels.forEach((level, index) => {
+        if (this.upgrades[index]) {
+          this.upgrades[index].level = level;
+        }
+      });
     }
     const buildingMap = new Map<string, RunResumeBuildingSnapshot>(
       (this.resumeRunState.buildings ?? []).map((building) => [building.id ?? building.name, building] as const),
@@ -959,6 +1153,13 @@ class FairyGuildScene extends Phaser.Scene {
     return sprite;
   }
 
+  registerParallaxSprite(sprite, factor, baseX, baseY) {
+    if (!sprite) {
+      return;
+    }
+    this.parallaxSprites.push({ sprite, factor, baseX, baseY });
+  }
+
   hasStaticSceneVariantFrame(config) {
     return Boolean(config)
       && this.textures.exists(config.backgroundAssetKey)
@@ -967,28 +1168,30 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderSceneVariantBackground(config, bounds) {
     const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    this.addSceneVariantImage(
+    const sprite = this.addSceneVariantImage(
       this.backgroundLayer,
       config.backgroundAssetKey,
       bounds.centerX,
       bounds.centerY - 24,
-      baseScale * 1.04,
+      baseScale * 1.04 * (config.worldZoom ?? 1),
       2,
       { alpha: 1 },
     );
+    this.registerParallaxSprite(sprite, config.backgroundParallax ?? 0, bounds.centerX, bounds.centerY - 24);
   }
 
   renderSceneVariantFrame(config, bounds) {
     const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    this.addSceneVariantImage(
+    const sprite = this.addSceneVariantImage(
       this.edgeLayer,
       config.exteriorFrameAssetKey,
       bounds.centerX,
       bounds.centerY - 20,
-      baseScale * 1.04,
+      baseScale * 1.04 * (config.worldZoom ?? 1),
       70,
       { alpha: 1 },
     );
+    this.registerParallaxSprite(sprite, config.frameParallax ?? 0, bounds.centerX, bounds.centerY - 20);
   }
 
   renderSceneVariantForeground(config, bounds) {
@@ -996,15 +1199,16 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    this.addSceneVariantImage(
+    const sprite = this.addSceneVariantImage(
       this.lightingLayer,
       config.foregroundFogAssetKey,
       bounds.centerX,
       bounds.centerY - 20,
-      baseScale * 1.04,
+      baseScale * 1.04 * (config.worldZoom ?? 1),
       4705,
       { alpha: config.key === 'night_spring' ? 0.9 : 0.72 },
     );
+    this.registerParallaxSprite(sprite, config.foregroundParallax ?? 0, bounds.centerX, bounds.centerY - 20);
   }
 
   renderSceneVariantOverlapDecor(config, bounds, tileW, tileH) {
@@ -1068,8 +1272,11 @@ class FairyGuildScene extends Phaser.Scene {
     this.sceneVariant = this.sceneVariantOverrideKey && SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset]
       ? SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset]
       : resolveSceneVariantFromParams(params);
+    const worldCycle = Number(this.resumeRunState?.state?.worldCycle ?? this.state.worldCycle ?? 0);
     selection.config.playableBounds = this.sceneVariant.playableBounds;
-    this.generatedLevel = generateLevel(selection.config, ASSET_REGISTRY);
+    const boardConfig = buildSeasonBoardConfig(selection.config, this.sceneVariant.key as SeasonPreset, worldCycle);
+    boardConfig.playableBounds = this.sceneVariant.playableBounds;
+    this.generatedLevel = generateLevel(boardConfig, ASSET_REGISTRY);
     this.generatedLevelValidation = validateGeneratedLevel(this.generatedLevel);
     if (!this.resumeRunState) {
       this.syncWorldStateWithSceneVariant();
@@ -1150,8 +1357,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevel.objects.forEach((placement) => {
       if (placement.type === 'building') {
         this.renderGeneratedBuilding(placement);
-      } else if (placement.type === 'interactable') {
-        this.spawnChest(placement.iso.x, placement.iso.y, 'gold');
       } else {
         this.renderGeneratedProp(placement);
       }
@@ -1848,6 +2053,8 @@ class FairyGuildScene extends Phaser.Scene {
       size,
       reward: Math.round(placement.importance / 4),
       iso: { x: placement.iso.x, y: placement.iso.y },
+      footprint: placement.footprint,
+      footprintCells: placement.cells.map((cell) => ({ ...cell })),
       sprite,
       base,
       repairIcon,
@@ -2248,10 +2455,10 @@ class FairyGuildScene extends Phaser.Scene {
 
   createBuildings() {
     const buildingData = [
-      { name: 'Castle', x: 7, y: 4, hp: 110, max: 110, importance: 100, texture: 'castleTexture', size: [112, 96], reward: 24 },
-      { name: 'Bakery', x: 4, y: 7, hp: 76, max: 76, importance: 50, texture: 'bakeryTexture', size: [80, 70], reward: 16 },
-      { name: 'Cottage', x: 10, y: 7, hp: 74, max: 74, importance: 50, texture: 'cottageTexture', size: [78, 68], reward: 15 },
-      { name: 'Market', x: 7, y: 10, hp: 68, max: 68, importance: 70, texture: 'marketTexture', size: [90, 66], reward: 18 },
+      { name: 'Castle', x: 7, y: 4, hp: 110, max: 110, importance: 100, texture: 'castleTexture', size: [112, 96], reward: 24, footprint: { w: 3, h: 3 } },
+      { name: 'Bakery', x: 4, y: 7, hp: 76, max: 76, importance: 50, texture: 'bakeryTexture', size: [80, 70], reward: 16, footprint: { w: 3, h: 2 } },
+      { name: 'Cottage', x: 10, y: 7, hp: 74, max: 74, importance: 50, texture: 'cottageTexture', size: [78, 68], reward: 15, footprint: { w: 3, h: 2 } },
+      { name: 'Market', x: 7, y: 10, hp: 68, max: 68, importance: 70, texture: 'marketTexture', size: [90, 66], reward: 18, footprint: { w: 3, h: 2 } },
     ];
     this.buildings = buildingData.map((data) => {
       const p = this.isoToScreen(data.x, data.y, 18);
@@ -2271,8 +2478,17 @@ class FairyGuildScene extends Phaser.Scene {
         color: '#7f521e',
       }).setOrigin(0.5);
       repairIcon.add([badge, mark]);
+      const footprintCells = this.getFootprintCells(data.x, data.y, data.footprint);
       this.entityLayer.add([base, sprite, repairIcon]);
-      return { ...data, iso: { x: data.x, y: data.y }, sprite, base, repairIcon, underAttackUntil: 0 };
+      return {
+        ...data,
+        iso: { x: data.x, y: data.y },
+        footprintCells,
+        sprite,
+        base,
+        repairIcon,
+        underAttackUntil: 0,
+      };
     });
   }
 
@@ -2315,6 +2531,8 @@ class FairyGuildScene extends Phaser.Scene {
       ? this.generatedLevel.playerSpawn
       : { x: 7, y: 7 };
     const start = this.isoToScreen(playerSpawn.x, playerSpawn.y, 18);
+    const profile = this.getHeroProfile(this.heroChoice);
+    this.ensureHeroAnimations(profile);
     this.player = {
       iso: { x: playerSpawn.x, y: playerSpawn.y },
       facing: { x: 0, y: 1 },
@@ -2323,45 +2541,16 @@ class FairyGuildScene extends Phaser.Scene {
       lastSpell: 0,
       invulnerableUntil: 0,
       actionLockUntil: 0,
+      sheetKey: profile.sheetKey,
+      framePrefix: profile.framePrefix,
+      animPrefix: profile.animPrefix,
       shadow: this.add.ellipse(start.x, start.y + 13, 44, 18, 0x325631, 0.24),
-      sprite: this.add.sprite(start.x, start.y, 'heroSheet', 'hero-0-0')
-        .setOrigin(0.5, 0.76)
-        .setDisplaySize(76, 76)
+      sprite: this.add.sprite(start.x, start.y, profile.sheetKey, `${profile.framePrefix}-0-0`)
+        .setOrigin(profile.origin[0], profile.origin[1])
+        .setDisplaySize(profile.displaySize[0], profile.displaySize[1])
         .setDepth(start.y + 40),
     };
-    if (!this.anims.exists('hero-idle')) {
-      this.anims.create({
-        key: 'hero-idle',
-        frames: [0, 1, 2, 3].map((col) => ({ key: 'heroSheet', frame: `hero-0-${col}` })),
-        frameRate: 3,
-        repeat: -1,
-      });
-    }
-    if (!this.anims.exists('hero-walk')) {
-      this.anims.create({
-        key: 'hero-walk',
-        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-1-${col}` })),
-        frameRate: 9,
-        repeat: -1,
-      });
-    }
-    if (!this.anims.exists('hero-melee')) {
-      this.anims.create({
-        key: 'hero-melee',
-        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-2-${col}` })),
-        frameRate: 16,
-        repeat: 0,
-      });
-    }
-    if (!this.anims.exists('hero-special')) {
-      this.anims.create({
-        key: 'hero-special',
-        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-3-${col}` })),
-        frameRate: 12,
-        repeat: 0,
-      });
-    }
-    this.player.sprite.play('hero-idle');
+    this.player.sprite.play(`${profile.animPrefix}-idle`);
     this.entityLayer.add([this.player.shadow, this.player.sprite]);
   }
 
@@ -2416,7 +2605,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.keys.repair.on('down', () => this.toggleRepairMode());
     this.keys.interact.on('down', () => {
       if (this.state.repairMode) {this.tryRepairBuilding();}
-      else {this.tryOpenChest();}
     });
     [this.keys.one, this.keys.two, this.keys.three, this.keys.four, this.keys.five, this.keys.six].forEach((key, index) => {
       key.on('down', () => {
@@ -2532,28 +2720,48 @@ class FairyGuildScene extends Phaser.Scene {
       .setStrokeStyle(4, 0xf8ffe3, 0.42);
     const joystickThumb = this.add.circle(joystickCenter.x, joystickCenter.y, 25, 0xfff4c8, 0.74)
       .setStrokeStyle(3, 0x6abbd7, 0.78);
-    const buttons = {} as Record<TouchActionKey, Phaser.GameObjects.Container>;
-
-    [
-      ['melee', WIDTH - 230, HEIGHT - 124, 'Sword', { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }, 0xf2bf52],
-      ['bow', WIDTH - 150, HEIGHT - 170, 'Bow', { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }, 0x8fd56c],
-      ['spell', WIDTH - 70, HEIGHT - 124, 'Spell', { texture: 'touchControlsAtlas', frame: 'touch_spell_01' }, 0x75d8ff],
-      ['use', WIDTH - 230, HEIGHT - 64, 'Use', { texture: 'touchControlsAtlas', frame: 'touch_use_01' }, 0xffcf75],
-      ['repair', WIDTH - 150, HEIGHT - 64, 'Fix', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
-      ['inventory', WIDTH - 70, HEIGHT - 64, 'Bag', { texture: 'touchControlsAtlas', frame: 'touch_inventory_01' }, 0xd7b9ff],
-    ].forEach(([action, x, y, label, icon, color]) => {
-      buttons[action as TouchActionKey] = this.createTouchActionButton(
-        action as TouchActionKey,
-        x as number,
-        y as number,
-        label as string,
-        icon as TouchActionIcon,
-        color as number,
-      );
+    const buttons = {} as Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
+    const actionCenterX = WIDTH - 150;
+    const actionCenterY = HEIGHT - 118;
+    const actionRadiusX = 86;
+    const actionRadiusY = 54;
+    const normalLayout: Record<TouchButtonSlot, [TouchActionKey, string, TouchActionIcon, number]> = {
+      left: ['melee', 'Sword', { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }, 0xf2bf52],
+      top: ['bow', 'Bow', { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }, 0x8fd56c],
+      right: ['spell', 'Spell', { texture: 'touchControlsAtlas', frame: 'touch_spell_01' }, 0x75d8ff],
+      bottom: ['repair', 'Repair', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
+    };
+    const slotPositions: Record<TouchButtonSlot, { x: number; y: number }> = {
+      left: { x: actionCenterX - actionRadiusX, y: actionCenterY },
+      top: { x: actionCenterX, y: actionCenterY - actionRadiusY },
+      right: { x: actionCenterX + actionRadiusX, y: actionCenterY },
+      bottom: { x: actionCenterX, y: actionCenterY + actionRadiusY },
+    };
+    Object.entries(normalLayout).forEach(([slot, [action, label, icon, color]]) => {
+      const point = slotPositions[slot as TouchButtonSlot];
+      buttons[action] = this.createTouchActionButton(action, point.x, point.y, label, icon, color);
     });
+    const repairButtons = [
+      this.createTouchActionButton(
+        'repairConfirm',
+        WIDTH - 262,
+        138,
+        'Repair nearby',
+        { texture: 'repairModeConfirmButton' },
+        0xc9f8c9,
+      ).setVisible(false),
+      this.createTouchActionButton(
+        'repairCancel',
+        WIDTH - 102,
+        138,
+        'Cancel',
+        { texture: 'repairModeCancelButton' },
+        0xffc8c8,
+      ).setVisible(false),
+    ];
 
     const portraitOverlay = this.createPortraitOverlay();
-    container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons)]);
+    container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons), ...repairButtons]);
     this.touchLayer.add([container, portraitOverlay]);
     this.touchControls = {
       container,
@@ -2563,6 +2771,7 @@ class FairyGuildScene extends Phaser.Scene {
       joystickPointerId: null,
       joystickCenter,
       buttons,
+      repairButtons,
       portraitOverlay,
     } as TouchControlsState;
 
@@ -2613,22 +2822,30 @@ class FairyGuildScene extends Phaser.Scene {
     icon: TouchActionIcon,
     color: number,
   ) {
+    const wideButton = action === 'repairConfirm' || action === 'repairCancel';
     const button = this.add.container(x, y).setScrollFactor(0);
-    const hit = this.add.zone(0, 0, 78, 82)
+    const hit = this.add.zone(0, 0, wideButton ? 156 : 78, wideButton ? 68 : 82)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    const labelText = this.add.text(0, 34, label, {
+    const labelText = this.add.text(0, wideButton ? 0 : 34, label, wideButton ? {
+      ...this.uiTextStyle(13, action === 'repairCancel' ? '#7a2e1e' : '#2e6a3f'),
+      strokeThickness: 4,
+    } : {
       ...this.uiTextStyle(10, '#ffffff'),
       strokeThickness: 3,
     }).setOrigin(0.5);
     const glyph = icon
-      ? this.add.image(0, -3, icon.texture, icon.frame).setDisplaySize(70, 70)
+      ? this.add.image(0, wideButton ? 0 : -3, icon.texture, icon.frame).setDisplaySize(
+        wideButton ? 148 : 70,
+        wideButton ? 58 : 70,
+      )
       : this.add.text(0, -5, 'I', {
         ...this.uiTextStyle(24, '#fff0b8'),
         strokeThickness: 4,
       }).setOrigin(0.5);
-    const focusRing = this.add.circle(0, -3, 34, 0xffffff, 0)
-      .setStrokeStyle(2, color, 0.28);
+    const focusRing = wideButton
+      ? this.add.rectangle(0, 0, 148, 58, 0xffffff, 0).setStrokeStyle(2, color, 0.22)
+      : this.add.circle(0, -3, 34, 0xffffff, 0).setStrokeStyle(2, color, 0.28);
     hit.on('pointerdown', () => {
       this.ensureAudio();
       this.pulseTouchButton(button);
@@ -2693,6 +2910,11 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.updatePortraitHint();
     this.touchControls.container.setAlpha(this.state.phase === 'countdown' ? 0.72 : 1);
+    const repairModeActive = this.state.repairMode && this.state.phase === 'playing';
+    ['melee', 'bow', 'spell', 'repair'].forEach((action) => {
+      this.touchControls?.buttons[action]?.setVisible(!repairModeActive);
+    });
+    this.touchControls.repairButtons?.forEach((button) => button.setVisible(repairModeActive));
     this.setTouchControlsVisible(
       (this.state.phase === 'countdown' || this.state.phase === 'playing') && !this.isPortraitLayout(),
     );
@@ -2857,14 +3079,10 @@ class FairyGuildScene extends Phaser.Scene {
       this.castSpell(now, this.getAutoTargetIso(4.2));
     } else if (action === 'repair') {
       this.toggleRepairMode();
-    } else if (action === 'use') {
-      if (this.state.repairMode) {
-        this.tryRepairBuilding();
-      } else {
-        this.tryOpenChest();
-      }
-    } else if (action === 'inventory') {
-      this.toggleInventory();
+    } else if (action === 'repairConfirm') {
+      this.tryRepairBuilding();
+    } else if (action === 'repairCancel') {
+      this.setRepairMode(false, false);
     }
   }
 
@@ -3035,21 +3253,31 @@ class FairyGuildScene extends Phaser.Scene {
     const moving = dx !== 0 || dy !== 0;
     if (moving) {
       this.player.facing = { x: dx, y: dy };
-      const nextX = {
+      const fullStep = {
         x: this.player.iso.x + dx * this.playerStats.speed * dt,
-        y: this.player.iso.y,
-      };
-      const nextY = {
-        x: this.player.iso.x,
         y: this.player.iso.y + dy * this.playerStats.speed * dt,
       };
-      this.clampIso(nextX, 1.2);
-      this.clampIso(nextY, 1.2);
-      if (this.isGeneratedIsoWalkable(nextX)) {
-        this.player.iso.x = nextX.x;
-      }
-      if (this.isGeneratedIsoWalkable(nextY)) {
-        this.player.iso.y = nextY.y;
+      this.clampIso(fullStep, 1.2);
+      if (this.isGeneratedIsoWalkable(fullStep)) {
+        this.player.iso.x = fullStep.x;
+        this.player.iso.y = fullStep.y;
+      } else {
+        const nextX = {
+          x: this.player.iso.x + dx * this.playerStats.speed * dt,
+          y: this.player.iso.y,
+        };
+        const nextY = {
+          x: this.player.iso.x,
+          y: this.player.iso.y + dy * this.playerStats.speed * dt,
+        };
+        this.clampIso(nextX, 1.2);
+        this.clampIso(nextY, 1.2);
+        if (this.isGeneratedIsoWalkable(nextX)) {
+          this.player.iso.x = nextX.x;
+        }
+        if (this.isGeneratedIsoWalkable(nextY)) {
+          this.player.iso.y = nextY.y;
+        }
       }
       this.clampIso(this.player.iso, 1.2);
     }
@@ -3072,7 +3300,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.sprite.setFlipX(this.player.facing.x < -0.05);
 
     if (time > this.player.actionLockUntil) {
-      const desiredAnim = moving ? 'hero-walk' : 'hero-idle';
+      const desiredAnim = moving
+        ? `${this.player.animPrefix}-walk`
+        : `${this.player.animPrefix}-idle`;
       if (this.player.sprite.anims.currentAnim?.key !== desiredAnim) {
         this.player.sprite.play(desiredAnim);
       }
@@ -3087,7 +3317,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.actionLockUntil = time + 300;
     this.setRepairMode(false, false);
     this.state.equipped = 'Wooden Sword';
-    this.player.sprite.play('hero-melee', true);
+    this.player.sprite.play(`${this.player.animPrefix}-melee`, true);
     this.playTone('sparkle');
     const reach = 1.48;
     const center = {
@@ -3113,7 +3343,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.actionLockUntil = time + 260;
     this.setRepairMode(false, false);
     this.state.equipped = 'Guild Bow';
-    this.player.sprite.play('hero-special', true);
+    this.player.sprite.play(`${this.player.animPrefix}-special`, true);
     this.playTone('bow');
     const startIso = { x: this.player.iso.x, y: this.player.iso.y };
     const target = targetIso;
@@ -3155,7 +3385,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.actionLockUntil = time + 430;
     this.setRepairMode(false, false);
     this.state.equipped = 'Sparkle Spell';
-    this.player.sprite.play('hero-special', true);
+    this.player.sprite.play(`${this.player.animPrefix}-special`, true);
     this.playTone('level');
     const center = {
       x: Phaser.Math.Clamp(targetIso.x, this.player.iso.x - 4.2, this.player.iso.x + 4.2),
@@ -3267,18 +3497,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   spawnInitialChests() {
-    if (this.generatedLevelActive && this.chests.length > 0) {
-      return;
-    }
-    [
-      { x: 3.5, y: 3.5, reward: 'gold' },
-      { x: 11.4, y: 3.2, reward: 'mana' },
-      { x: 3.1, y: 11.1, reward: 'xp' },
-      { x: 11.6, y: 11.4, reward: 'heart' },
-    ].forEach((data) => this.spawnChest(data.x, data.y, data.reward));
+    // Chests now drop from enemies instead of being pre-placed on the board.
   }
 
-  spawnChest(x, y, reward = 'gold') {
+  spawnChest(
+    x,
+    y,
+    reward = 'bonus-upgrade',
+    options: { source?: 'enemyDrop' | 'static'; lifetimeMs?: number } = {},
+  ) {
     const p = this.isoToScreen(x, y, 10);
     const chestTexture = this.generatedLevelActive ? 'worldTilesAtlas' : 'chestTexture';
     const chestFrame = this.generatedLevelActive ? 'chest_closed_01' : undefined;
@@ -3298,15 +3525,55 @@ class FairyGuildScene extends Phaser.Scene {
       ease: 'Sine.inOut',
     });
     this.entityLayer.add([glow, sprite]);
-    this.chests.push({ iso: { x, y }, sprite, glow, reward, opened: false, bob: Math.random() * 1000 });
+    const lifetimeMs = options.lifetimeMs ?? 5000;
+    const spawnedAt = this.time.now;
+    this.chests.push({
+      iso: { x, y },
+      sprite,
+      glow,
+      reward,
+      opened: false,
+      bob: Math.random() * 1000,
+      source: options.source ?? 'enemyDrop',
+      spawnedAt,
+      despawnAt: spawnedAt + lifetimeMs,
+      blinkAt: spawnedAt + Math.max(2500, lifetimeMs - 1800),
+    });
   }
 
   updateChests(time) {
-    this.chests.forEach((chest) => {
+    this.chests.slice().forEach((chest) => {
       if (chest.opened) {return;}
+      if (chest.despawnAt && time >= chest.despawnAt) {
+        chest.opened = true;
+        this.tweens.add({
+          targets: [chest.sprite, chest.glow],
+          alpha: 0,
+          scale: 0.55,
+          duration: 180,
+          onComplete: () => {
+            chest.sprite.destroy();
+            chest.glow.destroy();
+          },
+        });
+        this.chests = this.chests.filter((candidate) => candidate !== chest);
+        this.checkLevelClear();
+        return;
+      }
       const p = this.isoToScreen(chest.iso.x, chest.iso.y, 10 + Math.sin(time / 450 + chest.bob) * 2.5);
       chest.sprite.setPosition(p.x, p.y);
       chest.glow.setPosition(p.x, p.y - 20);
+      if (chest.blinkAt && time >= chest.blinkAt) {
+        const pulse = 0.45 + Math.abs(Math.sin(time / 65)) * 0.55;
+        chest.sprite.setAlpha(pulse);
+        chest.glow.setAlpha(0.12 + pulse * 0.24);
+      } else {
+        chest.sprite.setAlpha(1);
+        chest.glow.setAlpha(0.18);
+      }
+      if (Phaser.Math.Distance.Between(chest.iso.x, chest.iso.y, this.player.iso.x, this.player.iso.y) < 0.95) {
+        this.openChest(chest);
+      }
     });
   }
 
@@ -3320,6 +3587,13 @@ class FairyGuildScene extends Phaser.Scene {
     ) < 1.35);
     if (!chest) {
       this.addGuildNote('No chest close enough yet.');
+      return;
+    }
+    this.openChest(chest);
+  }
+
+  openChest(chest) {
+    if (!chest || chest.opened) {
       return;
     }
     chest.opened = true;
@@ -3339,26 +3613,55 @@ class FairyGuildScene extends Phaser.Scene {
     });
     const p = this.isoToScreen(chest.iso.x, chest.iso.y, 18);
     this.spawnSparkleBurst(p.x, p.y - 22, 0xfff0a4, 20, 1.1);
-    this.grantChestReward(chest.reward);
-    if (Phaser.Math.Between(0, 100) < 45) {
-      const edge = Phaser.Math.RND.pick([
-        { x: Phaser.Math.Between(2, 12), y: 1.8 },
-        { x: 1.8, y: Phaser.Math.Between(2, 12) },
-        { x: Phaser.Math.Between(2, 12), y: 13.2 },
-        { x: 13.2, y: Phaser.Math.Between(2, 12) },
-      ]);
-      this.time.delayedCall(2200, () => {
-        if (this.state.phase !== 'playing') {return;}
-        this.spawnChest(edge.x, edge.y, Phaser.Math.RND.pick(['gold', 'gold', 'xp', 'mana', 'heart', 'buff']));
-        this.addGuildNote('A chest appeared near the old oak!');
-      });
+    this.chests = this.chests.filter((candidate) => candidate !== chest);
+    if (chest.reward === 'bonus-upgrade') {
+      this.pauseRoundForChestBonus();
+      return;
     }
+    this.grantChestReward(chest.reward);
+  }
+
+  pauseRoundForChestBonus() {
+    if (this.state.phase !== 'playing') {
+      return;
+    }
+    this.upgradePauseContext = 'chestBonus';
+    this.state.phase = 'levelUp';
+    this.state.inventoryOpen = false;
+    this.setRepairMode(false, false);
+    this.inventoryPanel?.setVisible(false);
+    this.levelTimers.forEach((timer) => { timer.paused = true; });
+    this.showLevelUpScreen('chestBonus');
+  }
+
+  resumeRoundAfterChestBonus() {
+    this.upgradePauseContext = 'roundClear';
+    this.levelTimers.forEach((timer) => {
+      if (timer && !timer.hasDispatched) {
+        timer.paused = false;
+      }
+    });
+    this.state.phase = 'playing';
+    this.levelUpOverlay?.setVisible(false);
+    this.addGuildNote('The chest blessing settles in. Back to the defense!');
+    this.checkLevelClear();
   }
 
   toggleRepairMode() {
     if (this.state.phase !== 'playing') {return;}
     this.ensureAudio();
     this.setRepairMode(!this.state.repairMode);
+  }
+
+  getFootprintCells(x, y, footprint = { w: 1, h: 1 }) {
+    const offsetX = Math.floor((footprint?.w ?? 1) / 2);
+    const offsetY = Math.floor((footprint?.h ?? 1) / 2);
+    return Array.from({ length: footprint?.h ?? 1 }, (_, row) => (
+      Array.from({ length: footprint?.w ?? 1 }, (__, col) => ({
+        x: x + col - offsetX,
+        y: y + row - offsetY,
+      }))
+    )).flat();
   }
 
   setRepairMode(enabled, announce = true) {
@@ -3383,6 +3686,7 @@ class FairyGuildScene extends Phaser.Scene {
         this.state.equipped = 'Wooden Sword';
         if (announce) {this.addGuildNote('Repair Kit tucked away.');}
       }
+      this.clearRepairModeOutline();
     }
   }
 
@@ -3430,6 +3734,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.tweens.killTweensOf([this.repairModeIndicator.tool, this.repairModeIndicator.glow]);
     this.repairModeIndicator.destroy();
     this.repairModeIndicator = null;
+    this.clearRepairModeOutline();
   }
 
   updateRepairModeIndicator(time) {
@@ -3442,6 +3747,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.repairModeIndicator
       .setPosition(this.player.sprite.x + 34, this.player.sprite.y - 58 + bob)
       .setDepth(this.player.sprite.depth + 150);
+    this.updateRepairModeOutline();
   }
 
   pulseRepairModeIndicator() {
@@ -3469,18 +3775,76 @@ class FairyGuildScene extends Phaser.Scene {
     this.buildings.forEach((building) => {
       if (building.hp >= building.max) {return;}
       if (building.name === 'Castle' && building.hp <= 0) {return;}
-      const distance = Phaser.Math.Distance.Between(
+      const footprintCells = building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
+      const distance = footprintCells.reduce((bestDistance, cell) => (
+        Math.min(
+          bestDistance,
+          Phaser.Math.Distance.Between(
+            cell.x + 0.5,
+            cell.y + 0.5,
+            this.player.iso.x,
+            this.player.iso.y,
+          ),
+        )
+      ), Phaser.Math.Distance.Between(
         building.iso.x,
         building.iso.y,
         this.player.iso.x,
         this.player.iso.y,
-      );
+      ));
       if (distance <= range && distance < nearestDistance) {
         nearest = building;
         nearestDistance = distance;
       }
     });
     return nearest;
+  }
+
+  clearRepairModeOutline() {
+    if (!this.repairModeOutline) {
+      return;
+    }
+    this.repairModeOutline.clear();
+    this.repairModeOutline.setVisible(false);
+  }
+
+  updateRepairModeOutline() {
+    if (!this.state.repairMode || this.state.phase !== 'playing' || !this.player) {
+      this.clearRepairModeOutline();
+      return;
+    }
+    const building = this.getNearestDamagedBuilding();
+    if (!building) {
+      this.clearRepairModeOutline();
+      return;
+    }
+    if (!this.repairModeOutline) {
+      this.repairModeOutline = this.add.graphics().setDepth(building.sprite.depth + 22);
+      this.effectsLayer.add(this.repairModeOutline);
+    }
+    const graphics = this.repairModeOutline;
+    const affordable = this.state.gold >= REPAIR_COST;
+    const color = affordable ? 0xffffff : 0xff6666;
+    const fillColor = affordable ? 0xf9fff2 : 0xff8a8a;
+    const { tileW, tileH } = this.getIsoMetrics();
+    graphics.clear();
+    graphics.setVisible(true);
+    graphics.setDepth(building.sprite.depth + 22);
+    graphics.lineStyle(4, color, 0.98);
+    graphics.fillStyle(fillColor, affordable ? 0.08 : 0.12);
+    (building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint)).forEach((cell) => {
+      const center = this.isoToScreen(cell.x, cell.y);
+      const halfW = tileW * 0.46;
+      const halfH = tileH * 0.46;
+      graphics.beginPath();
+      graphics.moveTo(center.x, center.y - halfH);
+      graphics.lineTo(center.x + halfW, center.y);
+      graphics.lineTo(center.x, center.y + halfH);
+      graphics.lineTo(center.x - halfW, center.y);
+      graphics.closePath();
+      graphics.fillPath();
+      graphics.strokePath();
+    });
   }
 
   tryRepairBuilding() {
@@ -3510,6 +3874,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.spawnSparkleBurst(building.sprite.x, building.sprite.y - 22, 0xb8ffd5, 14, 0.82);
     this.playTone('repair');
     this.addGuildNote(`${building.name} repaired +${repaired} HP!`);
+    this.setRepairMode(false, false);
   }
 
   spawnRepairToolEffect(building, amount) {
@@ -3697,7 +4062,8 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.state.phase !== 'playing' || this.levelClearQueued) {return;}
     const requiredDefeatsMet = this.levelDefeatsThisRound >= this.levelRequiredDefeats;
     const hadRealSpawns = this.levelSpawnedCount > 0 || this.state.bossRound;
-    if (this.levelSpawnsPending <= 0 && requiredDefeatsMet && hadRealSpawns) {
+    const pendingEnemyDropChests = this.chests.some((chest) => !chest.opened && chest.source === 'enemyDrop');
+    if (this.levelSpawnsPending <= 0 && requiredDefeatsMet && hadRealSpawns && !pendingEnemyDropChests) {
       this.levelClearQueued = true;
       this.addLevelTimer(720, () => this.completeLevel());
     }
@@ -3722,7 +4088,7 @@ class FairyGuildScene extends Phaser.Scene {
         ? `${bossConfig.name} defeated! +${reward} gold`
         : `Level ${this.state.level} clear! +${reward} gold`,
     );
-    this.showLevelUpScreen();
+    this.showLevelUpScreen('roundClear');
   }
 
   getEnemyTarget(): any {
@@ -4276,6 +4642,7 @@ class FairyGuildScene extends Phaser.Scene {
       enemy.speed += 0.55;
       this.gainXp(enemy.rewardXp);
       this.dropReward(enemy.iso.x, enemy.iso.y, enemy);
+      this.maybeSpawnChestDrop(enemy);
       this.playTone('daze');
       if (enemy.isBoss) {
         this.addGuildNote(this.getCurrentWorldTheme().bossDefeat);
@@ -4288,6 +4655,19 @@ class FairyGuildScene extends Phaser.Scene {
       }
       this.checkLevelClear();
     }
+  }
+
+  maybeSpawnChestDrop(enemy) {
+    const baseChance = enemy.isBoss ? 0.78 : enemy.variant?.key === 'elder' ? 0.34 : enemy.variant?.key === 'bright' ? 0.22 : 0.12;
+    if (Phaser.Math.FloatBetween(0, 1) >= baseChance) {
+      return;
+    }
+    const chestIso = {
+      x: enemy.iso.x + Phaser.Math.FloatBetween(-0.22, 0.22),
+      y: enemy.iso.y + Phaser.Math.FloatBetween(-0.22, 0.22),
+    };
+    this.spawnChest(chestIso.x, chestIso.y, 'bonus-upgrade', { source: 'enemyDrop', lifetimeMs: 5000 });
+    this.addGuildNote(enemy.isBoss ? 'A guardian chest lands beside the battle!' : 'A chest tumbles free from the skirmish!');
   }
 
   removeEnemy(enemy, animate = true) {
@@ -4640,6 +5020,32 @@ class FairyGuildScene extends Phaser.Scene {
       align: 'center',
       wordWrap: { width: 520 },
     }).setOrigin(0.5);
+    this.splashHeroChoiceText = this.add.text(0, 72, 'Choose your hero before you begin.', {
+      ...this.uiTextStyle(16, '#31503b'),
+      align: 'center',
+    }).setOrigin(0.5);
+    const makeHeroCard = (choice: HeroChoice, x: number, label: string) => {
+      const previewProfile = this.getHeroProfile(choice);
+      this.ensureHeroAnimations(previewProfile);
+      const card = this.add.container(x, 140);
+      const frame = this.add.rectangle(0, 0, 156, 132, 0xfff8de, 0.9)
+        .setStrokeStyle(3, 0xd0a24b, 0.42);
+      const hit = this.add.rectangle(0, 0, 156, 132, 0xfff1b8, 0.04)
+        .setInteractive({ useHandCursor: true });
+      const preview = this.add.sprite(0, -10, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
+        .setDisplaySize(74, 74)
+        .setOrigin(0.5, 0.76)
+        .play(`${previewProfile.animPrefix}-idle`);
+      const caption = this.add.text(0, 44, label, this.uiTextStyle(16, '#7d6039')).setOrigin(0.5);
+      const badge = this.add.text(0, -52, 'Selected', this.uiTextStyle(12, '#5c7d3e'))
+        .setOrigin(0.5)
+        .setVisible(false);
+      hit.on('pointerup', () => this.selectHeroChoice(choice));
+      card.add([frame, hit, preview, caption, badge]);
+      return { card, frame, hit, preview, label: caption, badge };
+    };
+    const maleCard = makeHeroCard('male', -118, 'Village Hero');
+    const princessCard = makeHeroCard('princess', 118, 'Princess Hero');
     const startButton = this.add.rectangle(0, 144, 250, 62, 0xfff1b8, 0.08)
       .setInteractive({ useHandCursor: true });
     const startText = this.add.text(0, 136, 'START', {
@@ -4649,8 +5055,26 @@ class FairyGuildScene extends Phaser.Scene {
     startButton.on('pointerover', () => startButton.setFillStyle(0xfff1b8, 0.2));
     startButton.on('pointerout', () => startButton.setFillStyle(0xfff1b8, 0.08));
     startButton.on('pointerup', () => this.startGameFromSplash());
-    this.splashOverlay.add([shade, panel, title, credit, prompt, startButton, startText]);
+    this.splashStartButton = startButton;
+    this.splashStartText = startText;
+    this.splashHeroCards = {
+      male: maleCard,
+      princess: princessCard,
+    };
+    this.splashOverlay.add([
+      shade,
+      panel,
+      title,
+      credit,
+      prompt,
+      this.splashHeroChoiceText,
+      maleCard.card,
+      princessCard.card,
+      startButton,
+      startText,
+    ]);
     this.uiLayer.add(this.splashOverlay);
+    this.updateSplashHeroChoiceUi();
   }
 
   createCountdownOverlay() {
@@ -4724,8 +5148,8 @@ class FairyGuildScene extends Phaser.Scene {
       strokeThickness: 4,
     }).setOrigin(0.5);
     this.levelUpRewardText = this.add.text(0, -102, 'Heart +1', this.uiTextStyle(22, '#bd415c')).setOrigin(0.5);
-    const helper = this.add.text(0, -70, 'Choose your guild training', this.uiTextStyle(18, '#31503b')).setOrigin(0.5);
-    this.levelUpOverlay.add([shade, art, this.levelUpTitleText, this.levelUpRewardText, helper]);
+    this.levelUpHelperText = this.add.text(0, -70, 'Choose your guild training', this.uiTextStyle(18, '#31503b')).setOrigin(0.5);
+    this.levelUpOverlay.add([shade, art, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
     this.levelUpProgressBars = [];
     this.levelUpChoices.forEach((choice, index) => {
@@ -4809,11 +5233,19 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelUpOverlay?.setVisible(false);
     this.gameOverOverlay?.setVisible(false);
     if (this.shouldAutoStartFromParams()) {
+      this.pendingHeroChoice = this.resolveRequestedHeroChoice();
+      this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
       this.splashOverlay?.setVisible(false).setAlpha(0);
       this.startGameFromSplash();
       return;
     }
+    const explicitHeroChoice = new URLSearchParams(window.location.search).get('hero');
+    this.pendingHeroChoice = explicitHeroChoice ? this.resolveRequestedHeroChoice() : null;
+    if (this.pendingHeroChoice) {
+      this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
+    }
     this.splashOverlay?.setVisible(true).setAlpha(0);
+    this.updateSplashHeroChoiceUi();
     this.tweens.add({
       targets: this.splashOverlay,
       alpha: 1,
@@ -4824,6 +5256,12 @@ class FairyGuildScene extends Phaser.Scene {
 
   startGameFromSplash() {
     if (this.state.phase !== 'splash') {return;}
+    if (!this.pendingHeroChoice) {
+      this.addGuildNote('Choose a hero first.');
+      this.playTone('hit');
+      return;
+    }
+    this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
     this.ensureAudio();
     this.playTone('level');
     this.splashOverlay?.setVisible(false);
@@ -4860,9 +5298,11 @@ class FairyGuildScene extends Phaser.Scene {
     this.uiLayer.add(this.gameOverOverlay);
   }
 
-  showLevelUpScreen() {
-    this.levelUpTitleText.setText('Level Up!');
-    this.levelUpRewardText.setText('Heart +1');
+  showLevelUpScreen(context = 'roundClear') {
+    this.upgradePauseContext = context;
+    this.levelUpTitleText.setText(context === 'chestBonus' ? 'Cheerful Surprise!' : 'Level Up!');
+    this.levelUpRewardText.setText(context === 'chestBonus' ? 'Choose a bonus strength point' : 'Heart +1');
+    this.levelUpHelperText?.setText(context === 'chestBonus' ? 'Pick a bonus combat lesson' : 'Choose your guild training');
     this.updateLevelUpProgressBars();
     this.levelUpOverlay.setVisible(true).setAlpha(0);
     this.tweens.add({
@@ -4879,13 +5319,20 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.state.phase !== 'levelUp') {return;}
     const choice = this.levelUpChoices[index];
     if (!choice) {return;}
+    const pauseContext = this.upgradePauseContext ?? 'roundClear';
     const wasBossRound = this.state.bossRound;
-    this.playerStats.maxHealth += 1;
-    this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
+    if (pauseContext === 'roundClear') {
+      this.playerStats.maxHealth += 1;
+      this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
+    }
     choice.apply();
     this.updateLevelUpProgressBars();
     this.spawnShieldGlow();
     this.playTone('level');
+    if (pauseContext === 'chestBonus') {
+      this.resumeRoundAfterChestBonus();
+      return;
+    }
     this.state.level += 1;
     const nextProgression = this.getNextWorldProgressionState();
     this.state.worldIndex = nextProgression.worldIndex;
@@ -5001,7 +5448,7 @@ class FairyGuildScene extends Phaser.Scene {
     const text = this.add.text(
       14,
       10,
-      'WASD/Arrows move   Space sword   Click/F bow   Q/R spell   T repair kit   Space/click/E repair   I inventory',
+      'WASD/Arrows move   Space sword   Click/F bow   Q/R spell   T repair mode   Space/click/E repair nearby   I guild pack',
       this.uiTextStyle(13, '#ffffff'),
     );
     hint.add([bg, text]);
@@ -5046,6 +5493,9 @@ class FairyGuildScene extends Phaser.Scene {
 
   toggleInventory() {
     if (this.state.phase !== 'playing') {return;}
+    if (!this.state.inventoryOpen) {
+      this.setRepairMode(false, false);
+    }
     this.state.inventoryOpen = !this.state.inventoryOpen;
     this.inventoryPanel.setVisible(this.state.inventoryOpen);
     this.rebuildInventoryPanel();

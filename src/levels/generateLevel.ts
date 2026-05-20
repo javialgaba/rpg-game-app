@@ -199,7 +199,7 @@ const createRoadPlan = (
   const warnings: string[] = [];
   const protectedAnchors: GridPoint[] = [];
   const utilityAnchors: GridPoint[] = [];
-  const chestAnchors: GridPoint[] = [];
+  const villageCenters: GridPoint[] = [];
   let playerSpawn: GridPoint | null = null;
 
   matrix.forEach((row, y) => {
@@ -213,13 +213,13 @@ const createRoadPlan = (
       }
       if (token === 'player-spawn') {
         playerSpawn = { x, y };
+      } else if (token === 'village-center') {
+        villageCenters.push({ x, y });
       }
       if (entry.protected) {
         protectedAnchors.push({ x, y });
       } else if (token === 'well') {
         utilityAnchors.push({ x, y });
-      } else if (token === 'chest') {
-        chestAnchors.push({ x, y });
       }
       if (!entry.blocksMovement) {
         return;
@@ -232,7 +232,7 @@ const createRoadPlan = (
     });
   });
 
-  const center = playerSpawn ?? {
+  const center = villageCenters[0] ?? playerSpawn ?? {
     x: Math.floor((playableBounds.minX + playableBounds.maxX) / 2),
     y: Math.floor((playableBounds.minY + playableBounds.maxY) / 2),
   };
@@ -292,7 +292,7 @@ const createRoadPlan = (
     path.forEach(carveRoadCell);
   };
 
-  [...protectedAnchors, ...utilityAnchors, ...chestAnchors].forEach((anchor) => {
+  [...protectedAnchors, ...utilityAnchors].forEach((anchor) => {
     connectTo(anchor, matrix[anchor.y]?.[anchor.x] ?? 'target');
   });
 
@@ -464,7 +464,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       || token === 'village-center'
       || token === 'player-spawn'
       || token === 'monster-spawn'
-      || token === 'chest'
       || (playerSpawn && grid.x === playerSpawn.x && grid.y === playerSpawn.y)
       || distanceFromCenter < 2.6
     ) {
@@ -657,11 +656,15 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       addDecoration(placement.grid, 'magicPlant', 'Glowing Edge Sprout', magicPlantRender, { allowNearEdge: true });
     }
     if (token === 'grass' && isInnerEdgeBand && rng.chance(config.decorationDensity * 0.42)) {
+      const useCluster = rng.chance(0.64);
+      const render = useCluster
+        ? treeClusterRender
+        : (rng.chance(0.18) ? oakTreeRender : fullTreeRender);
       addDecoration(
         placement.grid,
-        rng.chance(0.64) ? 'treeCluster' : 'fullTree',
+        useCluster ? 'treeCluster' : 'fullTree',
         'Forest Edge Growth',
-        rng.chance(0.64) ? treeClusterRender : (rng.chance(0.18) ? oakTreeRender : fullTreeRender),
+        render,
         { allowNearEdge: true },
       );
     }
@@ -748,6 +751,27 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     errors.push(`Player spawn ${level.playerSpawn.x},${level.playerSpawn.y} is outside level bounds.`);
   } else if (level.blockedGrid[level.playerSpawn.y]?.[level.playerSpawn.x]) {
     errors.push('Player spawn is blocked.');
+  } else {
+    const nearbyCells = getNeighborCells(level.playerSpawn, 1)
+      .filter((cell) => isInsideLevel(level, cell));
+    const walkableClearance = nearbyCells
+      .filter((cell) => level.walkableGrid[cell.y]?.[cell.x])
+      .length;
+    if (walkableClearance < 8) {
+      errors.push('Player spawn does not have enough nearby clearance for smooth movement.');
+    }
+    const playerExitCount = getCardinalNeighborCells(level.playerSpawn)
+      .filter((cell) => isInsideLevel(level, cell) && level.walkableGrid[cell.y]?.[cell.x])
+      .length;
+    if (playerExitCount < 3) {
+      errors.push('Player spawn does not have enough open exits for smooth movement.');
+    }
+    const nearbyBlockedCount = nearbyCells
+      .filter((cell) => level.blockedGrid[cell.y]?.[cell.x])
+      .length;
+    if (nearbyBlockedCount > 4) {
+      warnings.push('Player spawn is too close to several blockers.');
+    }
   }
   if (!level.spawnPoints.length) {
     errors.push('At least one monster spawn is required.');
@@ -807,6 +831,10 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       warnings.push(`${target.label} cannot currently be reached by any monster spawn.`);
     }
   });
+  const attackCellKeys = new Set(level.protectedTargets.flatMap((target) => target.attackCells.map(pointKey)));
+  if (level.playerSpawn && attackCellKeys.has(pointKey(level.playerSpawn))) {
+    errors.push('Player spawn overlaps a protected building attack zone.');
+  }
 
   if (level.playerSpawn) {
     level.protectedTargets.forEach((target) => {
@@ -853,7 +881,7 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
   });
 
   if (!level.chests.length) {
-    warnings.push('No treasure chests are placed in this level.');
+    warnings.push('No static treasure chests are placed in this level.');
   }
 
   return {

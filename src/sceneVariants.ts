@@ -17,11 +17,16 @@ export interface SceneVariantOverlapAnchor {
 
 export interface SceneVariantConfig {
   key: SeasonPreset;
+  season: 'spring' | 'summer' | 'winter';
   backgroundAssetKey: string;
   exteriorFrameAssetKey: string;
   foregroundFogAssetKey?: string;
   ambientTint: number;
   ambientAlpha: number;
+  worldZoom: number;
+  backgroundParallax: number;
+  frameParallax: number;
+  foregroundParallax: number;
   playableBounds: PlayableBounds;
   overlapDecorAnchors: SceneVariantOverlapAnchor[];
   tilePalette: {
@@ -58,11 +63,16 @@ const baseOverlapDecorAnchors: SceneVariantOverlapAnchor[] = [
 export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
   day_spring: {
     key: 'day_spring',
+    season: 'spring',
     backgroundAssetKey: 'sceneVariantBackground_day_spring',
     exteriorFrameAssetKey: 'sceneVariantFrame_day_spring',
     foregroundFogAssetKey: 'sceneVariantForeground_day_spring',
     ambientTint: 0xffffff,
     ambientAlpha: 0,
+    worldZoom: 1.16,
+    backgroundParallax: 0.03,
+    frameParallax: 0.06,
+    foregroundParallax: 0.1,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     overlapDecorAnchors: baseOverlapDecorAnchors,
     tilePalette: {
@@ -78,11 +88,16 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
   },
   afternoon_summer: {
     key: 'afternoon_summer',
+    season: 'summer',
     backgroundAssetKey: 'sceneVariantBackground_afternoon_summer',
     exteriorFrameAssetKey: 'sceneVariantFrame_afternoon_summer',
     foregroundFogAssetKey: 'sceneVariantForeground_afternoon_summer',
     ambientTint: 0xffe4b5,
     ambientAlpha: 0.08,
+    worldZoom: 1.18,
+    backgroundParallax: 0.032,
+    frameParallax: 0.065,
+    foregroundParallax: 0.11,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     overlapDecorAnchors: baseOverlapDecorAnchors,
     tilePalette: {
@@ -98,11 +113,16 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
   },
   night_spring: {
     key: 'night_spring',
+    season: 'spring',
     backgroundAssetKey: 'sceneVariantBackground_night_spring',
     exteriorFrameAssetKey: 'sceneVariantFrame_night_spring',
     foregroundFogAssetKey: 'sceneVariantForeground_night_spring',
     ambientTint: 0x8ba7ff,
     ambientAlpha: 0.2,
+    worldZoom: 1.15,
+    backgroundParallax: 0.025,
+    frameParallax: 0.055,
+    foregroundParallax: 0.095,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     overlapDecorAnchors: baseOverlapDecorAnchors,
     tilePalette: {
@@ -118,11 +138,16 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
   },
   noon_winter: {
     key: 'noon_winter',
+    season: 'winter',
     backgroundAssetKey: 'sceneVariantBackground_noon_winter',
     exteriorFrameAssetKey: 'sceneVariantFrame_noon_winter',
     foregroundFogAssetKey: 'sceneVariantForeground_noon_winter',
     ambientTint: 0xe6f3ff,
     ambientAlpha: 0.06,
+    worldZoom: 1.16,
+    backgroundParallax: 0.03,
+    frameParallax: 0.06,
+    foregroundParallax: 0.1,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     overlapDecorAnchors: baseOverlapDecorAnchors.map((anchor) => ({ ...anchor, alpha: Math.min(1, (anchor.alpha ?? 1) + 0.04) })),
     tilePalette: {
