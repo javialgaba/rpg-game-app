@@ -26,6 +26,15 @@ export const REPAIR_COST = 5;
 export const REPAIR_AMOUNT = 16;
 export const REPAIR_RANGE = 1.55;
 export const REPAIR_COOLDOWN = 650;
+export const REPAIR_OUTLINE_COLORS = {
+  perfect: 0x42d46b,
+  repairable: 0xffffff,
+  unaffordable: 0xff4f57,
+} as const;
+export const REPAIR_OUTLINE_BACKING_COLOR = 0x203047;
+export const REPAIR_OUTLINE_BACKING_WIDTH = 10;
+export const REPAIR_OUTLINE_STROKE_WIDTH = 7;
+export const REPAIR_OUTLINE_FILL_ALPHA = 0.12;
 
 export const LEVEL_SPAWN_BASE = 3;
 export const LEVEL_SPAWN_PER_LEVEL = 2;

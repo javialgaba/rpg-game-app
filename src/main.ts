@@ -33,6 +33,11 @@ import {
   REPAIR_AMOUNT,
   REPAIR_COOLDOWN,
   REPAIR_COST,
+  REPAIR_OUTLINE_BACKING_COLOR,
+  REPAIR_OUTLINE_BACKING_WIDTH,
+  REPAIR_OUTLINE_COLORS,
+  REPAIR_OUTLINE_FILL_ALPHA,
+  REPAIR_OUTLINE_STROKE_WIDTH,
   REPAIR_RANGE,
   ROUNDS_PER_WORLD,
   TILE_H,
@@ -47,6 +52,7 @@ type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'repairConfirm' | '
 type TouchButtonSlot = 'left' | 'top' | 'right' | 'bottom';
 type UpgradePauseContext = 'roundClear' | 'chestBonus';
 type TouchActionIcon = { texture: string; frame?: string } | null;
+type RepairModeTargetState = keyof typeof REPAIR_OUTLINE_COLORS;
 type GeneratedSurroundAnchor =
   | 'topLeft'
   | 'topCenter'
@@ -2812,8 +2818,10 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     const repairTarget = this.state.repairMode && this.state.phase === 'playing'
-      ? this.getNearestDamagedBuilding()
+      ? this.getRepairModeTarget()
       : null;
+    const repairTargetState = repairTarget ? this.getRepairModeTargetState(repairTarget) : '';
+    const repairTargetDamaged = repairTarget && repairTarget.hp < repairTarget.max;
     host.setAttribute('data-phase', String(this.state.phase ?? ''));
     host.setAttribute('data-level', String(this.state.level ?? 0));
     host.setAttribute('data-gold', String(this.state.gold ?? 0));
@@ -2827,7 +2835,8 @@ class FairyGuildScene extends Phaser.Scene {
     host.setAttribute('data-splash-ready', this.pendingHeroChoice ? '1' : '0');
     host.setAttribute('data-repair-mode', this.state.repairMode ? '1' : '0');
     host.setAttribute('data-repair-target', repairTarget ? this.toDebugSlug(repairTarget.name) : '');
-    host.setAttribute('data-repair-affordable', repairTarget ? (this.state.gold >= REPAIR_COST ? '1' : '0') : '');
+    host.setAttribute('data-repair-affordable', repairTargetDamaged ? (this.state.gold >= REPAIR_COST ? '1' : '0') : '');
+    host.setAttribute('data-repair-outline-state', repairTargetState);
     host.setAttribute('data-upgrade-context', String(this.upgradePauseContext ?? ''));
     host.setAttribute('data-enemies', String(this.enemies.length));
     host.setAttribute('data-chests', String(this.chests.filter((chest) => !chest.opened).length));
@@ -3926,35 +3935,73 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateRepairModeOutline();
   }
 
+  getBuildingFootprintCells(building) {
+    return building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
+  }
+
+  getRepairDistanceToBuilding(building) {
+    if (!this.player) {
+      return Infinity;
+    }
+    const footprintCells = this.getBuildingFootprintCells(building);
+    return footprintCells.reduce((bestDistance, cell) => (
+      Math.min(
+        bestDistance,
+        Phaser.Math.Distance.Between(
+          cell.x + 0.5,
+          cell.y + 0.5,
+          this.player.iso.x,
+          this.player.iso.y,
+        ),
+      )
+    ), Phaser.Math.Distance.Between(
+      building.iso.x,
+      building.iso.y,
+      this.player.iso.x,
+      this.player.iso.y,
+    ));
+  }
+
   getNearestDamagedBuilding(range = REPAIR_RANGE) {
     let nearest = null;
     let nearestDistance = Infinity;
     this.buildings.forEach((building) => {
       if (building.hp >= building.max) {return;}
       if (building.name === 'Castle' && building.hp <= 0) {return;}
-      const footprintCells = building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
-      const distance = footprintCells.reduce((bestDistance, cell) => (
-        Math.min(
-          bestDistance,
-          Phaser.Math.Distance.Between(
-            cell.x + 0.5,
-            cell.y + 0.5,
-            this.player.iso.x,
-            this.player.iso.y,
-          ),
-        )
-      ), Phaser.Math.Distance.Between(
-        building.iso.x,
-        building.iso.y,
-        this.player.iso.x,
-        this.player.iso.y,
-      ));
+      const distance = this.getRepairDistanceToBuilding(building);
       if (distance <= range && distance < nearestDistance) {
         nearest = building;
         nearestDistance = distance;
       }
     });
     return nearest;
+  }
+
+  getRepairModeTarget(range = REPAIR_RANGE) {
+    let nearestDamaged = null;
+    let nearestPerfect = null;
+    this.buildings.forEach((building) => {
+      if (building.name === 'Castle' && building.hp <= 0) {return;}
+      const distance = this.getRepairDistanceToBuilding(building);
+      if (distance > range) {return;}
+      if (building.hp < building.max) {
+        if (!nearestDamaged || distance < nearestDamaged.distance) {
+          nearestDamaged = { building, distance };
+        }
+        return;
+      }
+      if (!nearestPerfect || distance < nearestPerfect.distance) {
+        nearestPerfect = { building, distance };
+      }
+    });
+    return nearestDamaged?.building ?? nearestPerfect?.building ?? null;
+  }
+
+  getRepairModeTargetState(building): RepairModeTargetState {
+    if (building.hp >= building.max) {
+      return 'perfect';
+    }
+    return this.state.gold >= REPAIR_COST ? 'repairable' : 'unaffordable';
   }
 
   clearRepairModeOutline() {
@@ -3965,12 +4012,62 @@ class FairyGuildScene extends Phaser.Scene {
     this.repairModeOutline.setVisible(false);
   }
 
+  drawRepairModeFootprintFill(graphics, footprintCells, color, halfW, halfH) {
+    graphics.fillStyle(color, REPAIR_OUTLINE_FILL_ALPHA);
+    footprintCells.forEach((cell) => {
+      const center = this.isoToScreen(cell.x, cell.y);
+      graphics.beginPath();
+      graphics.moveTo(center.x, center.y - halfH);
+      graphics.lineTo(center.x + halfW, center.y);
+      graphics.lineTo(center.x, center.y + halfH);
+      graphics.lineTo(center.x - halfW, center.y);
+      graphics.closePath();
+      graphics.fillPath();
+    });
+  }
+
+  drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH) {
+    const cellKeys = new Set(footprintCells.map((cell) => `${cell.x},${cell.y}`));
+    footprintCells.forEach((cell) => {
+      const center = this.isoToScreen(cell.x, cell.y);
+      const top = { x: center.x, y: center.y - halfH };
+      const right = { x: center.x + halfW, y: center.y };
+      const bottom = { x: center.x, y: center.y + halfH };
+      const left = { x: center.x - halfW, y: center.y };
+      const edges = [
+        { neighbor: `${cell.x},${cell.y - 1}`, from: top, to: right },
+        { neighbor: `${cell.x + 1},${cell.y}`, from: right, to: bottom },
+        { neighbor: `${cell.x},${cell.y + 1}`, from: bottom, to: left },
+        { neighbor: `${cell.x - 1},${cell.y}`, from: left, to: top },
+      ];
+      edges.forEach((edge) => {
+        if (cellKeys.has(edge.neighbor)) {return;}
+        graphics.beginPath();
+        graphics.moveTo(edge.from.x, edge.from.y);
+        graphics.lineTo(edge.to.x, edge.to.y);
+        graphics.strokePath();
+      });
+    });
+  }
+
+  drawRepairModeFootprintOutline(graphics, building, color) {
+    const { tileW, tileH } = this.getIsoMetrics();
+    const halfW = tileW / 2;
+    const halfH = tileH / 2;
+    const footprintCells = this.getBuildingFootprintCells(building);
+    this.drawRepairModeFootprintFill(graphics, footprintCells, color, halfW, halfH);
+    graphics.lineStyle(REPAIR_OUTLINE_BACKING_WIDTH, REPAIR_OUTLINE_BACKING_COLOR, 0.82);
+    this.drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH);
+    graphics.lineStyle(REPAIR_OUTLINE_STROKE_WIDTH, color, 0.98);
+    this.drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH);
+  }
+
   updateRepairModeOutline() {
     if (!this.state.repairMode || this.state.phase !== 'playing' || !this.player) {
       this.clearRepairModeOutline();
       return;
     }
-    const building = this.getNearestDamagedBuilding();
+    const building = this.getRepairModeTarget();
     if (!building) {
       this.clearRepairModeOutline();
       return;
@@ -3980,39 +4077,30 @@ class FairyGuildScene extends Phaser.Scene {
       this.effectsLayer.add(this.repairModeOutline);
     }
     const graphics = this.repairModeOutline;
-    const affordable = this.state.gold >= REPAIR_COST;
-    const color = affordable ? 0xffffff : 0xff6666;
-    const fillColor = affordable ? 0xf9fff2 : 0xff8a8a;
-    const { tileW, tileH } = this.getIsoMetrics();
+    const targetState = this.getRepairModeTargetState(building);
+    const color = REPAIR_OUTLINE_COLORS[targetState];
     graphics.clear();
     graphics.setVisible(true);
     graphics.setDepth(building.sprite.depth + 22);
-    graphics.lineStyle(4, color, 0.98);
-    graphics.fillStyle(fillColor, affordable ? 0.08 : 0.12);
-    (building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint)).forEach((cell) => {
-      const center = this.isoToScreen(cell.x, cell.y);
-      const halfW = tileW * 0.46;
-      const halfH = tileH * 0.46;
-      graphics.beginPath();
-      graphics.moveTo(center.x, center.y - halfH);
-      graphics.lineTo(center.x + halfW, center.y);
-      graphics.lineTo(center.x, center.y + halfH);
-      graphics.lineTo(center.x - halfW, center.y);
-      graphics.closePath();
-      graphics.fillPath();
-      graphics.strokePath();
-    });
+    this.drawRepairModeFootprintOutline(graphics, building, color);
   }
 
   tryRepairBuilding() {
     if (this.state.phase !== 'playing') {return;}
     this.ensureAudio();
     if (this.time.now - this.lastRepairAt < REPAIR_COOLDOWN) {return;}
-    const building = this.getNearestDamagedBuilding();
+    const building = this.getRepairModeTarget();
     if (!building) {
-      this.addGuildNote('No damaged building close enough yet.');
+      this.addGuildNote('No building close enough yet.');
       this.pulseRepairModeIndicator();
       this.playTone('hit');
+      return;
+    }
+    const targetState = this.getRepairModeTargetState(building);
+    if (targetState === 'perfect') {
+      this.addGuildNote(`${building.name} is already in perfect condition.`);
+      this.pulseRepairModeIndicator();
+      this.playTone('sparkle');
       return;
     }
     if (this.state.gold < REPAIR_COST) {
