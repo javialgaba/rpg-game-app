@@ -214,8 +214,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
     this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
-    this.load.image('repairModeConfirmButton', '/assets/repair-mode-confirm.png');
-    this.load.image('repairModeCancelButton', '/assets/repair-mode-cancel.png');
+    this.load.image('repairModeCancelIcon', '/assets/repair-mode-cancel-icon.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
     this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
@@ -2972,24 +2971,14 @@ class FairyGuildScene extends Phaser.Scene {
       const point = slotPositions[slot as TouchButtonSlot];
       buttons[action] = this.createTouchActionButton(action, point.x, point.y, label, icon, color);
     });
-    const repairButtons = [
-      this.createTouchActionButton(
-        'repairConfirm',
-        WIDTH - 262,
-        138,
-        'Repair nearby',
-        { texture: 'repairModeConfirmButton' },
-        0xc9f8c9,
-      ).setVisible(false),
-      this.createTouchActionButton(
-        'repairCancel',
-        WIDTH - 102,
-        138,
-        'Cancel',
-        { texture: 'repairModeCancelButton' },
-        0xffc8c8,
-      ).setVisible(false),
+    const repairLayout: Array<[TouchActionKey, TouchButtonSlot, string, TouchActionIcon, number]> = [
+      ['repairConfirm', 'left', '', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
+      ['repairCancel', 'right', '', { texture: 'repairModeCancelIcon' }, 0xff9ca0],
     ];
+    const repairButtons = repairLayout.map(([action, slot, label, icon, color]) => {
+      const point = slotPositions[slot];
+      return this.createTouchActionButton(action, point.x, point.y, label, icon, color).setVisible(false);
+    });
 
     const portraitOverlay = this.createPortraitOverlay();
     container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons), ...repairButtons]);
@@ -3053,36 +3042,27 @@ class FairyGuildScene extends Phaser.Scene {
     icon: TouchActionIcon,
     color: number,
   ) {
-    const wideButton = action === 'repairConfirm' || action === 'repairCancel';
     const button = this.add.container(x, y).setScrollFactor(0);
-    const hit = this.add.zone(0, 0, wideButton ? 156 : 78, wideButton ? 68 : 82)
+    const hit = this.add.zone(0, 0, 78, 82)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    const labelText = this.add.text(0, wideButton ? 0 : 34, label, wideButton ? {
-      ...this.uiTextStyle(13, action === 'repairCancel' ? '#7a2e1e' : '#2e6a3f'),
-      strokeThickness: 4,
-    } : {
+    const labelText = label ? this.add.text(0, 34, label, {
       ...this.uiTextStyle(10, '#ffffff'),
       strokeThickness: 3,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5) : null;
     const glyph = icon
-      ? this.add.image(0, wideButton ? 0 : -3, icon.texture, icon.frame).setDisplaySize(
-        wideButton ? 148 : 70,
-        wideButton ? 58 : 70,
-      )
+      ? this.add.image(0, -3, icon.texture, icon.frame).setDisplaySize(70, 70)
       : this.add.text(0, -5, 'I', {
         ...this.uiTextStyle(24, '#fff0b8'),
         strokeThickness: 4,
       }).setOrigin(0.5);
-    const focusRing = wideButton
-      ? this.add.rectangle(0, 0, 148, 58, 0xffffff, 0).setStrokeStyle(2, color, 0.22)
-      : this.add.circle(0, -3, 34, 0xffffff, 0).setStrokeStyle(2, color, 0.28);
+    const focusRing = this.add.circle(0, -3, 34, 0xffffff, 0).setStrokeStyle(2, color, 0.28);
     hit.on('pointerdown', () => {
       this.ensureAudio();
       this.pulseTouchButton(button);
       this.handleTouchAction(action);
     });
-    button.add([hit, focusRing, glyph, labelText]);
+    button.add(labelText ? [hit, focusRing, glyph, labelText] : [hit, focusRing, glyph]);
     return button;
   }
 
