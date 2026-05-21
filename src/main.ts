@@ -155,6 +155,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.notes = [];
     this.upgrades = [];
     this.levelUpProgressBars = [];
+    this.levelUpChoiceCards = [];
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
@@ -3562,18 +3563,20 @@ class FairyGuildScene extends Phaser.Scene {
     vy /= len;
     this.player.facing = { x: vx, y: vy };
     const p = this.isoToScreen(startIso.x, startIso.y, 18);
+    const evolvedBow = Boolean(this.playerStats.bowEvolved);
     const arrow = this.add.container(p.x, p.y - 24).setDepth(p.y + 120);
-    const shaft = this.add.rectangle(0, 0, 32, 5, 0xffe6a3, 1).setStrokeStyle(1, 0x9d6d3f, 1);
-    const tip = this.add.triangle(18, 0, 0, -6, 0, 6, 10, 0, 0x82d5ff, 1);
+    const shaft = this.add.rectangle(0, 0, evolvedBow ? 38 : 32, evolvedBow ? 6 : 5, evolvedBow ? 0xfff0a4 : 0xffe6a3, 1)
+      .setStrokeStyle(1, evolvedBow ? 0x4ca6c9 : 0x9d6d3f, 1);
+    const tip = this.add.triangle(evolvedBow ? 21 : 18, 0, 0, -6, 0, 6, 10, 0, evolvedBow ? 0xffdf75 : 0x82d5ff, 1);
     arrow.add([shaft, tip]);
     const screenDir = this.isoToScreen(startIso.x + vx, startIso.y + vy, 18);
     arrow.rotation = Phaser.Math.Angle.Between(p.x, p.y, screenDir.x, screenDir.y);
     this.projectiles.push({
       type: 'arrow',
       iso: { x: startIso.x + vx * 0.45, y: startIso.y + vy * 0.45 },
-      velocity: { x: vx * 8.2, y: vy * 8.2 },
+      velocity: { x: vx * (evolvedBow ? 9.2 : 8.2), y: vy * (evolvedBow ? 9.2 : 8.2) },
       power: this.playerStats.bowPower,
-      range: 6.8 + this.state.level * 0.35,
+      range: 6.8 + this.state.level * 0.35 + (evolvedBow ? 1.2 : 0),
       distance: 0,
       sprite: arrow,
     });
@@ -5309,29 +5312,29 @@ class FairyGuildScene extends Phaser.Scene {
 
   getLevelUpOverlayLayout() {
     const compact = this.isCompactOverlayLayout();
-    const panelHeight = compact ? 392 : 430;
+    const panelHeight = compact ? 424 : 470;
     return {
       compact,
       panelWidth: compact ? 720 : 780,
       panelHeight,
       offsetY: this.getOverlayContentOffset(panelHeight),
       decorScale: compact ? 0.48 : 0.54,
-      titleY: compact ? -136 : -150,
-      titleWidth: compact ? 340 : 360,
-      titleTextWidth: compact ? 274 : 294,
-      titleHeight: compact ? 54 : 58,
-      titleSize: compact ? 29 : 31,
+      titleY: compact ? -154 : -174,
+      titleWidth: compact ? 360 : 390,
+      titleTextWidth: compact ? 292 : 318,
+      titleHeight: compact ? 66 : 72,
+      titleSize: compact ? 30 : 32,
       titleMinSize: compact ? 21 : 23,
-      rewardY: compact ? -92 : -104,
-      helperY: compact ? -62 : -72,
-      cardY: compact ? 72 : 78,
+      rewardY: compact ? -108 : -122,
+      helperY: compact ? -68 : -80,
+      cardY: compact ? 84 : 94,
       cardXScale: compact ? 0.88 : 0.94,
       cardWidth: compact ? 176 : 188,
-      cardHeight: compact ? 188 : 202,
+      cardHeight: compact ? 198 : 216,
       iconY: compact ? -36 : -40,
       pipsY: compact ? 36 : 40,
-      labelY: compact ? 58 : 64,
-      detailY: compact ? 76 : 82,
+      labelY: compact ? 62 : 70,
+      detailY: compact ? 84 : 94,
     };
   }
 
@@ -5374,16 +5377,61 @@ class FairyGuildScene extends Phaser.Scene {
     const bottomY = height / 2 - 34 * decorScale;
     const leftX = -width / 2 + 38 * decorScale;
     const rightX = width / 2 - 38 * decorScale;
-    const topEdge = this.add.image(0, topY, 'gameUiAtlas', 'panel_edge_top').setScale(decorScale);
-    const bottomEdge = this.add.image(0, bottomY, 'gameUiAtlas', 'panel_edge_bottom').setScale(decorScale);
-    const leftEdge = this.add.image(leftX, 0, 'gameUiAtlas', 'panel_edge_left').setScale(decorScale);
-    const rightEdge = this.add.image(rightX, 0, 'gameUiAtlas', 'panel_edge_right').setScale(decorScale);
+    const topSize = this.getGameUiFrameSize('panel_edge_top');
+    const bottomSize = this.getGameUiFrameSize('panel_edge_bottom');
+    const leftSize = this.getGameUiFrameSize('panel_edge_left');
+    const rightSize = this.getGameUiFrameSize('panel_edge_right');
+    const horizontalEdgeMargin = 168 * decorScale;
+    const verticalEdgeMargin = 166 * decorScale;
+    const topEdge = this.createTiledGameUiFrame(
+      0,
+      topY,
+      Math.max(topSize.width * decorScale, width - horizontalEdgeMargin * 2),
+      topSize.height * decorScale,
+      'panel_edge_top',
+      decorScale,
+    );
+    const bottomEdge = this.createTiledGameUiFrame(
+      0,
+      bottomY,
+      Math.max(bottomSize.width * decorScale, width - horizontalEdgeMargin * 2),
+      bottomSize.height * decorScale,
+      'panel_edge_bottom',
+      decorScale,
+    );
+    const leftEdge = this.createTiledGameUiFrame(
+      leftX,
+      0,
+      leftSize.width * decorScale,
+      Math.max(leftSize.height * decorScale, height - verticalEdgeMargin * 2),
+      'panel_edge_left',
+      decorScale,
+    );
+    const rightEdge = this.createTiledGameUiFrame(
+      rightX,
+      0,
+      rightSize.width * decorScale,
+      Math.max(rightSize.height * decorScale, height - verticalEdgeMargin * 2),
+      'panel_edge_right',
+      decorScale,
+    );
     const topLeft = this.add.image(-width / 2 + cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tl').setScale(decorScale);
     const topRight = this.add.image(width / 2 - cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tr').setScale(decorScale);
     const bottomLeft = this.add.image(-width / 2 + cornerInset + verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_bl').setScale(decorScale);
     const bottomRight = this.add.image(width / 2 - cornerInset - verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_br').setScale(decorScale);
     container.add([shadow, fill, rim, topEdge, bottomEdge, leftEdge, rightEdge, topLeft, topRight, bottomLeft, bottomRight]);
     return container;
+  }
+
+  createTiledGameUiFrame(x, y, displayWidth, displayHeight, frameName, scale = 1) {
+    return this.add.tileSprite(
+      x,
+      y,
+      Math.max(1, displayWidth / scale),
+      Math.max(1, displayHeight / scale),
+      'gameUiAtlas',
+      frameName,
+    ).setScale(scale);
   }
 
   getGameUiFrameSize(frameName) {
@@ -5627,7 +5675,19 @@ class FairyGuildScene extends Phaser.Scene {
         stageColor: 0x397f4a,
         stageAccent: 0xbde679,
         apply: () => {
+          if (this.isBowEvolutionReady()) {
+            this.playerStats.bowEvolved = true;
+            this.playerStats.bowPower += 2;
+            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 90);
+            this.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
+            return;
+          }
           this.playerStats.bowPower += 1;
+          if (this.playerStats.bowEvolved) {
+            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 30);
+            this.addGuildNote('Evolved bow training complete! Master shots improved.');
+            return;
+          }
           this.addGuildNote('Range training complete! Bow damage increased.');
         },
       },
@@ -5660,7 +5720,7 @@ class FairyGuildScene extends Phaser.Scene {
     };
     this.levelUpTitleText = this.createFittedTitleText(
       0,
-      layout.titleY - 3,
+      layout.titleY,
       'Level Up!',
       this.levelUpTitleFit.maxWidth,
       this.levelUpTitleFit.maxSize,
@@ -5671,6 +5731,7 @@ class FairyGuildScene extends Phaser.Scene {
     content.add([panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
     this.levelUpProgressBars = [];
+    this.levelUpChoiceCards = [];
     this.levelUpChoices.forEach((choice, index) => {
       const card = this.add.container(LEVEL_UP_CARD_XS[index] * layout.cardXScale, layout.cardY);
       const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
@@ -5678,8 +5739,18 @@ class FairyGuildScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
       const stage = this.createLevelUpIconStage(choice);
       stage.setScale(layout.compact ? 0.86 : 0.92);
+      const evolutionGlow = this.add.circle(0, layout.iconY, layout.compact ? 42 : 46, 0xffd86e, 0.18)
+        .setStrokeStyle(3, 0xfff1a7, 0.75)
+        .setVisible(false);
       const icon = this.add.image(0, layout.iconY, choice.icon.texture, choice.icon.frame)
         .setDisplaySize(layout.compact ? 62 : 68, layout.compact ? 62 : 68);
+      const evolutionBadge = this.add.container(layout.compact ? 38 : 42, layout.iconY - (layout.compact ? 36 : 40))
+        .setVisible(false);
+      const badgeBacking = this.add.circle(0, 0, layout.compact ? 13 : 14, 0xfff0a4, 0.96)
+        .setStrokeStyle(2, 0xb56b1f, 0.82);
+      const badgeText = this.add.text(0, -1, 'UP', this.uiTextStyle(layout.compact ? 8 : 9, '#7a4513'))
+        .setOrigin(0.5);
+      evolutionBadge.add([badgeBacking, badgeText]);
       const label = this.add.text(0, layout.labelY, choice.label, this.uiTextStyle(layout.compact ? 15 : 17, COLORS.uiInk)).setOrigin(0.5);
       const detailText = choice.detail.replace(' power', '');
       const detail = this.add.text(0, layout.detailY, detailText, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
@@ -5695,9 +5766,11 @@ class FairyGuildScene extends Phaser.Scene {
         this.updateLevelUpProgressBars();
       });
       hit.on('pointerup', () => this.chooseLevelUpgrade(index));
-      card.add([frame, hit, stage, icon, ...pips, label, detail]);
+      card.add([frame, hit, stage, evolutionGlow, icon, evolutionBadge, ...pips, label, detail]);
       content.add(card);
+      this.levelUpChoiceCards.push({ choice, label, detail, icon, evolutionGlow, evolutionBadge });
     });
+    this.updateLevelUpChoicePresentation();
     this.levelUpOverlay.add([shade, content]);
     this.uiLayer.add(this.levelUpOverlay);
   }
@@ -5725,7 +5798,7 @@ class FairyGuildScene extends Phaser.Scene {
         .setStrokeStyle(1, 0x8c6023, 0.5);
       pips.push(pip);
     }
-    this.levelUpProgressBars.push({ pips, stat: choice.stat, color: choice.color });
+    this.levelUpProgressBars.push({ pips, stat: choice.stat, color: choice.color, key: choice.key });
     return pips;
   }
 
@@ -5733,18 +5806,73 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelUpProgressBars.forEach((bar, index) => {
       const current = Phaser.Math.Clamp(this.playerStats[bar.stat] - PLAYER_BASE[bar.stat], 0, LEVEL_UP_MAX_PIPS);
       const preview = previewIndex === index ? Phaser.Math.Clamp(current + 1, 0, LEVEL_UP_MAX_PIPS) : current;
+      const evolvedRange = bar.key === 'range' && (this.playerStats.bowEvolved || this.isBowEvolutionReady());
+      const fillColor = evolvedRange ? 0xf2c94c : bar.color;
       bar.pips.forEach((pip, pipIndex) => {
         if (pipIndex < current) {
-          pip.setFillStyle(bar.color, 0.94);
+          pip.setFillStyle(fillColor, 0.94);
           pip.setStrokeStyle(1, 0xffffff, 0.72);
         } else if (pipIndex < preview) {
-          pip.setFillStyle(bar.color, 0.5);
+          pip.setFillStyle(fillColor, 0.5);
           pip.setStrokeStyle(1, 0xffffff, 0.64);
         } else {
           pip.setFillStyle(0xfff3c8, 0.46);
           pip.setStrokeStyle(1, 0x8c6023, 0.5);
         }
       });
+    });
+  }
+
+  getLevelUpStatProgress(stat) {
+    return Phaser.Math.Clamp(this.playerStats[stat] - PLAYER_BASE[stat], 0, LEVEL_UP_MAX_PIPS);
+  }
+
+  isBowEvolutionReady() {
+    return !this.playerStats.bowEvolved && this.getLevelUpStatProgress('bowPower') >= LEVEL_UP_MAX_PIPS;
+  }
+
+  getRangeLevelUpPresentation() {
+    if (this.playerStats.bowEvolved) {
+      return {
+        label: 'Evolved Bow',
+        detail: '+1 master bow',
+        evolved: true,
+      };
+    }
+    if (this.isBowEvolutionReady()) {
+      return {
+        label: 'Bow Evolution',
+        detail: 'Improved bow',
+        evolved: true,
+      };
+    }
+    return {
+      label: 'Range Damage',
+      detail: '+1 bow',
+      evolved: false,
+    };
+  }
+
+  updateLevelUpChoicePresentation() {
+    this.levelUpChoiceCards?.forEach((card) => {
+      if (card.choice.key !== 'range') {
+        card.label.setText(card.choice.label);
+        card.detail.setText(card.choice.detail.replace(' power', ''));
+        card.icon.clearTint();
+        card.evolutionGlow?.setVisible(false);
+        card.evolutionBadge?.setVisible(false);
+        return;
+      }
+      const presentation = this.getRangeLevelUpPresentation();
+      card.label.setText(presentation.label);
+      card.detail.setText(presentation.detail);
+      card.evolutionGlow?.setVisible(presentation.evolved);
+      card.evolutionBadge?.setVisible(presentation.evolved);
+      if (presentation.evolved) {
+        card.icon.setTint(0xffdf75);
+      } else {
+        card.icon.clearTint();
+      }
     });
   }
 
@@ -5838,6 +5966,7 @@ class FairyGuildScene extends Phaser.Scene {
       ?.setText(context === 'chestBonus' ? 'Choose a bonus strength point' : 'Boss reward: Heart +1')
       .setVisible(context === 'chestBonus' || bossHeartReward);
     this.levelUpHelperText?.setText(context === 'chestBonus' ? 'Pick a bonus combat lesson' : 'Choose your guild training');
+    this.updateLevelUpChoicePresentation();
     this.updateLevelUpProgressBars();
     this.levelUpOverlay.setVisible(true).setAlpha(0);
     this.tweens.add({
@@ -5862,6 +5991,7 @@ class FairyGuildScene extends Phaser.Scene {
       this.addGuildNote('Boss victory training earned a new heart!');
     }
     choice.apply();
+    this.updateLevelUpChoicePresentation();
     this.updateLevelUpProgressBars();
     this.spawnShieldGlow();
     this.playTone('level');

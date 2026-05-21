@@ -14,6 +14,7 @@ The game opens on a startup overlay where the player chooses a hero and starts a
 - Building condition is shown directly in-world with health bars using green, yellow, and red semaphore colors.
 - Normal level clears award gold, XP, and one combat training choice.
 - Boss clears award gold, XP, one combat training choice, and one new max heart.
+- Range training fills a five-step bow mastery track; once full, the next range choice evolves the bow into a faster, stronger version.
 - Game over can happen when the hero runs out of hearts or the castle reaches 0 HP.
 
 ## Recent UI And Flow Decisions
@@ -21,6 +22,8 @@ The game opens on a startup overlay where the player chooses a hero and starts a
 - Startup and level-up overlays use fitted title text so labels stay inside ornate banner frames.
 - Hero selection buttons are larger and keep selected badge, sprite, and caption in separate visual slots.
 - Level-up cards no longer show numeric shortcut labels, but keyboard shortcuts still work.
+- The level-up panel now tiles its ornate border pieces across wide and tall overlays so the frame does not reveal missing background gaps.
+- Level-up card detail labels sit inside a dedicated lower slot, and the title plaque is taller with vertically centered text.
 - Game-over restart returns to the startup hero picker and starts over from Level 1 instead of resuming the current run.
 - The mana HUD bar was removed from the top HUD; mana logic still powers spells and pickups.
 

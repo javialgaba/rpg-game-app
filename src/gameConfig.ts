@@ -14,6 +14,7 @@ export const PLAYER_BASE = {
   speed: 3.15,
   swordPower: 1,
   bowPower: 1,
+  bowEvolved: false,
   spellPower: 2,
   bowCooldown: 560,
   spellCost: 28,
