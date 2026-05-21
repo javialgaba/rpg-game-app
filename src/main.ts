@@ -11,9 +11,6 @@ import {
   BOSS_CONFIGS,
   BOSS_ROUND_INDEX,
   COLORS,
-  COMPACT_NOTE_MAX_CHARS,
-  COMPACT_NOTES_MAX_VISIBLE,
-  DESKTOP_NOTES_MAX_VISIBLE,
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
   HEIGHT,
@@ -213,10 +210,6 @@ class FairyGuildScene extends Phaser.Scene {
 
   preload() {
     this.load.image('villageBoard', '/assets/village-board.png');
-    this.load.image('levelUpUI', '/assets/level-up-ui.png');
-    this.load.image('gameOverUI', '/assets/game-over-ui.png');
-    this.load.image('statusPanelUI', '/assets/status-panel-ui.png');
-    this.load.image('guildNotesUI', '/assets/guild-notes-ui-transparent.png');
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
     this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
@@ -225,9 +218,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
     this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
     this.load.atlas('uiAtlas', '/assets/ui_atlas.png', '/assets/ui_atlas.json');
+    this.load.atlas('gameUiAtlas', '/assets/game_ui_atlas.png', '/assets/game_ui_atlas.json');
     this.load.atlas('touchControlsAtlas', '/assets/touch_controls_atlas.png', '/assets/touch_controls_atlas.json');
-    this.load.atlas('hudUiAtlas', '/assets/hud_ui_atlas.png', '/assets/hud_ui_atlas.json');
-    this.load.atlas('hudBarsAtlas', '/assets/hud_bars_atlas.png', '/assets/hud_bars_atlas.json');
     this.load.atlas('worldEdgesAtlas', '/assets/world_edges_atlas.png', '/assets/world_edges_atlas.json');
     this.load.atlas('environmentFrameAtlas', '/assets/environment_frame_atlas.png', '/assets/environment_frame_atlas.json');
     this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
@@ -276,7 +268,6 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.registerSheetFrames('monsterSheet', 8, 5, 'monster');
     this.registerWorldEnemySheets();
-    this.registerUiArtFrames();
     this.createGeneratedTextures();
 
     this.backgroundLayer = this.add.layer().setDepth(0);
@@ -472,18 +463,6 @@ class FairyGuildScene extends Phaser.Scene {
         texture.add(frameName, 0, x, y, nextX - x, nextY - y);
       }
     }
-  }
-
-  registerUiArtFrames() {
-    const addFrame = (texture, name, x, y, width, height) => {
-      if (!texture.has(name)) {
-        texture.add(name, 0, x, y, width, height);
-      }
-    };
-    const status = this.textures.get('statusPanelUI');
-    addFrame(status, 'panel', 34, 310, 1764, 250);
-    const notes = this.textures.get('guildNotesUI');
-    addFrame(notes, 'panel', 94, 126, 1352, 770);
   }
 
   createGeneratedTextures() {
@@ -973,19 +952,22 @@ class FairyGuildScene extends Phaser.Scene {
         return;
       }
       const selected = activeChoice === choice;
-      card.hit.setFillStyle(selected ? 0xfff1b8 : 0xfff1b8, selected ? 0.18 : 0.04);
-      card.frame.setStrokeStyle(3, selected ? 0xffd26d : 0xd0a24b, selected ? 0.95 : 0.42);
+      card.hit.setFillStyle(0xfff1b8, selected ? 0.18 : 0.001);
+      card.selection?.setStrokeStyle(3, selected ? 0xffd26d : 0xd0a24b, selected ? 0.95 : 0);
+      if (selected) {
+        card.frame.setTint(0xffffff);
+      } else {
+        card.frame.clearTint();
+      }
       card.label.setColor(selected ? '#5f3b12' : '#7d6039');
       card.badge?.setVisible(selected);
     });
     const ready = Boolean(activeChoice);
     if (this.splashStartButton) {
-      this.splashStartButton.setFillStyle(0xfff1b8, ready ? 0.18 : 0.03);
-      if (ready && !this.splashStartButton.input) {
+      if (!this.splashStartButton.input) {
         this.splashStartButton.setInteractive({ useHandCursor: true });
-      } else if (!ready && this.splashStartButton.input) {
-        this.splashStartButton.disableInteractive();
       }
+      this.splashStartButton.setFillStyle(0xfff1b8, ready ? 0.10 : 0.035);
     }
     if (this.splashStartText) {
       this.splashStartText.setAlpha(ready ? 1 : 0.45);
@@ -5244,63 +5226,192 @@ class FairyGuildScene extends Phaser.Scene {
     this.createGameOverOverlay();
   }
 
+  createUiPanelFrame(width, height, options: { decorScale?: number; fillAlpha?: number } = {}) {
+    const decorScale = options.decorScale ?? 0.72;
+    const container = this.add.container(0, 0);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x132130, 0.34);
+    shadow.fillRoundedRect(-width / 2 + 8, -height / 2 + 12, width - 16, height - 14, 14);
+    const fill = this.add.tileSprite(0, 0, width - 72, height - 64, 'gameUiAtlas', 'panel_fill')
+      .setAlpha(options.fillAlpha ?? 0.98);
+    const rim = this.add.graphics();
+    rim.lineStyle(4, 0xd79a38, 0.82);
+    rim.strokeRoundedRect(-width / 2 + 32, -height / 2 + 28, width - 64, height - 56, 12);
+    rim.lineStyle(2, 0xffedb6, 0.7);
+    rim.strokeRoundedRect(-width / 2 + 44, -height / 2 + 40, width - 88, height - 80, 10);
+
+    const cornerInset = 76 * decorScale;
+    const verticalInset = 26 * decorScale;
+    const topY = -height / 2 + 34 * decorScale;
+    const bottomY = height / 2 - 34 * decorScale;
+    const leftX = -width / 2 + 38 * decorScale;
+    const rightX = width / 2 - 38 * decorScale;
+    const topEdge = this.add.image(0, topY, 'gameUiAtlas', 'panel_edge_top').setScale(decorScale);
+    const bottomEdge = this.add.image(0, bottomY, 'gameUiAtlas', 'panel_edge_bottom').setScale(decorScale);
+    const leftEdge = this.add.image(leftX, 0, 'gameUiAtlas', 'panel_edge_left').setScale(decorScale);
+    const rightEdge = this.add.image(rightX, 0, 'gameUiAtlas', 'panel_edge_right').setScale(decorScale);
+    const topLeft = this.add.image(-width / 2 + cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tl').setScale(decorScale);
+    const topRight = this.add.image(width / 2 - cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tr').setScale(decorScale);
+    const bottomLeft = this.add.image(-width / 2 + cornerInset + verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_bl').setScale(decorScale);
+    const bottomRight = this.add.image(width / 2 - cornerInset - verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_br').setScale(decorScale);
+    container.add([shadow, fill, rim, topEdge, bottomEdge, leftEdge, rightEdge, topLeft, topRight, bottomLeft, bottomRight]);
+    return container;
+  }
+
+  getGameUiFrameSize(frameName) {
+    const frame = this.textures.getFrame('gameUiAtlas', frameName) as any;
+    return {
+      width: frame?.width ?? frame?.cutWidth ?? 1,
+      height: frame?.height ?? frame?.cutHeight ?? 1,
+    };
+  }
+
+  createHorizontalSlicedFrame(
+    x,
+    y,
+    width,
+    height,
+    frameNames,
+    options: { leftWidth?: number; rightWidth?: number; alpha?: number } = {},
+  ) {
+    const leftSize = this.getGameUiFrameSize(frameNames.left);
+    const middleSize = this.getGameUiFrameSize(frameNames.middle);
+    const rightSize = this.getGameUiFrameSize(frameNames.right);
+    const baseHeight = Math.max(1, leftSize.height, middleSize.height, rightSize.height);
+    const scale = height / baseHeight;
+    const leftWidth = options.leftWidth ?? leftSize.width * scale;
+    const rightWidth = options.rightWidth ?? rightSize.width * scale;
+    const middleWidth = Math.max(1, width - leftWidth - rightWidth);
+    const container = this.add.container(x, y);
+    const left = this.add.image(-width / 2 + leftWidth / 2, 0, 'gameUiAtlas', frameNames.left)
+      .setScale(scale);
+    const middle = this.add.tileSprite(0, 0, middleWidth / scale, middleSize.height, 'gameUiAtlas', frameNames.middle)
+      .setScale(scale);
+    const right = this.add.image(width / 2 - rightWidth / 2, 0, 'gameUiAtlas', frameNames.right)
+      .setScale(scale);
+    container.add([left, middle, right]);
+    if (options.alpha !== undefined) {
+      container.setAlpha(options.alpha);
+    }
+    return { container, pieces: [left, middle, right], leftWidth, rightWidth, middleWidth };
+  }
+
+  createUiTitleBanner(x, y, width = 360, height = 70) {
+    return this.createHorizontalSlicedFrame(x, y, width, height, {
+      left: 'title_left',
+      middle: 'title_mid',
+      right: 'title_right',
+    }).container;
+  }
+
+  createHudChip(x, y, width, height) {
+    return this.createHorizontalSlicedFrame(x, y, width, height, {
+      left: 'hud_chip_left',
+      middle: 'hud_chip_mid',
+      right: 'hud_chip_right',
+    }, { alpha: 0.92 }).container;
+  }
+
+  createUiCardFrame(x, y, width, height) {
+    const slice = Math.max(12, Math.min(42, Math.floor(width / 3), Math.floor(height / 3)));
+    return this.add.nineslice(x, y, 'gameUiAtlas', 'content_slot', width, height, slice, slice, slice, slice);
+  }
+
+  createUiButton(x, y, width, height, label, onPress) {
+    const container = this.add.container(x, y);
+    const frame = this.createHorizontalSlicedFrame(0, 0, width, height, {
+      left: 'button_left',
+      middle: 'button_mid',
+      right: 'button_right',
+    });
+    const hit = this.add.rectangle(0, 0, width, height, 0xfff1b8, 0.001)
+      .setInteractive({ useHandCursor: true });
+    const text = this.add.text(0, -2, label, {
+      ...this.uiTextStyle(Math.max(16, Math.round(height * 0.42)), '#684315'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    const pieces = frame.pieces;
+    hit.on('pointerover', () => {
+      pieces.forEach((piece) => piece.setTint(0xfff4bf));
+      hit.setFillStyle(0xfff1b8, 0.12);
+    });
+    hit.on('pointerout', () => {
+      pieces.forEach((piece) => piece.clearTint());
+      hit.setFillStyle(0xfff1b8, 0.001);
+    });
+    hit.on('pointerup', onPress);
+    container.add([frame.container, hit, text]);
+    return { container, hit, text, pieces };
+  }
+
+  createManaMeter(x, y, width, height) {
+    const frame = this.createHorizontalSlicedFrame(x, y, width, height, {
+      left: 'mana_left',
+      middle: 'mana_mid',
+      right: 'mana_right',
+    });
+    const insetX = Math.max(10, Math.round(height * 0.54));
+    const insetY = Math.max(6, Math.round(height * 0.32));
+    const fillWidth = Math.max(1, width - insetX * 2);
+    const fillHeight = Math.max(3, height - insetY * 2);
+    const fill = this.add.rectangle(x - width / 2 + insetX, y - fillHeight / 2, fillWidth, fillHeight, 0x5bd5ff, 1)
+      .setOrigin(0, 0);
+    const shine = this.add.rectangle(x - width / 2 + insetX + 2, y - fillHeight / 2 + 2, fillWidth - 4, 2, 0xffffff, 0.44)
+      .setOrigin(0, 0);
+    return { fill, shine, frame: frame.container, width: fillWidth, parts: [fill, shine, frame.container] };
+  }
+
   createSplashOverlay() {
     this.splashOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7900).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.36);
-    const panel = this.add.image(0, 0, 'gameOverUI')
-      .setDisplaySize(760, 428)
-      .setAlpha(0.99);
-    const title = this.add.text(0, -94, 'The Village Must Stand', {
-      ...this.uiTextStyle(43, '#714617'),
+    const panel = this.createUiPanelFrame(820, 500, { decorScale: 0.74 });
+    const titlePlaque = this.createUiTitleBanner(0, -178, 470, 74);
+    const title = this.add.text(0, -184, 'The Village Must Stand', {
+      ...this.uiTextStyle(36, '#714617'),
       align: 'center',
-      strokeThickness: 5,
-      wordWrap: { width: 610 },
+      strokeThickness: 4,
+      wordWrap: { width: 520 },
     }).setOrigin(0.5);
-    const credit = this.add.text(0, -30, 'A minigame by Javier Algaba', {
-      ...this.uiTextStyle(20, '#31503b'),
+    const credit = this.add.text(0, -126, 'A minigame by Javier Algaba', {
+      ...this.uiTextStyle(18, '#31503b'),
       strokeThickness: 3,
     }).setOrigin(0.5);
-    const prompt = this.add.text(0, 30, 'Defend the fairy-tale village from forest mischief.', {
+    const prompt = this.add.text(0, -82, 'Defend the fairy-tale village from forest mischief.', {
       ...this.uiTextStyle(17, COLORS.uiInk),
       align: 'center',
       wordWrap: { width: 520 },
     }).setOrigin(0.5);
-    this.splashHeroChoiceText = this.add.text(0, 72, 'Choose your hero before you begin.', {
+    this.splashHeroChoiceText = this.add.text(0, -42, 'Choose your hero before you begin.', {
       ...this.uiTextStyle(16, '#31503b'),
       align: 'center',
     }).setOrigin(0.5);
     const makeHeroCard = (choice: HeroChoice, x: number, label: string) => {
       const previewProfile = this.getHeroProfile(choice);
       this.ensureHeroAnimations(previewProfile);
-      const card = this.add.container(x, 140);
-      const frame = this.add.rectangle(0, 0, 128, 112, 0xfff8de, 0.9)
-        .setStrokeStyle(3, 0xd0a24b, 0.42);
-      const hit = this.add.rectangle(0, 0, 128, 112, 0xfff1b8, 0.04)
+      const card = this.add.container(x, 82);
+      const frame = this.createUiCardFrame(0, 0, 156, 138);
+      const selection = this.add.rectangle(0, 0, 152, 134, 0xfff1b8, 0.001)
+        .setStrokeStyle(3, 0xffd26d, 0)
+        .setOrigin(0.5);
+      const hit = this.add.rectangle(0, 0, 156, 138, 0xfff1b8, 0.001)
         .setInteractive({ useHandCursor: true });
-      const preview = this.add.sprite(0, -6, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
-        .setDisplaySize(60, 60)
+      const preview = this.add.sprite(0, -18, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
+        .setDisplaySize(62, 62)
         .setOrigin(0.5, 0.76)
         .play(`${previewProfile.animPrefix}-idle`);
-      const caption = this.add.text(0, 30, label, this.uiTextStyle(16, '#7d6039')).setOrigin(0.5);
-      const badge = this.add.text(0, -42, 'Selected', this.uiTextStyle(12, '#5c7d3e'))
+      const caption = this.add.text(0, 39, label, this.uiTextStyle(16, '#7d6039')).setOrigin(0.5);
+      const badge = this.add.text(0, -54, 'Selected', this.uiTextStyle(12, '#5c7d3e'))
         .setOrigin(0.5)
         .setVisible(false);
       hit.on('pointerup', () => this.selectHeroChoice(choice));
-      card.add([frame, hit, preview, caption, badge]);
-      return { card, frame, hit, preview, label: caption, badge };
+      card.add([frame, selection, hit, preview, caption, badge]);
+      return { card, frame, selection, hit, preview, label: caption, badge };
     };
-    const maleCard = makeHeroCard('male', -220, 'Village Hero');
-    const princessCard = makeHeroCard('princess', 220, 'Princess Hero');
-    const startButton = this.add.rectangle(0, 148, 240, 54, 0xfff1b8, 0.08);
-    const startText = this.add.text(0, 140, 'START', {
-      ...this.uiTextStyle(28, '#684315'),
-      strokeThickness: 4,
-    }).setOrigin(0.5);
-    startButton.on('pointerover', () => startButton.setFillStyle(0xfff1b8, 0.2));
-    startButton.on('pointerout', () => startButton.setFillStyle(0xfff1b8, 0.08));
-    startButton.on('pointerup', () => this.startGameFromSplash());
-    this.splashStartButton = startButton;
-    this.splashStartText = startText;
+    const maleCard = makeHeroCard('male', -210, 'Village Hero');
+    const princessCard = makeHeroCard('princess', 210, 'Princess Hero');
+    const startButton = this.createUiButton(0, 184, 250, 58, 'START', () => this.startGameFromSplash());
+    this.splashStartButton = startButton.hit;
+    this.splashStartText = startButton.text;
     this.splashHeroCards = {
       male: maleCard,
       princess: princessCard,
@@ -5308,14 +5419,14 @@ class FairyGuildScene extends Phaser.Scene {
     this.splashOverlay.add([
       shade,
       panel,
+      titlePlaque,
       title,
       credit,
       prompt,
       this.splashHeroChoiceText,
       maleCard.card,
       princessCard.card,
-      startButton,
-      startText,
+      startButton.container,
     ]);
     this.uiLayer.add(this.splashOverlay);
     this.updateSplashHeroChoiceUi();
@@ -5386,36 +5497,40 @@ class FairyGuildScene extends Phaser.Scene {
 
     this.levelUpOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7300).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.42);
-    const art = this.add.image(0, 0, 'levelUpUI').setDisplaySize(780, 438).setAlpha(0.98);
-    this.levelUpTitleText = this.add.text(0, -148, 'Level Up!', {
-      ...this.uiTextStyle(42, '#714617'),
+    const panel = this.createUiPanelFrame(840, 500, { decorScale: 0.74 });
+    const titlePlaque = this.createUiTitleBanner(0, -178, 360, 72);
+    this.levelUpTitleText = this.add.text(0, -184, 'Level Up!', {
+      ...this.uiTextStyle(36, '#714617'),
       strokeThickness: 4,
     }).setOrigin(0.5);
-    this.levelUpRewardText = this.add.text(0, -102, 'Heart +1', this.uiTextStyle(22, '#bd415c')).setOrigin(0.5);
-    this.levelUpHelperText = this.add.text(0, -70, 'Choose your guild training', this.uiTextStyle(18, '#31503b')).setOrigin(0.5);
-    this.levelUpOverlay.add([shade, art, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
+    this.levelUpRewardText = this.add.text(0, -122, 'Heart +1', this.uiTextStyle(22, '#bd415c')).setOrigin(0.5);
+    this.levelUpHelperText = this.add.text(0, -86, 'Choose your guild training', this.uiTextStyle(18, '#31503b')).setOrigin(0.5);
+    this.levelUpOverlay.add([shade, panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
     this.levelUpProgressBars = [];
     this.levelUpChoices.forEach((choice, index) => {
-      const card = this.add.container(LEVEL_UP_CARD_XS[index], 76);
-      const hit = this.add.rectangle(0, 0, 196, 220, 0xfff1b8, 0.001)
+      const card = this.add.container(LEVEL_UP_CARD_XS[index], 82);
+      const frame = this.createUiCardFrame(0, 0, 208, 232);
+      const hit = this.add.rectangle(0, 0, 208, 232, 0xfff1b8, 0.001)
         .setInteractive({ useHandCursor: true });
       const stage = this.createLevelUpIconStage(choice);
-      const icon = this.add.image(0, -24, choice.icon.texture, choice.icon.frame).setDisplaySize(76, 76);
-      const number = this.add.text(-76, -70, `${index + 1}`, this.uiTextStyle(18, '#8a5a20')).setOrigin(0.5);
-      const label = this.add.text(0, 82, choice.label, this.uiTextStyle(19, COLORS.uiInk)).setOrigin(0.5);
-      const detail = this.add.text(0, 110, choice.detail, this.uiTextStyle(14, '#5e7b4a')).setOrigin(0.5);
+      const icon = this.add.image(0, -28, choice.icon.texture, choice.icon.frame).setDisplaySize(76, 76);
+      const number = this.add.text(-76, -78, `${index + 1}`, this.uiTextStyle(18, '#8a5a20')).setOrigin(0.5);
+      const label = this.add.text(0, 78, choice.label, this.uiTextStyle(18, COLORS.uiInk)).setOrigin(0.5);
+      const detail = this.add.text(0, 106, choice.detail, this.uiTextStyle(14, '#5e7b4a')).setOrigin(0.5);
       const pips = this.createLevelUpProgressPips(choice);
       hit.on('pointerover', () => {
         hit.setFillStyle(0xfff1b8, 0.16);
+        frame.setTint(0xfff6cc);
         this.updateLevelUpProgressBars(index);
       });
       hit.on('pointerout', () => {
         hit.setFillStyle(0xfff1b8, 0.001);
+        frame.clearTint();
         this.updateLevelUpProgressBars();
       });
       hit.on('pointerup', () => this.chooseLevelUpgrade(index));
-      card.add([hit, stage, icon, number, ...pips, label, detail]);
+      card.add([frame, hit, stage, icon, number, ...pips, label, detail]);
       this.levelUpOverlay.add(card);
     });
     this.uiLayer.add(this.levelUpOverlay);
@@ -5516,29 +5631,28 @@ class FairyGuildScene extends Phaser.Scene {
   createGameOverOverlay() {
     this.gameOverOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7800).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.48);
-    const panel = this.add.image(0, 0, 'gameOverUI')
-      .setDisplaySize(780, 439)
-      .setAlpha(0.99);
-    const title = this.add.text(0, -120, 'Guild Rest Time', {
-      ...this.uiTextStyle(40, '#714617'),
+    const panel = this.createUiPanelFrame(700, 420, { decorScale: 0.68 });
+    const titlePlaque = this.createUiTitleBanner(0, -144, 360, 72);
+    const title = this.add.text(0, -150, 'Guild Rest Time', {
+      ...this.uiTextStyle(34, '#714617'),
       strokeThickness: 4,
     }).setOrigin(0.5);
-    this.gameOverReasonText = this.add.text(0, -52, '', {
+    this.gameOverReasonText = this.add.text(0, -70, '', {
       ...this.uiTextStyle(21, COLORS.uiInk),
       align: 'center',
       wordWrap: { width: 520 },
     }).setOrigin(0.5);
-    this.gameOverStatsText = this.add.text(0, 38, '', this.uiTextStyle(19, '#31503b')).setOrigin(0.5);
-    const restartButton = this.add.rectangle(0, 158, 260, 58, 0xfff1b8, 0.04)
-      .setInteractive({ useHandCursor: true });
-    const restartText = this.add.text(0, 151, 'Restart (R)', {
-      ...this.uiTextStyle(22, '#684315'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    restartButton.on('pointerover', () => restartButton.setFillStyle(0xfff1b8, 0.18));
-    restartButton.on('pointerout', () => restartButton.setFillStyle(0xfff1b8, 0.04));
-    restartButton.on('pointerup', () => this.scene.restart());
-    this.gameOverOverlay.add([shade, panel, title, this.gameOverReasonText, this.gameOverStatsText, restartButton, restartText]);
+    this.gameOverStatsText = this.add.text(0, 28, '', this.uiTextStyle(19, '#31503b')).setOrigin(0.5);
+    const restartButton = this.createUiButton(0, 136, 260, 58, 'Restart (R)', () => this.scene.restart());
+    this.gameOverOverlay.add([
+      shade,
+      panel,
+      titlePlaque,
+      title,
+      this.gameOverReasonText,
+      this.gameOverStatsText,
+      restartButton.container,
+    ]);
     this.uiLayer.add(this.gameOverOverlay);
   }
 
@@ -5617,70 +5731,35 @@ class FairyGuildScene extends Phaser.Scene {
   createHud() {
     this.hud = {};
     this.createTopBar();
-    this.createNotesPanel();
     this.createControlsHint();
     this.createInventoryPanel();
     this.createDebugOverlay();
   }
 
   createTopBar() {
-    const top = this.add.container(16, 10).setDepth(7600);
-    const bg = this.add.image(0, 0, 'statusPanelUI', 'panel')
-      .setOrigin(0, 0)
-      .setDisplaySize(892, 92);
-    const readability = this.add.graphics();
-    readability.fillStyle(0xfff7df, 0.96);
-    readability.fillRoundedRect(34, 18, 822, 58, 7);
-    top.add([bg, readability]);
-    this.hud.hearts = this.add.container(42, 34);
-    this.hud.manaBar = this.createMeter(174, 22, 148, 16, 0x6fc9ff, 0x1f6ea7);
-    this.hud.xpBar = this.createMeter(174, 51, 148, 14, 0xffd96c, 0xba7620);
-    this.hud.goldText = this.add.text(360, 19, '', this.uiTextStyle(20, '#56330f')).setOrigin(0, 0);
-    this.hud.levelText = this.add.text(360, 48, '', this.uiTextStyle(17, '#1e3348')).setOrigin(0, 0);
-    this.hud.weaponText = this.add.text(526, 19, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0, 0);
-    this.hud.spellText = this.add.text(526, 48, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0, 0);
-    this.hud.safetyBar = this.createMeter(736, 22, 112, 17, 0x9ce889, 0x2f9b4c);
-    this.hud.waveText = this.add.text(738, 48, '', this.uiTextStyle(15, '#224b31')).setOrigin(0, 0);
+    const top = this.add.container(20, 14).setDepth(7600);
+    const goldChip = this.createHudChip(300, 32, 104, 42);
+    const levelChip = this.createHudChip(395, 32, 78, 42);
+    const roundChip = this.createHudChip(510, 32, 136, 42);
+    const coin = this.add.image(266, 32, 'gameUiAtlas', 'coin_badge_01')
+      .setDisplaySize(36, 38);
+    this.hud.hearts = this.add.container(18, 23);
+    this.hud.manaBar = this.createManaMeter(150, 34, 138, 24);
+    this.hud.goldText = this.add.text(316, 32, '', this.uiTextStyle(18, '#56330f')).setOrigin(0.5);
+    this.hud.levelText = this.add.text(395, 32, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0.5);
+    this.hud.waveText = this.add.text(510, 32, '', this.uiTextStyle(13, '#224b31')).setOrigin(0.5);
     top.add([
       this.hud.hearts,
       ...this.hud.manaBar.parts,
-      ...this.hud.xpBar.parts,
+      goldChip,
+      levelChip,
+      roundChip,
+      coin,
       this.hud.goldText,
       this.hud.levelText,
-      this.hud.weaponText,
-      this.hud.spellText,
-      ...this.hud.safetyBar.parts,
       this.hud.waveText,
     ]);
     this.uiLayer.add(top);
-  }
-
-  createMeter(x, y, w, h, fillColor, strokeColor) {
-    const bg = this.add.rectangle(x, y, w, h, 0xf9fff8, 0.9).setOrigin(0, 0).setStrokeStyle(2, strokeColor, 0.8);
-    const fill = this.add.rectangle(x + 3, y + 3, w - 6, h - 6, fillColor, 1).setOrigin(0, 0);
-    const shine = this.add.rectangle(x + 5, y + 4, w - 10, 3, 0xffffff, 0.42).setOrigin(0, 0);
-    return { bg, fill, shine, width: w - 6, parts: [bg, fill, shine] };
-  }
-
-  createNotesPanel() {
-    const panel = this.add.container(WIDTH - 370, 12).setDepth(7600);
-    const bg = this.add.image(0, 0, 'guildNotesUI', 'panel')
-      .setOrigin(0, 0)
-      .setDisplaySize(354, 236);
-    const textBacking = this.add.graphics();
-    textBacking.fillStyle(0xfff8df, 0.84);
-    textBacking.fillRoundedRect(22, 60, 310, 146, 7);
-    const title = this.add.text(177, 29, 'Guild Notes', {
-      ...this.uiTextStyle(22, '#102f3e'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.hud.notesText = this.add.text(30, 68, '', {
-      ...this.uiTextStyle(15, '#162a3c'),
-      lineSpacing: 7,
-      wordWrap: { width: 292 },
-    });
-    panel.add([bg, textBacking, title, this.hud.notesText]);
-    this.uiLayer.add(panel);
   }
 
   createControlsHint() {
@@ -5864,25 +5943,12 @@ class FairyGuildScene extends Phaser.Scene {
     return `${note.slice(0, maxLength - 3).trimEnd()}...`;
   }
 
-  getVisibleGuildNotes() {
-    const compact = this.isCompactUi();
-    const maxVisible = compact ? COMPACT_NOTES_MAX_VISIBLE : DESKTOP_NOTES_MAX_VISIBLE;
-    return this.notes.slice(-maxVisible).map((note) => (
-      compact ? this.truncateGuildNote(note, COMPACT_NOTE_MAX_CHARS) : note
-    ));
-  }
-
   updateHud() {
     this.renderHearts();
     this.setMeter(this.hud.manaBar, this.state.mana / this.playerStats.maxMana);
-    this.setMeter(this.hud.xpBar, (this.state.xp % 100) / 100);
-    this.setMeter(this.hud.safetyBar, this.state.villageSafety / 100);
-    this.hud.goldText.setText(`Gold ${this.state.gold}`);
-    this.hud.levelText.setText(`Level ${this.state.level}  XP ${this.state.xp}`);
-    this.hud.weaponText.setText(`Wpn: ${this.state.equipped}`);
-    this.hud.spellText.setText(`Spell: ${this.state.spell}`);
-    this.hud.waveText.setText(`Safe ${this.state.villageSafety}%  L${this.state.level}`);
-    this.hud.notesText.setText(this.getVisibleGuildNotes().map((note) => `- ${note}`).join('\n'));
+    this.hud.goldText.setText(`${this.state.gold}`);
+    this.hud.levelText.setText(`Lv ${this.state.level}`);
+    this.hud.waveText.setText(`${this.getCurrentWorldTheme().label} R${this.state.worldRound}`);
     if (this.state.inventoryOpen) {
       const inventoryKey = `${this.state.gold}|${this.upgrades.map((upgrade) => upgrade.level).join(',')}`;
       if (this.hud.inventoryKey !== inventoryKey) {
@@ -5897,14 +5963,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.hud.lastHearts = `${this.state.health}/${this.playerStats.maxHealth}`;
     this.hud.hearts.removeAll(true);
     for (let i = 0; i < this.playerStats.maxHealth; i += 1) {
-      const x = (i % 8) * 18;
-      const y = Math.floor(i / 8) * 19;
+      const x = (i % 8) * 26;
+      const y = Math.floor(i / 8) * 25;
       const full = i < this.state.health;
-      const heart = this.add.text(x, y, full ? '♥' : '♡', {
-        fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-        fontSize: '20px',
-        color: full ? '#eb5571' : '#b7a9a2',
-      });
+      const heart = this.add.image(x, y, 'gameUiAtlas', full ? 'health_full_01' : 'health_empty_01')
+        .setOrigin(0.5)
+        .setDisplaySize(27, 27);
       this.hud.hearts.add(heart);
     }
   }
