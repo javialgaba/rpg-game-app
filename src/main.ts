@@ -952,8 +952,8 @@ class FairyGuildScene extends Phaser.Scene {
         return;
       }
       const selected = activeChoice === choice;
-      card.hit.setFillStyle(0xfff1b8, selected ? 0.18 : 0.001);
-      card.selection?.setStrokeStyle(3, selected ? 0xffd26d : 0xd0a24b, selected ? 0.95 : 0);
+      card.hit.setFillStyle(0xfff1b8, selected ? 0.18 : 0.045);
+      card.selection?.setStrokeStyle(3, selected ? 0xffd26d : 0xd0a24b, selected ? 0.95 : 0.35);
       if (selected) {
         card.frame.setTint(0xffffff);
       } else {
@@ -5242,25 +5242,31 @@ class FairyGuildScene extends Phaser.Scene {
 
   getSplashOverlayLayout() {
     const compact = this.isCompactOverlayLayout();
-    const panelHeight = compact ? 392 : 430;
+    const panelHeight = compact ? 430 : 462;
     return {
       compact,
-      panelWidth: compact ? 700 : 760,
+      panelWidth: compact ? 730 : 780,
       panelHeight,
       offsetY: this.getOverlayContentOffset(panelHeight),
       decorScale: compact ? 0.48 : 0.54,
-      titleY: compact ? -136 : -150,
-      titleWidth: compact ? 390 : 420,
+      titleY: compact ? -152 : -166,
+      titleWidth: compact ? 470 : 520,
+      titleTextWidth: compact ? 392 : 440,
       titleHeight: compact ? 54 : 58,
-      titleSize: compact ? 27 : 30,
-      creditY: compact ? -92 : -102,
-      promptY: compact ? -56 : -64,
-      choiceY: compact ? -24 : -30,
-      cardY: compact ? 72 : 76,
-      cardX: compact ? 186 : 200,
-      cardWidth: compact ? 138 : 146,
-      cardHeight: compact ? 122 : 128,
-      startY: compact ? 164 : 174,
+      titleSize: compact ? 26 : 28,
+      titleMinSize: compact ? 20 : 22,
+      creditY: compact ? -108 : -118,
+      promptY: compact ? -70 : -80,
+      choiceY: compact ? -38 : -48,
+      cardY: compact ? 76 : 82,
+      cardX: compact ? 204 : 220,
+      cardWidth: compact ? 170 : 184,
+      cardHeight: compact ? 154 : 166,
+      heroY: compact ? 4 : 8,
+      heroSize: compact ? 66 : 72,
+      badgeY: compact ? -58 : -62,
+      captionY: compact ? 54 : 60,
+      startY: compact ? 184 : 200,
       startWidth: compact ? 230 : 242,
       startHeight: compact ? 50 : 52,
     };
@@ -5276,9 +5282,11 @@ class FairyGuildScene extends Phaser.Scene {
       offsetY: this.getOverlayContentOffset(panelHeight),
       decorScale: compact ? 0.48 : 0.54,
       titleY: compact ? -136 : -150,
-      titleWidth: compact ? 300 : 320,
+      titleWidth: compact ? 340 : 360,
+      titleTextWidth: compact ? 274 : 294,
       titleHeight: compact ? 54 : 58,
       titleSize: compact ? 29 : 31,
+      titleMinSize: compact ? 21 : 23,
       rewardY: compact ? -92 : -104,
       helperY: compact ? -62 : -72,
       cardY: compact ? 72 : 78,
@@ -5286,10 +5294,9 @@ class FairyGuildScene extends Phaser.Scene {
       cardWidth: compact ? 176 : 188,
       cardHeight: compact ? 188 : 202,
       iconY: compact ? -36 : -40,
-      numberY: compact ? -72 : -78,
       pipsY: compact ? 36 : 40,
-      labelY: compact ? 62 : 68,
-      detailY: compact ? 83 : 91,
+      labelY: compact ? 58 : 64,
+      detailY: compact ? 76 : 82,
     };
   }
 
@@ -5390,6 +5397,26 @@ class FairyGuildScene extends Phaser.Scene {
     }).container;
   }
 
+  fitUiTextToWidth(text, maxWidth, maxSize, minSize = 16) {
+    text.setScale(1);
+    text.setFontSize(maxSize);
+    let size = maxSize;
+    while (text.width > maxWidth && size > minSize) {
+      size -= 1;
+      text.setFontSize(size);
+    }
+    return text;
+  }
+
+  createFittedTitleText(x, y, label, maxWidth, maxSize, minSize) {
+    const text = this.add.text(x, y, label, {
+      ...this.uiTextStyle(maxSize, '#714617'),
+      align: 'center',
+      strokeThickness: 4,
+    }).setOrigin(0.5);
+    return this.fitUiTextToWidth(text, maxWidth, maxSize, minSize);
+  }
+
   createHudChip(x, y, width, height) {
     return this.createHorizontalSlicedFrame(x, y, width, height, {
       left: 'hud_chip_left',
@@ -5454,12 +5481,14 @@ class FairyGuildScene extends Phaser.Scene {
     const content = this.add.container(0, layout.offsetY);
     const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
     const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
-    const title = this.add.text(0, layout.titleY - 3, 'The Village Must Stand', {
-      ...this.uiTextStyle(layout.titleSize, '#714617'),
-      align: 'center',
-      strokeThickness: 4,
-      wordWrap: { width: layout.titleWidth - 20 },
-    }).setOrigin(0.5);
+    const title = this.createFittedTitleText(
+      0,
+      layout.titleY - 3,
+      'The Village Must Stand',
+      layout.titleTextWidth,
+      layout.titleSize,
+      layout.titleMinSize,
+    );
     const credit = this.add.text(0, layout.creditY, 'A minigame by Javier Algaba', {
       ...this.uiTextStyle(layout.compact ? 16 : 17, '#31503b'),
       strokeThickness: 3,
@@ -5483,12 +5512,12 @@ class FairyGuildScene extends Phaser.Scene {
         .setOrigin(0.5);
       const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
         .setInteractive({ useHandCursor: true });
-      const preview = this.add.sprite(0, layout.compact ? -18 : -20, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
-        .setDisplaySize(layout.compact ? 54 : 58, layout.compact ? 54 : 58)
+      const preview = this.add.sprite(0, layout.heroY, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
+        .setDisplaySize(layout.heroSize, layout.heroSize)
         .setOrigin(0.5, 0.76)
         .play(`${previewProfile.animPrefix}-idle`);
-      const caption = this.add.text(0, layout.compact ? 36 : 38, label, this.uiTextStyle(layout.compact ? 14 : 15, '#7d6039')).setOrigin(0.5);
-      const badge = this.add.text(0, -layout.cardHeight / 2 + 16, 'Selected', this.uiTextStyle(11, '#5c7d3e'))
+      const caption = this.add.text(0, layout.captionY, label, this.uiTextStyle(layout.compact ? 15 : 16, '#7d6039')).setOrigin(0.5);
+      const badge = this.add.text(0, layout.badgeY, 'Selected', this.uiTextStyle(layout.compact ? 11 : 12, '#5c7d3e'))
         .setOrigin(0.5)
         .setVisible(false);
       hit.on('pointerup', () => this.selectHeroChoice(choice));
@@ -5589,10 +5618,19 @@ class FairyGuildScene extends Phaser.Scene {
     const content = this.add.container(0, layout.offsetY);
     const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
     const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
-    this.levelUpTitleText = this.add.text(0, layout.titleY - 3, 'Level Up!', {
-      ...this.uiTextStyle(layout.titleSize, '#714617'),
-      strokeThickness: 4,
-    }).setOrigin(0.5);
+    this.levelUpTitleFit = {
+      maxWidth: layout.titleTextWidth,
+      maxSize: layout.titleSize,
+      minSize: layout.titleMinSize,
+    };
+    this.levelUpTitleText = this.createFittedTitleText(
+      0,
+      layout.titleY - 3,
+      'Level Up!',
+      this.levelUpTitleFit.maxWidth,
+      this.levelUpTitleFit.maxSize,
+      this.levelUpTitleFit.minSize,
+    );
     this.levelUpRewardText = this.add.text(0, layout.rewardY, 'Heart +1', this.uiTextStyle(layout.compact ? 19 : 21, '#bd415c')).setOrigin(0.5);
     this.levelUpHelperText = this.add.text(0, layout.helperY, 'Choose your guild training', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
     content.add([panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
@@ -5607,9 +5645,8 @@ class FairyGuildScene extends Phaser.Scene {
       stage.setScale(layout.compact ? 0.86 : 0.92);
       const icon = this.add.image(0, layout.iconY, choice.icon.texture, choice.icon.frame)
         .setDisplaySize(layout.compact ? 62 : 68, layout.compact ? 62 : 68);
-      const number = this.add.text(-layout.cardWidth / 2 + 26, layout.numberY, `${index + 1}`, this.uiTextStyle(layout.compact ? 15 : 17, '#8a5a20')).setOrigin(0.5);
       const label = this.add.text(0, layout.labelY, choice.label, this.uiTextStyle(layout.compact ? 15 : 17, COLORS.uiInk)).setOrigin(0.5);
-      const detailText = layout.compact ? choice.detail.replace(' power', '') : choice.detail;
+      const detailText = choice.detail.replace(' power', '');
       const detail = this.add.text(0, layout.detailY, detailText, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
       const pips = this.createLevelUpProgressPips(choice, layout.pipsY, layout.compact);
       hit.on('pointerover', () => {
@@ -5623,7 +5660,7 @@ class FairyGuildScene extends Phaser.Scene {
         this.updateLevelUpProgressBars();
       });
       hit.on('pointerup', () => this.chooseLevelUpgrade(index));
-      card.add([frame, hit, stage, icon, number, ...pips, label, detail]);
+      card.add([frame, hit, stage, icon, ...pips, label, detail]);
       content.add(card);
     });
     this.levelUpOverlay.add([shade, content]);
@@ -5755,6 +5792,12 @@ class FairyGuildScene extends Phaser.Scene {
   showLevelUpScreen(context: UpgradePauseContext = 'roundClear') {
     this.upgradePauseContext = context;
     this.levelUpTitleText.setText(context === 'chestBonus' ? 'Cheerful Surprise!' : 'Level Up!');
+    this.fitUiTextToWidth(
+      this.levelUpTitleText,
+      this.levelUpTitleFit.maxWidth,
+      this.levelUpTitleFit.maxSize,
+      this.levelUpTitleFit.minSize,
+    );
     this.levelUpRewardText.setText(context === 'chestBonus' ? 'Choose a bonus strength point' : 'Heart +1');
     this.levelUpHelperText?.setText(context === 'chestBonus' ? 'Pick a bonus combat lesson' : 'Choose your guild training');
     this.updateLevelUpProgressBars();
