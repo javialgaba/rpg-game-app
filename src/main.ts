@@ -5226,6 +5226,92 @@ class FairyGuildScene extends Phaser.Scene {
     this.createGameOverOverlay();
   }
 
+  isCompactOverlayLayout() {
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const aspect = viewportWidth / Math.max(1, viewportHeight);
+    return this.touchControlsEnabled || viewportWidth < 980 || viewportHeight < 680 || aspect > 2.05 || aspect < 1.45;
+  }
+
+  getOverlayContentOffset(panelHeight) {
+    const minCenterY = 78 + panelHeight / 2;
+    const maxCenterY = HEIGHT - 28 - panelHeight / 2;
+    const targetCenterY = Phaser.Math.Clamp(HEIGHT / 2 + 8, minCenterY, maxCenterY);
+    return targetCenterY - HEIGHT / 2;
+  }
+
+  getSplashOverlayLayout() {
+    const compact = this.isCompactOverlayLayout();
+    const panelHeight = compact ? 392 : 430;
+    return {
+      compact,
+      panelWidth: compact ? 700 : 760,
+      panelHeight,
+      offsetY: this.getOverlayContentOffset(panelHeight),
+      decorScale: compact ? 0.48 : 0.54,
+      titleY: compact ? -136 : -150,
+      titleWidth: compact ? 390 : 420,
+      titleHeight: compact ? 54 : 58,
+      titleSize: compact ? 27 : 30,
+      creditY: compact ? -92 : -102,
+      promptY: compact ? -56 : -64,
+      choiceY: compact ? -24 : -30,
+      cardY: compact ? 72 : 76,
+      cardX: compact ? 186 : 200,
+      cardWidth: compact ? 138 : 146,
+      cardHeight: compact ? 122 : 128,
+      startY: compact ? 164 : 174,
+      startWidth: compact ? 230 : 242,
+      startHeight: compact ? 50 : 52,
+    };
+  }
+
+  getLevelUpOverlayLayout() {
+    const compact = this.isCompactOverlayLayout();
+    const panelHeight = compact ? 392 : 430;
+    return {
+      compact,
+      panelWidth: compact ? 720 : 780,
+      panelHeight,
+      offsetY: this.getOverlayContentOffset(panelHeight),
+      decorScale: compact ? 0.48 : 0.54,
+      titleY: compact ? -136 : -150,
+      titleWidth: compact ? 300 : 320,
+      titleHeight: compact ? 54 : 58,
+      titleSize: compact ? 29 : 31,
+      rewardY: compact ? -92 : -104,
+      helperY: compact ? -62 : -72,
+      cardY: compact ? 72 : 78,
+      cardXScale: compact ? 0.88 : 0.94,
+      cardWidth: compact ? 176 : 188,
+      cardHeight: compact ? 188 : 202,
+      iconY: compact ? -36 : -40,
+      numberY: compact ? -72 : -78,
+      pipsY: compact ? 36 : 40,
+      labelY: compact ? 62 : 68,
+      detailY: compact ? 83 : 91,
+    };
+  }
+
+  getGameOverOverlayLayout() {
+    const compact = this.isCompactOverlayLayout();
+    const panelHeight = compact ? 340 : 360;
+    return {
+      compact,
+      panelWidth: compact ? 600 : 640,
+      panelHeight,
+      offsetY: this.getOverlayContentOffset(panelHeight),
+      decorScale: compact ? 0.46 : 0.5,
+      titleY: compact ? -116 : -126,
+      titleWidth: compact ? 300 : 320,
+      titleHeight: compact ? 54 : 58,
+      titleSize: compact ? 29 : 31,
+      reasonY: compact ? -50 : -56,
+      statsY: compact ? 28 : 34,
+      buttonY: compact ? 116 : 126,
+    };
+  }
+
   createUiPanelFrame(width, height, options: { decorScale?: number; fillAlpha?: number } = {}) {
     const decorScale = options.decorScale ?? 0.72;
     const container = this.add.container(0, 0);
@@ -5362,62 +5448,63 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createSplashOverlay() {
+    const layout = this.getSplashOverlayLayout();
     this.splashOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7900).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.36);
-    const panel = this.createUiPanelFrame(820, 500, { decorScale: 0.74 });
-    const titlePlaque = this.createUiTitleBanner(0, -178, 470, 74);
-    const title = this.add.text(0, -184, 'The Village Must Stand', {
-      ...this.uiTextStyle(36, '#714617'),
+    const content = this.add.container(0, layout.offsetY);
+    const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
+    const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
+    const title = this.add.text(0, layout.titleY - 3, 'The Village Must Stand', {
+      ...this.uiTextStyle(layout.titleSize, '#714617'),
       align: 'center',
       strokeThickness: 4,
-      wordWrap: { width: 520 },
+      wordWrap: { width: layout.titleWidth - 20 },
     }).setOrigin(0.5);
-    const credit = this.add.text(0, -126, 'A minigame by Javier Algaba', {
-      ...this.uiTextStyle(18, '#31503b'),
+    const credit = this.add.text(0, layout.creditY, 'A minigame by Javier Algaba', {
+      ...this.uiTextStyle(layout.compact ? 16 : 17, '#31503b'),
       strokeThickness: 3,
     }).setOrigin(0.5);
-    const prompt = this.add.text(0, -82, 'Defend the fairy-tale village from forest mischief.', {
-      ...this.uiTextStyle(17, COLORS.uiInk),
+    const prompt = this.add.text(0, layout.promptY, 'Defend the fairy-tale village from forest mischief.', {
+      ...this.uiTextStyle(layout.compact ? 15 : 16, COLORS.uiInk),
       align: 'center',
-      wordWrap: { width: 520 },
+      wordWrap: { width: layout.panelWidth - 180 },
     }).setOrigin(0.5);
-    this.splashHeroChoiceText = this.add.text(0, -42, 'Choose your hero before you begin.', {
-      ...this.uiTextStyle(16, '#31503b'),
+    this.splashHeroChoiceText = this.add.text(0, layout.choiceY, 'Choose your hero before you begin.', {
+      ...this.uiTextStyle(layout.compact ? 14 : 15, '#31503b'),
       align: 'center',
     }).setOrigin(0.5);
     const makeHeroCard = (choice: HeroChoice, x: number, label: string) => {
       const previewProfile = this.getHeroProfile(choice);
       this.ensureHeroAnimations(previewProfile);
-      const card = this.add.container(x, 82);
-      const frame = this.createUiCardFrame(0, 0, 156, 138);
-      const selection = this.add.rectangle(0, 0, 152, 134, 0xfff1b8, 0.001)
+      const card = this.add.container(x, layout.cardY);
+      const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
+      const selection = this.add.rectangle(0, 0, layout.cardWidth - 4, layout.cardHeight - 4, 0xfff1b8, 0.001)
         .setStrokeStyle(3, 0xffd26d, 0)
         .setOrigin(0.5);
-      const hit = this.add.rectangle(0, 0, 156, 138, 0xfff1b8, 0.001)
+      const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
         .setInteractive({ useHandCursor: true });
-      const preview = this.add.sprite(0, -18, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
-        .setDisplaySize(62, 62)
+      const preview = this.add.sprite(0, layout.compact ? -18 : -20, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
+        .setDisplaySize(layout.compact ? 54 : 58, layout.compact ? 54 : 58)
         .setOrigin(0.5, 0.76)
         .play(`${previewProfile.animPrefix}-idle`);
-      const caption = this.add.text(0, 39, label, this.uiTextStyle(16, '#7d6039')).setOrigin(0.5);
-      const badge = this.add.text(0, -54, 'Selected', this.uiTextStyle(12, '#5c7d3e'))
+      const caption = this.add.text(0, layout.compact ? 36 : 38, label, this.uiTextStyle(layout.compact ? 14 : 15, '#7d6039')).setOrigin(0.5);
+      const badge = this.add.text(0, -layout.cardHeight / 2 + 16, 'Selected', this.uiTextStyle(11, '#5c7d3e'))
         .setOrigin(0.5)
         .setVisible(false);
       hit.on('pointerup', () => this.selectHeroChoice(choice));
       card.add([frame, selection, hit, preview, caption, badge]);
       return { card, frame, selection, hit, preview, label: caption, badge };
     };
-    const maleCard = makeHeroCard('male', -210, 'Village Hero');
-    const princessCard = makeHeroCard('princess', 210, 'Princess Hero');
-    const startButton = this.createUiButton(0, 184, 250, 58, 'START', () => this.startGameFromSplash());
+    const maleCard = makeHeroCard('male', -layout.cardX, 'Village Hero');
+    const princessCard = makeHeroCard('princess', layout.cardX, 'Princess Hero');
+    const startButton = this.createUiButton(0, layout.startY, layout.startWidth, layout.startHeight, 'START', () => this.startGameFromSplash());
     this.splashStartButton = startButton.hit;
     this.splashStartText = startButton.text;
     this.splashHeroCards = {
       male: maleCard,
       princess: princessCard,
     };
-    this.splashOverlay.add([
-      shade,
+    content.add([
       panel,
       titlePlaque,
       title,
@@ -5428,6 +5515,7 @@ class FairyGuildScene extends Phaser.Scene {
       princessCard.card,
       startButton.container,
     ]);
+    this.splashOverlay.add([shade, content]);
     this.uiLayer.add(this.splashOverlay);
     this.updateSplashHeroChoiceUi();
   }
@@ -5495,30 +5583,35 @@ class FairyGuildScene extends Phaser.Scene {
       },
     ];
 
+    const layout = this.getLevelUpOverlayLayout();
     this.levelUpOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7300).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.42);
-    const panel = this.createUiPanelFrame(840, 500, { decorScale: 0.74 });
-    const titlePlaque = this.createUiTitleBanner(0, -178, 360, 72);
-    this.levelUpTitleText = this.add.text(0, -184, 'Level Up!', {
-      ...this.uiTextStyle(36, '#714617'),
+    const content = this.add.container(0, layout.offsetY);
+    const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
+    const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
+    this.levelUpTitleText = this.add.text(0, layout.titleY - 3, 'Level Up!', {
+      ...this.uiTextStyle(layout.titleSize, '#714617'),
       strokeThickness: 4,
     }).setOrigin(0.5);
-    this.levelUpRewardText = this.add.text(0, -122, 'Heart +1', this.uiTextStyle(22, '#bd415c')).setOrigin(0.5);
-    this.levelUpHelperText = this.add.text(0, -86, 'Choose your guild training', this.uiTextStyle(18, '#31503b')).setOrigin(0.5);
-    this.levelUpOverlay.add([shade, panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
+    this.levelUpRewardText = this.add.text(0, layout.rewardY, 'Heart +1', this.uiTextStyle(layout.compact ? 19 : 21, '#bd415c')).setOrigin(0.5);
+    this.levelUpHelperText = this.add.text(0, layout.helperY, 'Choose your guild training', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
+    content.add([panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
     this.levelUpProgressBars = [];
     this.levelUpChoices.forEach((choice, index) => {
-      const card = this.add.container(LEVEL_UP_CARD_XS[index], 82);
-      const frame = this.createUiCardFrame(0, 0, 208, 232);
-      const hit = this.add.rectangle(0, 0, 208, 232, 0xfff1b8, 0.001)
+      const card = this.add.container(LEVEL_UP_CARD_XS[index] * layout.cardXScale, layout.cardY);
+      const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
+      const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
         .setInteractive({ useHandCursor: true });
       const stage = this.createLevelUpIconStage(choice);
-      const icon = this.add.image(0, -28, choice.icon.texture, choice.icon.frame).setDisplaySize(76, 76);
-      const number = this.add.text(-76, -78, `${index + 1}`, this.uiTextStyle(18, '#8a5a20')).setOrigin(0.5);
-      const label = this.add.text(0, 78, choice.label, this.uiTextStyle(18, COLORS.uiInk)).setOrigin(0.5);
-      const detail = this.add.text(0, 106, choice.detail, this.uiTextStyle(14, '#5e7b4a')).setOrigin(0.5);
-      const pips = this.createLevelUpProgressPips(choice);
+      stage.setScale(layout.compact ? 0.86 : 0.92);
+      const icon = this.add.image(0, layout.iconY, choice.icon.texture, choice.icon.frame)
+        .setDisplaySize(layout.compact ? 62 : 68, layout.compact ? 62 : 68);
+      const number = this.add.text(-layout.cardWidth / 2 + 26, layout.numberY, `${index + 1}`, this.uiTextStyle(layout.compact ? 15 : 17, '#8a5a20')).setOrigin(0.5);
+      const label = this.add.text(0, layout.labelY, choice.label, this.uiTextStyle(layout.compact ? 15 : 17, COLORS.uiInk)).setOrigin(0.5);
+      const detailText = layout.compact ? choice.detail.replace(' power', '') : choice.detail;
+      const detail = this.add.text(0, layout.detailY, detailText, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
+      const pips = this.createLevelUpProgressPips(choice, layout.pipsY, layout.compact);
       hit.on('pointerover', () => {
         hit.setFillStyle(0xfff1b8, 0.16);
         frame.setTint(0xfff6cc);
@@ -5531,8 +5624,9 @@ class FairyGuildScene extends Phaser.Scene {
       });
       hit.on('pointerup', () => this.chooseLevelUpgrade(index));
       card.add([frame, hit, stage, icon, number, ...pips, label, detail]);
-      this.levelUpOverlay.add(card);
+      content.add(card);
     });
+    this.levelUpOverlay.add([shade, content]);
     this.uiLayer.add(this.levelUpOverlay);
   }
 
@@ -5549,13 +5643,13 @@ class FairyGuildScene extends Phaser.Scene {
     return stage;
   }
 
-  createLevelUpProgressPips(choice) {
+  createLevelUpProgressPips(choice, y = 48, compact = false) {
     const pips = [];
-    const pipW = 20;
-    const gap = 5;
+    const pipW = compact ? 17 : 19;
+    const gap = compact ? 4 : 5;
     const startX = -((LEVEL_UP_MAX_PIPS - 1) * (pipW + gap)) / 2;
     for (let i = 0; i < LEVEL_UP_MAX_PIPS; i += 1) {
-      const pip = this.add.rectangle(startX + i * (pipW + gap), 48, pipW, 9, 0xfff3c8, 0.46)
+      const pip = this.add.rectangle(startX + i * (pipW + gap), y, pipW, compact ? 8 : 9, 0xfff3c8, 0.46)
         .setStrokeStyle(1, 0x8c6023, 0.5);
       pips.push(pip);
     }
@@ -5629,23 +5723,24 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createGameOverOverlay() {
+    const layout = this.getGameOverOverlayLayout();
     this.gameOverOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7800).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.48);
-    const panel = this.createUiPanelFrame(700, 420, { decorScale: 0.68 });
-    const titlePlaque = this.createUiTitleBanner(0, -144, 360, 72);
-    const title = this.add.text(0, -150, 'Guild Rest Time', {
-      ...this.uiTextStyle(34, '#714617'),
+    const content = this.add.container(0, layout.offsetY);
+    const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
+    const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
+    const title = this.add.text(0, layout.titleY - 3, 'Guild Rest Time', {
+      ...this.uiTextStyle(layout.titleSize, '#714617'),
       strokeThickness: 4,
     }).setOrigin(0.5);
-    this.gameOverReasonText = this.add.text(0, -70, '', {
-      ...this.uiTextStyle(21, COLORS.uiInk),
+    this.gameOverReasonText = this.add.text(0, layout.reasonY, '', {
+      ...this.uiTextStyle(layout.compact ? 18 : 20, COLORS.uiInk),
       align: 'center',
-      wordWrap: { width: 520 },
+      wordWrap: { width: layout.panelWidth - 140 },
     }).setOrigin(0.5);
-    this.gameOverStatsText = this.add.text(0, 28, '', this.uiTextStyle(19, '#31503b')).setOrigin(0.5);
-    const restartButton = this.createUiButton(0, 136, 260, 58, 'Restart (R)', () => this.scene.restart());
-    this.gameOverOverlay.add([
-      shade,
+    this.gameOverStatsText = this.add.text(0, layout.statsY, '', this.uiTextStyle(layout.compact ? 16 : 18, '#31503b')).setOrigin(0.5);
+    const restartButton = this.createUiButton(0, layout.buttonY, 246, 52, 'Restart (R)', () => this.scene.restart());
+    content.add([
       panel,
       titlePlaque,
       title,
@@ -5653,6 +5748,7 @@ class FairyGuildScene extends Phaser.Scene {
       this.gameOverStatsText,
       restartButton.container,
     ]);
+    this.gameOverOverlay.add([shade, content]);
     this.uiLayer.add(this.gameOverOverlay);
   }
 
@@ -5737,17 +5833,17 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createTopBar() {
-    const top = this.add.container(20, 14).setDepth(7600);
-    const goldChip = this.createHudChip(300, 32, 104, 42);
-    const levelChip = this.createHudChip(395, 32, 78, 42);
-    const roundChip = this.createHudChip(510, 32, 136, 42);
-    const coin = this.add.image(266, 32, 'gameUiAtlas', 'coin_badge_01')
-      .setDisplaySize(36, 38);
-    this.hud.hearts = this.add.container(18, 23);
-    this.hud.manaBar = this.createManaMeter(150, 34, 138, 24);
-    this.hud.goldText = this.add.text(316, 32, '', this.uiTextStyle(18, '#56330f')).setOrigin(0.5);
-    this.hud.levelText = this.add.text(395, 32, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0.5);
-    this.hud.waveText = this.add.text(510, 32, '', this.uiTextStyle(13, '#224b31')).setOrigin(0.5);
+    const top = this.add.container(20, 13).setDepth(7600);
+    const goldChip = this.createHudChip(284, 28, 92, 34);
+    const levelChip = this.createHudChip(368, 28, 68, 34);
+    const roundChip = this.createHudChip(476, 28, 124, 34);
+    const coin = this.add.image(254, 28, 'gameUiAtlas', 'coin_badge_01')
+      .setDisplaySize(30, 32);
+    this.hud.hearts = this.add.container(16, 20);
+    this.hud.manaBar = this.createManaMeter(143, 30, 122, 20);
+    this.hud.goldText = this.add.text(298, 28, '', this.uiTextStyle(16, '#56330f')).setOrigin(0.5);
+    this.hud.levelText = this.add.text(368, 28, '', this.uiTextStyle(15, '#1e3348')).setOrigin(0.5);
+    this.hud.waveText = this.add.text(476, 28, '', this.uiTextStyle(12, '#224b31')).setOrigin(0.5);
     top.add([
       this.hud.hearts,
       ...this.hud.manaBar.parts,
@@ -5963,12 +6059,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.hud.lastHearts = `${this.state.health}/${this.playerStats.maxHealth}`;
     this.hud.hearts.removeAll(true);
     for (let i = 0; i < this.playerStats.maxHealth; i += 1) {
-      const x = (i % 8) * 26;
-      const y = Math.floor(i / 8) * 25;
+      const x = (i % 6) * 22;
+      const y = Math.floor(i / 6) * 21;
       const full = i < this.state.health;
       const heart = this.add.image(x, y, 'gameUiAtlas', full ? 'health_full_01' : 'health_empty_01')
         .setOrigin(0.5)
-        .setDisplaySize(27, 27);
+        .setDisplaySize(24, 24);
       this.hud.hearts.add(heart);
     }
   }

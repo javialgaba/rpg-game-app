@@ -136,15 +136,46 @@ const trimFrame = async (name, image, inset = 0) => {
   };
 };
 
-const centralFillFrame = async (name, image) => {
+const averageColorFrame = async (name, image, size = 64) => {
   const bounds = await alphaBounds(image);
   if (!bounds) {
     throw new Error(`${name} has no visible pixels.`);
   }
-  const size = 96;
-  const left = Math.round(bounds.left + bounds.width / 2 - size / 2);
-  const top = Math.round(bounds.top + bounds.height / 2 - size / 2);
-  const buffer = await image.extract({ left, top, width: size, height: size }).png().toBuffer();
+  const sampleSize = Math.min(96, bounds.width, bounds.height);
+  const left = Math.round(bounds.left + bounds.width / 2 - sampleSize / 2);
+  const top = Math.round(bounds.top + bounds.height / 2 - sampleSize / 2);
+  const { data, info } = await readRgba(image.extract({ left, top, width: sampleSize, height: sampleSize }));
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let alpha = 0;
+  let count = 0;
+  for (let index = 0; index < data.length; index += info.channels) {
+    if (data[index + 3] <= 8) {
+      continue;
+    }
+    red += data[index];
+    green += data[index + 1];
+    blue += data[index + 2];
+    alpha += data[index + 3];
+    count += 1;
+  }
+  if (count <= 0) {
+    throw new Error(`${name} has no sampled visible pixels.`);
+  }
+  const buffer = await sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 4,
+      background: {
+        r: Math.round(red / count),
+        g: Math.round(green / count),
+        b: Math.round(blue / count),
+        alpha: Math.round(alpha / count) / 255,
+      },
+    },
+  }).png().toBuffer();
   return { name, buffer, width: size, height: size };
 };
 
@@ -177,6 +208,84 @@ const cropFrame = async (frame, name, left, top, width, height) => {
   return { name, buffer, width: safeWidth, height: safeHeight };
 };
 
+const verticalAverageFrame = async (frame, name, left, top, width, height, outputWidth = 24) => {
+  const crop = sharp(frame.buffer).extract({
+    left: clamp(Math.round(left), 0, frame.width - 1),
+    top: clamp(Math.round(top), 0, frame.height - 1),
+    width: Math.max(1, Math.min(Math.round(width), frame.width - Math.round(left))),
+    height: Math.max(1, Math.min(Math.round(height), frame.height - Math.round(top))),
+  });
+  const { data, info } = await readRgba(crop);
+  const out = Buffer.alloc(outputWidth * info.height * info.channels);
+  for (let y = 0; y < info.height; y += 1) {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let alpha = 0;
+    let count = 0;
+    for (let x = 0; x < info.width; x += 1) {
+      const index = (y * info.width + x) * info.channels;
+      const isChroma = data[index + 1] > 120 && data[index] < 130 && data[index + 2] < 130;
+      if (data[index + 3] <= 8 || isChroma) {
+        continue;
+      }
+      red += data[index];
+      green += data[index + 1];
+      blue += data[index + 2];
+      alpha += data[index + 3];
+      count += 1;
+    }
+    const rowColor = [
+      count > 0 ? Math.round(red / count) : 0,
+      count > 0 ? Math.round(green / count) : 0,
+      count > 0 ? Math.round(blue / count) : 0,
+      count > 0 ? Math.round(alpha / count) : 0,
+    ];
+    for (let x = 0; x < outputWidth; x += 1) {
+      const outIndex = (y * outputWidth + x) * info.channels;
+      out[outIndex] = rowColor[0];
+      out[outIndex + 1] = rowColor[1];
+      out[outIndex + 2] = rowColor[2];
+      out[outIndex + 3] = rowColor[3];
+    }
+  }
+  const buffer = await sharp(out, {
+    raw: {
+      width: outputWidth,
+      height: info.height,
+      channels: info.channels,
+    },
+  }).png().toBuffer();
+  return { name, buffer, width: outputWidth, height: info.height };
+};
+
+const svgFrame = async (name, width, height, body) => {
+  const buffer = await sharp(Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      ${body}
+    </svg>
+  `)).png().toBuffer();
+  return { name, buffer, width, height };
+};
+
+const hudChipFrames = async () => {
+  const height = 42;
+  return [
+    await svgFrame('hud_chip_left', 30, height, `
+      <path d="M30 5 H14 Q5 5 5 14 V28 Q5 37 14 37 H30 Z" fill="#f2c760" stroke="#8a5a20" stroke-width="4"/>
+      <path d="M30 10 H15 Q10 10 10 15 V27 Q10 32 15 32 H30" fill="#f7dda0" stroke="#fff0be" stroke-width="2"/>
+    `),
+    await svgFrame('hud_chip_mid', 18, height, `
+      <path d="M0 5 H18 V37 H0 Z" fill="#f2c760" stroke="#8a5a20" stroke-width="4"/>
+      <path d="M0 10 H18 V32 H0 Z" fill="#f7dda0" stroke="#fff0be" stroke-width="2"/>
+    `),
+    await svgFrame('hud_chip_right', 30, height, `
+      <path d="M0 5 H16 Q25 5 25 14 V28 Q25 37 16 37 H0 Z" fill="#f2c760" stroke="#8a5a20" stroke-width="4"/>
+      <path d="M0 10 H15 Q20 10 20 15 V27 Q20 32 15 32 H0" fill="#f7dda0" stroke="#fff0be" stroke-width="2"/>
+    `),
+  ];
+};
+
 const prepareFrames = async () => {
   const source = sharp(resolvePath(SOURCE));
   const metadata = await source.metadata();
@@ -191,7 +300,7 @@ const prepareFrames = async () => {
       const image = await cropCell(source.clone(), metadata, col, row);
       cellImages.set(name, image);
       if (name === 'panel_fill_source') {
-        frames.push(await centralFillFrame('panel_fill', image));
+        frames.push(await averageColorFrame('panel_fill', image));
       } else {
         frames.push(await trimFrame(name, image));
       }
@@ -205,24 +314,20 @@ const prepareFrames = async () => {
   }
   frames.push(
     await cropFrame(titleFrame, 'title_left', 0, 0, 92, titleFrame.height),
-    await cropFrame(titleFrame, 'title_mid', 94, 0, 20, titleFrame.height),
+    await verticalAverageFrame(titleFrame, 'title_mid', 84, 0, 24, titleFrame.height, 18),
     await cropFrame(titleFrame, 'title_right', titleFrame.width - 92, 0, 92, titleFrame.height),
   );
   frames.push(...await splitHorizontal(buttonFrame, [
     { name: 'button_left', from: 0, to: 0.28 },
-    { name: 'button_mid', from: 0.40, to: 0.60 },
     { name: 'button_right', from: 0.72, to: 1 },
   ]));
-  frames.push(...await splitHorizontal(buttonFrame, [
-    { name: 'hud_chip_left', from: 0, to: 0.24 },
-    { name: 'hud_chip_mid', from: 0.44, to: 0.56 },
-    { name: 'hud_chip_right', from: 0.76, to: 1 },
-  ]));
+  frames.push(await verticalAverageFrame(buttonFrame, 'button_mid', 112, 0, 58, buttonFrame.height, 24));
+  frames.push(...await hudChipFrames());
   frames.push(...await splitHorizontal(manaFrame, [
     { name: 'mana_left', from: 0, to: 0.20 },
-    { name: 'mana_mid', from: 0.38, to: 0.62 },
     { name: 'mana_right', from: 0.80, to: 1 },
   ]));
+  frames.push(await verticalAverageFrame(manaFrame, 'mana_mid', 104, 0, 78, manaFrame.height, 28));
   return frames;
 };
 
