@@ -69,6 +69,9 @@ type GeneratedSurroundAnchor =
   | 'bottomRight';
 type GeneratedSurroundLayer = 'background' | 'shadow' | 'edge' | 'water' | 'decor';
 
+const TOUCH_CONTROL_SCALE = 1.5;
+const scaleTouchControl = (value: number) => value * TOUCH_CONTROL_SCALE;
+
 const GENERATED_BUILDING_SPRITE_ALPHA = 1;
 const STATIC_BUILDING_BASE_ALPHA = 0.14;
 const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
@@ -3231,19 +3234,25 @@ class FairyGuildScene extends Phaser.Scene {
 
     this.controlsHint?.setVisible(false);
     const container = this.add.container(0, 0).setDepth(7700).setScrollFactor(0);
-    const joystickCenter = { x: 132, y: HEIGHT - 118 };
-    const joystickZone = this.add.zone(joystickCenter.x, joystickCenter.y, 190, 190)
+    const joystickCenter = {
+      x: scaleTouchControl(132),
+      y: HEIGHT - scaleTouchControl(118),
+    };
+    const joystickZoneSize = scaleTouchControl(190);
+    const joystickBaseRadius = scaleTouchControl(58);
+    const joystickThumbRadius = scaleTouchControl(25);
+    const joystickZone = this.add.zone(joystickCenter.x, joystickCenter.y, joystickZoneSize, joystickZoneSize)
       .setOrigin(0.5)
       .setInteractive();
-    const joystickBase = this.add.circle(joystickCenter.x, joystickCenter.y, 58, 0x132a3d, 0.34)
-      .setStrokeStyle(4, 0xf8ffe3, 0.42);
-    const joystickThumb = this.add.circle(joystickCenter.x, joystickCenter.y, 25, 0xfff4c8, 0.74)
-      .setStrokeStyle(3, 0x6abbd7, 0.78);
+    const joystickBase = this.add.circle(joystickCenter.x, joystickCenter.y, joystickBaseRadius, 0x132a3d, 0.34)
+      .setStrokeStyle(scaleTouchControl(4), 0xf8ffe3, 0.42);
+    const joystickThumb = this.add.circle(joystickCenter.x, joystickCenter.y, joystickThumbRadius, 0xfff4c8, 0.74)
+      .setStrokeStyle(scaleTouchControl(3), 0x6abbd7, 0.78);
     const buttons = {} as Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
-    const actionCenterX = WIDTH - 150;
-    const actionCenterY = HEIGHT - 118;
-    const actionRadiusX = 86;
-    const actionRadiusY = 54;
+    const actionCenterX = WIDTH - scaleTouchControl(150);
+    const actionCenterY = HEIGHT - scaleTouchControl(118);
+    const actionRadiusX = scaleTouchControl(86);
+    const actionRadiusY = scaleTouchControl(54);
     const normalLayout: Record<TouchButtonSlot, [TouchActionKey, string, TouchActionIcon, number]> = {
       left: ['melee', 'Sword', { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }, 0xf2bf52],
       top: ['bow', 'Bow', { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }, 0x8fd56c],
@@ -3332,20 +3341,21 @@ class FairyGuildScene extends Phaser.Scene {
     color: number,
   ) {
     const button = this.add.container(x, y).setScrollFactor(0);
-    const hit = this.add.zone(0, 0, 78, 82)
+    const hit = this.add.zone(0, 0, scaleTouchControl(78), scaleTouchControl(82))
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    const labelText = label ? this.add.text(0, 34, label, {
-      ...this.uiTextStyle(10, '#ffffff'),
-      strokeThickness: 3,
+    const labelText = label ? this.add.text(0, scaleTouchControl(34), label, {
+      ...this.uiTextStyle(scaleTouchControl(10), '#ffffff'),
+      strokeThickness: scaleTouchControl(3),
     }).setOrigin(0.5) : null;
     const glyph = icon
-      ? this.add.image(0, -3, icon.texture, icon.frame).setDisplaySize(70, 70)
-      : this.add.text(0, -5, 'I', {
-        ...this.uiTextStyle(24, '#fff0b8'),
-        strokeThickness: 4,
+      ? this.add.image(0, -scaleTouchControl(3), icon.texture, icon.frame).setDisplaySize(scaleTouchControl(70), scaleTouchControl(70))
+      : this.add.text(0, -scaleTouchControl(5), 'I', {
+        ...this.uiTextStyle(scaleTouchControl(24), '#fff0b8'),
+        strokeThickness: scaleTouchControl(4),
       }).setOrigin(0.5);
-    const focusRing = this.add.circle(0, -3, 34, 0xffffff, 0).setStrokeStyle(2, color, 0.28);
+    const focusRing = this.add.circle(0, -scaleTouchControl(3), scaleTouchControl(34), 0xffffff, 0)
+      .setStrokeStyle(scaleTouchControl(2), color, 0.28);
     hit.on('pointerdown', () => {
       this.ensureAudio();
       this.pulseTouchButton(button);
@@ -3377,7 +3387,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.touchControls || pointer.id !== this.touchControls.joystickPointerId) {
       return;
     }
-    const radius = 58;
+    const radius = scaleTouchControl(58);
     const center = this.touchControls.joystickCenter;
     const dx = pointer.x - center.x;
     const dy = pointer.y - center.y;
