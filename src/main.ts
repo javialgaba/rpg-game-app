@@ -65,6 +65,94 @@ type GeneratedSurroundAnchor =
   | 'bottomRight';
 type GeneratedSurroundLayer = 'background' | 'shadow' | 'edge' | 'water' | 'decor';
 
+const GENERATED_BUILDING_SPRITE_ALPHA = 1;
+const STATIC_BUILDING_BASE_ALPHA = 0.14;
+const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
+const OCCLUDED_BUILDING_SPRITE_ALPHA = 0.5;
+const OCCLUDED_STATIC_BUILDING_BASE_ALPHA = 0.06;
+const BUILDING_OCCLUSION_PLAYER_Y_OFFSET_MAX = 12;
+const BUILDING_OCCLUSION_PLAYER_Y_OFFSET_RATIO = 0.18;
+const BUILDING_OCCLUSION_VERTICAL_CLEARANCE = 6;
+const BUILDING_OCCLUSION_SPRITE_TOP_PADDING_RATIO = 0.12;
+const BUILDING_OCCLUSION_HORIZONTAL_PADDING = 12;
+const SPLASH_HERO_CARD_FILL_COLOR = 0xfff1b8;
+const SPLASH_HERO_CARD_SELECTED_FILL_ALPHA = 0.18;
+const SPLASH_HERO_CARD_IDLE_FILL_ALPHA = 0.045;
+const SPLASH_HERO_CARD_SELECTION_STROKE_WIDTH = 3;
+const SPLASH_HERO_CARD_SELECTED_STROKE_COLOR = 0xffd26d;
+const SPLASH_HERO_CARD_IDLE_STROKE_COLOR = 0xd0a24b;
+const SPLASH_HERO_CARD_SELECTED_STROKE_ALPHA = 0.95;
+const SPLASH_HERO_CARD_IDLE_STROKE_ALPHA = 0.35;
+const SPLASH_HERO_CARD_SELECTED_LABEL_COLOR = '#5f3b12';
+const SPLASH_HERO_CARD_IDLE_LABEL_COLOR = '#7d6039';
+const SPLASH_START_BUTTON_READY_FILL_ALPHA = 0.1;
+const SPLASH_START_BUTTON_DISABLED_FILL_ALPHA = 0.035;
+const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
+const GENERATED_SURROUND_DEPTH_WATER = 2;
+const GENERATED_SURROUND_DEPTH_SHADOW = 3;
+const GENERATED_SURROUND_DEPTH_BACKGROUND = 4;
+const GENERATED_SURROUND_DEPTH_FOREGROUND = 5;
+const GENERATED_SURROUND_DEPTH_MIST_NEAR = 16;
+const GENERATED_SURROUND_DEPTH_MIST_FAR = 17;
+const GENERATED_SURROUND_DEPTH_GROUND_MIST = 21;
+const GENERATED_SURROUND_DEPTH_GROUND_FOG = 22;
+const GENERATED_SURROUND_ORIGIN_SHADOW = 0.5;
+const GENERATED_SURROUND_ORIGIN_WATER = 0.58;
+const GENERATED_SURROUND_ORIGIN_FOREST = 0.64;
+const GENERATED_SURROUND_ORIGIN_CLIFF = 0.66;
+const GENERATED_SURROUND_ORIGIN_CLUSTER = 0.74;
+const GENERATED_SURROUND_ORIGIN_FRAME = 0.62;
+const GENERATED_SURROUND_ORIGIN_MIST_FILL = 0.6;
+const GENERATED_SURROUND_ORIGIN_MIST_PATCH = 0.56;
+const GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER = 0.72;
+const GENERATED_SURROUND_ORIGIN_FOG_PATCH = 0.52;
+const GENERATED_SURROUND_ORIGIN_PINE = 0.84;
+const GENERATED_SURROUND_ALPHA = {
+  opaque: 1,
+  water: {
+    soft: 0.92,
+    highlight: 0.98,
+    recessed: 0.88,
+  },
+  foliage: {
+    highlight: 0.98,
+    strong: 0.96,
+    primary: 0.94,
+    secondary: 0.92,
+    tertiary: 0.9,
+    distant: 0.88,
+  },
+  frame: {
+    accent: 0.98,
+  },
+  shadow: {
+    large: 0.32,
+  },
+  mist: {
+    near: 0.62,
+    side: 0.58,
+    far: 0.38,
+    ground: 0.36,
+    soft: 0.32,
+  },
+  fog: {
+    strong: 0.44,
+    medium: 0.42,
+    soft: 0.32,
+    faint: 0.3,
+    ground: 0.28,
+  },
+  purpleMist: {
+    accent: 0.18,
+  },
+  silhouette: {
+    leftPine: 0.22,
+    rightPine: 0.2,
+  },
+} as const;
+
+type GeneratedSurroundDepth = number | { edge: 'top' | 'bottom'; tileOffset: number };
+
 interface ScreenFootprintBounds {
   left: number;
   right: number;
@@ -81,11 +169,11 @@ interface ScreenFootprintBounds {
 interface GeneratedSurroundPiece {
   frame: string;
   anchor: GeneratedSurroundAnchor;
-  offsetX: number;
-  offsetY: number;
+  offsetXUnits: number;
+  offsetYUnits: number;
   uniformScale: number;
   layer: GeneratedSurroundLayer;
-  depth: number;
+  depth: GeneratedSurroundDepth;
   alpha?: number;
   originX?: number;
   originY?: number;
@@ -131,6 +219,78 @@ interface DroppedChest {
   despawnAt: number;
   blinkAt: number;
 }
+
+const GENERATED_SURROUND_TOP_EDGE_DEPTH: GeneratedSurroundDepth = { edge: 'top', tileOffset: 0.18 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.62 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.98 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.02 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.04 };
+
+// Generated surround art is tuned in tile-space units so layout changes live in one place.
+const GENERATED_SURROUND_PIECES: ReadonlyArray<GeneratedSurroundPiece> = [
+  { frame: 'large_shadow', anchor: 'bottomCenter', offsetXUnits: 0, offsetYUnits: 0.82, uniformScale: 2.72, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.shadow.large, originY: GENERATED_SURROUND_ORIGIN_SHADOW },
+  { frame: 'surround_water_fill_01', anchor: 'topLeft', offsetXUnits: -1.86, offsetYUnits: 2.04, uniformScale: 2.04, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_water_fill_01', anchor: 'topLeft', offsetXUnits: 1.36, offsetYUnits: 1.42, uniformScale: 1.36, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.soft, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_water_fill_01', anchor: 'topRight', offsetXUnits: 1.86, offsetYUnits: 1.98, uniformScale: 1.8, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.highlight, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_water_fill_01', anchor: 'topRight', offsetXUnits: -1.28, offsetYUnits: 1.26, uniformScale: 1.28, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.recessed, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetXUnits: -3.3, offsetYUnits: 0.96, uniformScale: 1.28, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetXUnits: 3.4, offsetYUnits: 0.18, uniformScale: 1.08, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetXUnits: 2.28, offsetYUnits: 1.78, uniformScale: 0.9, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', offsetXUnits: -3.6, offsetYUnits: 2.44, uniformScale: 0.92, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetXUnits: -1.92, offsetYUnits: 1.84, uniformScale: 0.84, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_cliff_filler_01', anchor: 'topRight', offsetXUnits: 3.32, offsetYUnits: 2.38, uniformScale: 0.9, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'forest_cluster_back', anchor: 'topLeft', offsetXUnits: -0.38, offsetYUnits: 2.76, uniformScale: 1.36, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topLeft', offsetXUnits: 1.54, offsetYUnits: 3.08, uniformScale: 1.22, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topLeft', offsetXUnits: -2.28, offsetYUnits: 3.12, uniformScale: 1.46, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', offsetXUnits: 2.84, offsetYUnits: 2.84, uniformScale: 0.88, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetXUnits: 3.24, offsetYUnits: 2.46, uniformScale: 0.78, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetXUnits: 0.82, offsetYUnits: 3.22, uniformScale: 0.74, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetXUnits: 1.9, offsetYUnits: 3.56, uniformScale: 0.84, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'forest_cluster_back', anchor: 'topRight', offsetXUnits: 0.42, offsetYUnits: 2.92, uniformScale: 1.3, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topRight', offsetXUnits: -1.44, offsetYUnits: 3.04, uniformScale: 1.18, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topRight', offsetXUnits: 2.22, offsetYUnits: 3.14, uniformScale: 1.38, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'surround_cliff_filler_01', anchor: 'topRight', offsetXUnits: -2.74, offsetYUnits: 2.88, uniformScale: 0.86, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetXUnits: -3.16, offsetYUnits: 2.44, uniformScale: 0.76, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetXUnits: -0.92, offsetYUnits: 3.18, uniformScale: 0.74, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetXUnits: -1.98, offsetYUnits: 3.52, uniformScale: 0.82, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_top_left_01', anchor: 'topLeft', offsetXUnits: -0.82, offsetYUnits: 1.12, uniformScale: 1.24, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_center_01', anchor: 'topCenter', offsetXUnits: -1.6, offsetYUnits: 0.74, uniformScale: 1.2, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_center_01', anchor: 'topCenter', offsetXUnits: 1.6, offsetYUnits: 0.74, uniformScale: 1.2, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_center_01', anchor: 'topCenter', offsetXUnits: 0, offsetYUnits: 0.94, uniformScale: 1.3, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_right_01', anchor: 'topRight', offsetXUnits: 0.92, offsetYUnits: 1.06, uniformScale: 1.24, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_left_upper_01', anchor: 'leftUpper', offsetXUnits: -0.26, offsetYUnits: 1.52, uniformScale: 1.26, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_right_upper_01', anchor: 'rightUpper', offsetXUnits: 0.3, offsetYUnits: 1.66, uniformScale: 1.28, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', offsetXUnits: 4.6, offsetYUnits: 0.38, uniformScale: 0.9, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_cliff_filler_01', anchor: 'topRight', offsetXUnits: -4.6, offsetYUnits: 0.52, uniformScale: 0.96, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_mist_fill_01', anchor: 'topLeft', offsetXUnits: 0.72, offsetYUnits: 1.18, uniformScale: 1.02, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.near, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
+  { frame: 'surround_mist_fill_01', anchor: 'topLeft', offsetXUnits: -1.42, offsetYUnits: 2.72, uniformScale: 1.2, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.far, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'fog_patch', anchor: 'topLeft', offsetXUnits: 1.46, offsetYUnits: 2.92, uniformScale: 1.54, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.strong, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'fog_patch', anchor: 'topLeft', offsetXUnits: 3.16, offsetYUnits: 2.66, uniformScale: 1.06, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'purple_mist_patch', anchor: 'topLeft', offsetXUnits: -0.12, offsetYUnits: 3.26, uniformScale: 1.18, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_mist_fill_01', anchor: 'topRight', offsetXUnits: -0.52, offsetYUnits: 1.16, uniformScale: 1, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.side, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
+  { frame: 'surround_mist_fill_01', anchor: 'topRight', offsetXUnits: 1.38, offsetYUnits: 2.78, uniformScale: 1.14, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'fog_patch', anchor: 'topRight', offsetXUnits: -1.54, offsetYUnits: 2.88, uniformScale: 1.42, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.medium, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'fog_patch', anchor: 'topRight', offsetXUnits: -3.06, offsetYUnits: 2.6, uniformScale: 1.02, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.faint, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'purple_mist_patch', anchor: 'topRight', offsetXUnits: 0.12, offsetYUnits: 3.22, uniformScale: 1.14, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_left_lower_01', anchor: 'leftLower', offsetXUnits: -0.22, offsetYUnits: 0.1, uniformScale: 1.1, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_right_lower_01', anchor: 'rightLower', offsetXUnits: 0.22, offsetYUnits: 0.1, uniformScale: 1.1, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_bottom_left_01', anchor: 'bottomLeft', offsetXUnits: -0.46, offsetYUnits: 0.54, uniformScale: 0.84, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_cliff_filler_01', anchor: 'bottomCenter', offsetXUnits: -2.18, offsetYUnits: 0.76, uniformScale: 0.76, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_forest_mass_01', anchor: 'bottomCenter', offsetXUnits: 0, offsetYUnits: 0.86, uniformScale: 0.9, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'forest_cluster_back', anchor: 'bottomCenter', offsetXUnits: 2.08, offsetYUnits: 0.78, uniformScale: 1.08, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
+  { frame: 'surround_bottom_right_01', anchor: 'bottomRight', offsetXUnits: 0.46, offsetYUnits: 0.54, uniformScale: 0.84, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_mist_fill_01', anchor: 'bottomLeft', offsetXUnits: 0.44, offsetYUnits: 0.82, uniformScale: 1.02, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_mist_fill_01', anchor: 'bottomCenter', offsetXUnits: 0, offsetYUnits: 0.9, uniformScale: 1.16, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_mist_fill_01', anchor: 'bottomRight', offsetXUnits: -0.44, offsetYUnits: 0.82, uniformScale: 1.02, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'fog_patch', anchor: 'bottomLeft', offsetXUnits: 1.72, offsetYUnits: 1.02, uniformScale: 1.26, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
+  { frame: 'fog_patch', anchor: 'bottomRight', offsetXUnits: -1.72, offsetYUnits: 1.02, uniformScale: 1.26, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
+  { frame: 'surround_forest_mass_01', anchor: 'rightUpper', offsetXUnits: 1.66, offsetYUnits: -1.16, uniformScale: 0.92, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
+  { frame: 'surround_forest_mass_01', anchor: 'leftLower', offsetXUnits: -1.28, offsetYUnits: 1.46, uniformScale: 0.88, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
+  { frame: 'forest_cluster_back', anchor: 'bottomLeft', offsetXUnits: -2.12, offsetYUnits: 0.96, uniformScale: 1.02, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'bottomRight', offsetXUnits: 2.12, offsetYUnits: 0.96, uniformScale: 1.02, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
+  { frame: 'pine_silhouette_tall', anchor: 'topLeft', offsetXUnits: -2.42, offsetYUnits: 3.7, uniformScale: 1.24, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.leftPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
+  { frame: 'pine_silhouette_tall', anchor: 'topRight', offsetXUnits: 2.46, offsetYUnits: 3.62, uniformScale: 1.2, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.rightPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
+];
 
 class FairyGuildScene extends Phaser.Scene {
   [key: string]: any;
@@ -1039,14 +1199,21 @@ class FairyGuildScene extends Phaser.Scene {
         return;
       }
       const selected = activeChoice === choice;
-      card.hit.setFillStyle(0xfff1b8, selected ? 0.18 : 0.045);
-      card.selection?.setStrokeStyle(3, selected ? 0xffd26d : 0xd0a24b, selected ? 0.95 : 0.35);
+      card.hit.setFillStyle(
+        SPLASH_HERO_CARD_FILL_COLOR,
+        selected ? SPLASH_HERO_CARD_SELECTED_FILL_ALPHA : SPLASH_HERO_CARD_IDLE_FILL_ALPHA,
+      );
+      card.selection?.setStrokeStyle(
+        SPLASH_HERO_CARD_SELECTION_STROKE_WIDTH,
+        selected ? SPLASH_HERO_CARD_SELECTED_STROKE_COLOR : SPLASH_HERO_CARD_IDLE_STROKE_COLOR,
+        selected ? SPLASH_HERO_CARD_SELECTED_STROKE_ALPHA : SPLASH_HERO_CARD_IDLE_STROKE_ALPHA,
+      );
       if (selected) {
         card.frame.setTint(0xffffff);
       } else {
         card.frame.clearTint();
       }
-      card.label.setColor(selected ? '#5f3b12' : '#7d6039');
+      card.label.setColor(selected ? SPLASH_HERO_CARD_SELECTED_LABEL_COLOR : SPLASH_HERO_CARD_IDLE_LABEL_COLOR);
       card.badge?.setVisible(selected);
     });
     const ready = Boolean(activeChoice);
@@ -1054,10 +1221,13 @@ class FairyGuildScene extends Phaser.Scene {
       if (!this.splashStartButton.input) {
         this.splashStartButton.setInteractive({ useHandCursor: true });
       }
-      this.splashStartButton.setFillStyle(0xfff1b8, ready ? 0.10 : 0.035);
+      this.splashStartButton.setFillStyle(
+        SPLASH_HERO_CARD_FILL_COLOR,
+        ready ? SPLASH_START_BUTTON_READY_FILL_ALPHA : SPLASH_START_BUTTON_DISABLED_FILL_ALPHA,
+      );
     }
     if (this.splashStartText) {
-      this.splashStartText.setAlpha(ready ? 1 : 0.45);
+      this.splashStartText.setAlpha(ready ? 1 : SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA);
     }
     if (this.splashHeroChoiceText) {
       this.splashHeroChoiceText.setText(
@@ -1638,80 +1808,18 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedSceneSurround(bounds, tileW, tileH) {
-    const pieces: GeneratedSurroundPiece[] = [
-      { frame: 'large_shadow', anchor: 'bottomCenter', offsetX: 0, offsetY: tileH * 0.82, uniformScale: 2.72, layer: 'shadow', depth: 3, alpha: 0.32, originY: 0.5 },
-      { frame: 'surround_water_fill_01', anchor: 'topLeft', offsetX: -tileW * 1.86, offsetY: tileH * 2.04, uniformScale: 2.04, layer: 'background', depth: 2, alpha: 1, originY: 0.58 },
-      { frame: 'surround_water_fill_01', anchor: 'topLeft', offsetX: tileW * 1.36, offsetY: tileH * 1.42, uniformScale: 1.36, layer: 'background', depth: 2, alpha: 0.92, originY: 0.58 },
-      { frame: 'surround_water_fill_01', anchor: 'topRight', offsetX: tileW * 1.86, offsetY: tileH * 1.98, uniformScale: 1.8, layer: 'background', depth: 2, alpha: 0.98, originY: 0.58 },
-      { frame: 'surround_water_fill_01', anchor: 'topRight', offsetX: -tileW * 1.28, offsetY: tileH * 1.26, uniformScale: 1.28, layer: 'background', depth: 2, alpha: 0.88, originY: 0.58 },
-      { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetX: -tileW * 3.3, offsetY: tileH * 0.96, uniformScale: 1.28, layer: 'background', depth: 4, alpha: 0.98, originY: 0.64 },
-      { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetX: tileW * 3.4, offsetY: tileH * 0.18, uniformScale: 1.08, layer: 'background', depth: 4, alpha: 0.96, originY: 0.64 },
-      { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetX: tileW * 2.28, offsetY: tileH * 1.78, uniformScale: 0.9, layer: 'background', depth: 4, alpha: 0.94, originY: 0.64 },
-      { frame: 'surround_cliff_filler_01', anchor: 'topLeft', offsetX: -tileW * 3.6, offsetY: tileH * 2.44, uniformScale: 0.92, layer: 'background', depth: 4, alpha: 0.98, originY: 0.66 },
-      { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetX: -tileW * 1.92, offsetY: tileH * 1.84, uniformScale: 0.84, layer: 'background', depth: 4, alpha: 0.92, originY: 0.64 },
-      { frame: 'surround_cliff_filler_01', anchor: 'topRight', offsetX: tileW * 3.32, offsetY: tileH * 2.38, uniformScale: 0.9, layer: 'background', depth: 4, alpha: 0.98, originY: 0.66 },
-      { frame: 'forest_cluster_back', anchor: 'topLeft', offsetX: -tileW * 0.38, offsetY: tileH * 2.76, uniformScale: 1.36, layer: 'background', depth: 4, alpha: 0.94, originY: 0.74 },
-      { frame: 'forest_cluster_back', anchor: 'topLeft', offsetX: tileW * 1.54, offsetY: tileH * 3.08, uniformScale: 1.22, layer: 'background', depth: 4, alpha: 0.92, originY: 0.74 },
-      { frame: 'forest_cluster_back', anchor: 'topLeft', offsetX: -tileW * 2.28, offsetY: tileH * 3.12, uniformScale: 1.46, layer: 'background', depth: 4, alpha: 0.9, originY: 0.74 },
-      { frame: 'surround_cliff_filler_01', anchor: 'topLeft', offsetX: tileW * 2.84, offsetY: tileH * 2.84, uniformScale: 0.88, layer: 'background', depth: 4, alpha: 0.98, originY: 0.66 },
-      { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetX: tileW * 3.24, offsetY: tileH * 2.46, uniformScale: 0.78, layer: 'background', depth: 4, alpha: 0.94, originY: 0.64 },
-      { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetX: tileW * 0.82, offsetY: tileH * 3.22, uniformScale: 0.74, layer: 'background', depth: 4, alpha: 0.9, originY: 0.64 },
-      { frame: 'surround_forest_mass_01', anchor: 'topLeft', offsetX: tileW * 1.9, offsetY: tileH * 3.56, uniformScale: 0.84, layer: 'background', depth: 4, alpha: 0.88, originY: 0.64 },
-      { frame: 'forest_cluster_back', anchor: 'topRight', offsetX: tileW * 0.42, offsetY: tileH * 2.92, uniformScale: 1.3, layer: 'background', depth: 4, alpha: 0.94, originY: 0.74 },
-      { frame: 'forest_cluster_back', anchor: 'topRight', offsetX: -tileW * 1.44, offsetY: tileH * 3.04, uniformScale: 1.18, layer: 'background', depth: 4, alpha: 0.92, originY: 0.74 },
-      { frame: 'forest_cluster_back', anchor: 'topRight', offsetX: tileW * 2.22, offsetY: tileH * 3.14, uniformScale: 1.38, layer: 'background', depth: 4, alpha: 0.9, originY: 0.74 },
-      { frame: 'surround_cliff_filler_01', anchor: 'topRight', offsetX: -tileW * 2.74, offsetY: tileH * 2.88, uniformScale: 0.86, layer: 'background', depth: 4, alpha: 0.98, originY: 0.66 },
-      { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetX: -tileW * 3.16, offsetY: tileH * 2.44, uniformScale: 0.76, layer: 'background', depth: 4, alpha: 0.94, originY: 0.64 },
-      { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetX: -tileW * 0.92, offsetY: tileH * 3.18, uniformScale: 0.74, layer: 'background', depth: 4, alpha: 0.9, originY: 0.64 },
-      { frame: 'surround_forest_mass_01', anchor: 'topRight', offsetX: -tileW * 1.98, offsetY: tileH * 3.52, uniformScale: 0.82, layer: 'background', depth: 4, alpha: 0.88, originY: 0.64 },
-      { frame: 'surround_top_left_01', anchor: 'topLeft', offsetX: -tileW * 0.82, offsetY: tileH * 1.12, uniformScale: 1.24, layer: 'background', depth: 5, alpha: 1, originY: 0.62 },
-      { frame: 'surround_top_center_01', anchor: 'topCenter', offsetX: -tileW * 1.6, offsetY: tileH * 0.74, uniformScale: 1.2, layer: 'background', depth: 5, alpha: 0.98, originY: 0.62 },
-      { frame: 'surround_top_center_01', anchor: 'topCenter', offsetX: tileW * 1.6, offsetY: tileH * 0.74, uniformScale: 1.2, layer: 'background', depth: 5, alpha: 0.98, originY: 0.62 },
-      { frame: 'surround_top_center_01', anchor: 'topCenter', offsetX: 0, offsetY: tileH * 0.94, uniformScale: 1.3, layer: 'background', depth: 5, alpha: 1, originY: 0.62 },
-      { frame: 'surround_top_right_01', anchor: 'topRight', offsetX: tileW * 0.92, offsetY: tileH * 1.06, uniformScale: 1.24, layer: 'background', depth: 5, alpha: 1, originY: 0.62 },
-      { frame: 'surround_left_upper_01', anchor: 'leftUpper', offsetX: -tileW * 0.26, offsetY: tileH * 1.52, uniformScale: 1.26, layer: 'background', depth: 5, alpha: 1, originY: 0.62 },
-      { frame: 'surround_right_upper_01', anchor: 'rightUpper', offsetX: tileW * 0.3, offsetY: tileH * 1.66, uniformScale: 1.28, layer: 'background', depth: 5, alpha: 1, originY: 0.62 },
-      { frame: 'surround_cliff_filler_01', anchor: 'topLeft', offsetX: tileW * 4.6, offsetY: tileH * 0.38, uniformScale: 0.9, layer: 'edge', depth: bounds.top.y + tileH * 0.18, alpha: 1 },
-      { frame: 'surround_cliff_filler_01', anchor: 'topRight', offsetX: -tileW * 4.6, offsetY: tileH * 0.52, uniformScale: 0.96, layer: 'edge', depth: bounds.top.y + tileH * 0.18, alpha: 1 },
-      { frame: 'surround_mist_fill_01', anchor: 'topLeft', offsetX: tileW * 0.72, offsetY: tileH * 1.18, uniformScale: 1.02, layer: 'shadow', depth: 16, alpha: 0.62, originY: 0.6 },
-      { frame: 'surround_mist_fill_01', anchor: 'topLeft', offsetX: -tileW * 1.42, offsetY: tileH * 2.72, uniformScale: 1.2, layer: 'shadow', depth: 17, alpha: 0.38, originY: 0.58 },
-      { frame: 'fog_patch', anchor: 'topLeft', offsetX: tileW * 1.46, offsetY: tileH * 2.92, uniformScale: 1.54, layer: 'shadow', depth: 17, alpha: 0.44, originY: 0.56 },
-      { frame: 'fog_patch', anchor: 'topLeft', offsetX: tileW * 3.16, offsetY: tileH * 2.66, uniformScale: 1.06, layer: 'shadow', depth: 17, alpha: 0.32, originY: 0.56 },
-      { frame: 'purple_mist_patch', anchor: 'topLeft', offsetX: -tileW * 0.12, offsetY: tileH * 3.26, uniformScale: 1.18, layer: 'shadow', depth: 17, alpha: 0.18, originY: 0.56 },
-      { frame: 'surround_mist_fill_01', anchor: 'topRight', offsetX: -tileW * 0.52, offsetY: tileH * 1.16, uniformScale: 1, layer: 'shadow', depth: 16, alpha: 0.58, originY: 0.6 },
-      { frame: 'surround_mist_fill_01', anchor: 'topRight', offsetX: tileW * 1.38, offsetY: tileH * 2.78, uniformScale: 1.14, layer: 'shadow', depth: 17, alpha: 0.36, originY: 0.58 },
-      { frame: 'fog_patch', anchor: 'topRight', offsetX: -tileW * 1.54, offsetY: tileH * 2.88, uniformScale: 1.42, layer: 'shadow', depth: 17, alpha: 0.42, originY: 0.56 },
-      { frame: 'fog_patch', anchor: 'topRight', offsetX: -tileW * 3.06, offsetY: tileH * 2.6, uniformScale: 1.02, layer: 'shadow', depth: 17, alpha: 0.3, originY: 0.56 },
-      { frame: 'purple_mist_patch', anchor: 'topRight', offsetX: tileW * 0.12, offsetY: tileH * 3.22, uniformScale: 1.14, layer: 'shadow', depth: 17, alpha: 0.18, originY: 0.56 },
-      { frame: 'surround_left_lower_01', anchor: 'leftLower', offsetX: -tileW * 0.22, offsetY: tileH * 0.1, uniformScale: 1.1, layer: 'decor', depth: bounds.bottom.y + tileH * 0.62, alpha: 1 },
-      { frame: 'surround_right_lower_01', anchor: 'rightLower', offsetX: tileW * 0.22, offsetY: tileH * 0.1, uniformScale: 1.1, layer: 'decor', depth: bounds.bottom.y + tileH * 0.62, alpha: 1 },
-      { frame: 'surround_bottom_left_01', anchor: 'bottomLeft', offsetX: -tileW * 0.46, offsetY: tileH * 0.54, uniformScale: 0.84, layer: 'decor', depth: bounds.bottom.y + tileH * 0.98, alpha: 1 },
-      { frame: 'surround_cliff_filler_01', anchor: 'bottomCenter', offsetX: -tileW * 2.18, offsetY: tileH * 0.76, uniformScale: 0.76, layer: 'decor', depth: bounds.bottom.y + tileH * 1.02, alpha: 1 },
-      { frame: 'surround_forest_mass_01', anchor: 'bottomCenter', offsetX: 0, offsetY: tileH * 0.86, uniformScale: 0.9, layer: 'decor', depth: bounds.bottom.y + tileH * 1.02, alpha: 0.98, originY: 0.64 },
-      { frame: 'forest_cluster_back', anchor: 'bottomCenter', offsetX: tileW * 2.08, offsetY: tileH * 0.78, uniformScale: 1.08, layer: 'decor', depth: bounds.bottom.y + tileH * 1.04, alpha: 0.96, originY: 0.72 },
-      { frame: 'surround_bottom_right_01', anchor: 'bottomRight', offsetX: tileW * 0.46, offsetY: tileH * 0.54, uniformScale: 0.84, layer: 'decor', depth: bounds.bottom.y + tileH * 0.98, alpha: 1 },
-      { frame: 'surround_mist_fill_01', anchor: 'bottomLeft', offsetX: tileW * 0.44, offsetY: tileH * 0.82, uniformScale: 1.02, layer: 'shadow', depth: 21, alpha: 0.32, originY: 0.56 },
-      { frame: 'surround_mist_fill_01', anchor: 'bottomCenter', offsetX: 0, offsetY: tileH * 0.9, uniformScale: 1.16, layer: 'shadow', depth: 22, alpha: 0.36, originY: 0.56 },
-      { frame: 'surround_mist_fill_01', anchor: 'bottomRight', offsetX: -tileW * 0.44, offsetY: tileH * 0.82, uniformScale: 1.02, layer: 'shadow', depth: 21, alpha: 0.32, originY: 0.56 },
-      { frame: 'fog_patch', anchor: 'bottomLeft', offsetX: tileW * 1.72, offsetY: tileH * 1.02, uniformScale: 1.26, layer: 'shadow', depth: 22, alpha: 0.28, originY: 0.52 },
-      { frame: 'fog_patch', anchor: 'bottomRight', offsetX: -tileW * 1.72, offsetY: tileH * 1.02, uniformScale: 1.26, layer: 'shadow', depth: 22, alpha: 0.28, originY: 0.52 },
-      { frame: 'surround_forest_mass_01', anchor: 'rightUpper', offsetX: tileW * 1.66, offsetY: -tileH * 1.16, uniformScale: 0.92, layer: 'background', depth: 4, alpha: 0.94 },
-      { frame: 'surround_forest_mass_01', anchor: 'leftLower', offsetX: -tileW * 1.28, offsetY: tileH * 1.46, uniformScale: 0.88, layer: 'background', depth: 4, alpha: 0.94 },
-      { frame: 'forest_cluster_back', anchor: 'bottomLeft', offsetX: -tileW * 2.12, offsetY: tileH * 0.96, uniformScale: 1.02, layer: 'background', depth: 4, alpha: 0.92, originY: 0.72 },
-      { frame: 'forest_cluster_back', anchor: 'bottomRight', offsetX: tileW * 2.12, offsetY: tileH * 0.96, uniformScale: 1.02, layer: 'background', depth: 4, alpha: 0.92, originY: 0.72 },
-      { frame: 'pine_silhouette_tall', anchor: 'topLeft', offsetX: -tileW * 2.42, offsetY: tileH * 3.7, uniformScale: 1.24, layer: 'background', depth: 3, alpha: 0.22, originY: 0.84 },
-      { frame: 'pine_silhouette_tall', anchor: 'topRight', offsetX: tileW * 2.46, offsetY: tileH * 3.62, uniformScale: 1.2, layer: 'background', depth: 3, alpha: 0.2, originY: 0.84 },
-    ];
-
-    pieces.forEach((piece) => {
+    GENERATED_SURROUND_PIECES.forEach((piece) => {
       const anchor = this.getGeneratedSurroundAnchorPoint(bounds, tileW, tileH, piece.anchor);
+      const depth = typeof piece.depth === 'number'
+        ? piece.depth
+        : (piece.depth.edge === 'top' ? bounds.top.y : bounds.bottom.y) + tileH * piece.depth.tileOffset;
       this.addEnvironmentUniformSprite(
         this.getGeneratedSurroundLayer(piece.layer),
         piece.frame,
-        anchor.x + piece.offsetX,
-        anchor.y + piece.offsetY,
+        anchor.x + piece.offsetXUnits * tileW,
+        anchor.y + piece.offsetYUnits * tileH,
         piece.uniformScale,
-        piece.depth,
+        depth,
         { alpha: piece.alpha, originX: piece.originX, originY: piece.originY },
       );
     });
@@ -2140,7 +2248,7 @@ class FairyGuildScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDisplaySize(size[0], size[1])
       .setDepth(layout.depth)
-      .setAlpha(1);
+      .setAlpha(GENERATED_BUILDING_SPRITE_ALPHA);
     const healthBar = this.createBuildingHealthBar(
       layout.x,
       layout.y - size[1] * 0.78,
@@ -2163,6 +2271,7 @@ class FairyGuildScene extends Phaser.Scene {
       iso: { x: placement.iso.x, y: placement.iso.y },
       footprint: placement.footprint,
       footprintCells: placement.cells.map((cell) => ({ ...cell })),
+      spriteAlpha: GENERATED_BUILDING_SPRITE_ALPHA,
       sprite,
       healthBar,
       underAttackUntil: 0,
@@ -2575,13 +2684,13 @@ class FairyGuildScene extends Phaser.Scene {
     this.buildings = buildingData.map((data) => {
       const p = this.isoToScreen(data.x, data.y, 18);
       const base = this.add.graphics();
-      base.fillStyle(0x8f7346, 0.14);
+      base.fillStyle(0x8f7346, STATIC_BUILDING_BASE_ALPHA);
       base.fillEllipse(p.x, p.y + 22, data.size[0] * 0.62, 28);
       const sprite = this.add.image(p.x, p.y, data.texture)
         .setOrigin(0.5, 0.84)
         .setDisplaySize(data.size[0], data.size[1])
         .setDepth(p.y)
-        .setAlpha(0.74);
+        .setAlpha(STATIC_BUILDING_SPRITE_ALPHA);
       const healthBar = this.createBuildingHealthBar(
         p.x,
         p.y - data.size[1] * 0.78,
@@ -2595,6 +2704,8 @@ class FairyGuildScene extends Phaser.Scene {
         ...data,
         iso: { x: data.x, y: data.y },
         footprintCells,
+        baseAlpha: STATIC_BUILDING_BASE_ALPHA,
+        spriteAlpha: STATIC_BUILDING_SPRITE_ALPHA,
         sprite,
         base,
         healthBar,
@@ -5331,6 +5442,31 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.player) {return;}
     this.player.sprite.setDepth(this.player.sprite.y + 80);
     this.player.shadow.setDepth(this.player.sprite.y + 10);
+    this.buildings.forEach((building) => {
+      const footprintBounds = this.getFootprintScreenBounds(
+        building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint),
+      );
+      const spriteBounds = building.sprite.getBounds();
+      const playerX = this.player.sprite.x;
+      const playerY = this.player.sprite.y - Math.min(
+        BUILDING_OCCLUSION_PLAYER_Y_OFFSET_MAX,
+        this.player.sprite.displayHeight * BUILDING_OCCLUSION_PLAYER_Y_OFFSET_RATIO,
+      );
+      const hiddenBehind = playerY < building.sprite.y - BUILDING_OCCLUSION_VERTICAL_CLEARANCE
+        && playerY >= spriteBounds.top + building.sprite.displayHeight * BUILDING_OCCLUSION_SPRITE_TOP_PADDING_RATIO
+        && playerX >= footprintBounds.left - BUILDING_OCCLUSION_HORIZONTAL_PADDING
+        && playerX <= footprintBounds.right + BUILDING_OCCLUSION_HORIZONTAL_PADDING;
+      building.sprite.setAlpha(
+        hiddenBehind
+          ? Math.min(building.spriteAlpha ?? GENERATED_BUILDING_SPRITE_ALPHA, OCCLUDED_BUILDING_SPRITE_ALPHA)
+          : (building.spriteAlpha ?? GENERATED_BUILDING_SPRITE_ALPHA),
+      );
+      building.base?.setAlpha(
+        hiddenBehind
+          ? Math.min(building.baseAlpha ?? STATIC_BUILDING_BASE_ALPHA, OCCLUDED_STATIC_BUILDING_BASE_ALPHA)
+          : (building.baseAlpha ?? STATIC_BUILDING_BASE_ALPHA),
+      );
+    });
     this.enemies.forEach((enemy) => {
       enemy.shadow.setDepth(enemy.sprite.y + 5);
       enemy.sprite.setDepth(enemy.sprite.y + 70);

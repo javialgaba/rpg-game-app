@@ -25,6 +25,7 @@
 
 - Match the existing TypeScript style: ESM imports, single quotes, semicolons, descriptive names, and focused functions.
 - Keep logic near its owning module instead of introducing extra abstraction layers without a clear payoff.
+- Avoid meaningful magic numbers in gameplay, rendering, and UI code. Extract tunable numeric or color literals into descriptively named constants; put shared balance/config values in `src/gameConfig.ts` and keep one-off local tuning constants close to the owning code.
 - Prefer explicit types when touching existing TypeScript surfaces; if a value is intentionally unused, prefix it with `_` to satisfy ESLint.
 - Add comments only when a block is hard to infer from the code itself.
 
