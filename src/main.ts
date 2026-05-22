@@ -1148,6 +1148,16 @@ class FairyGuildScene extends Phaser.Scene {
     };
   }
 
+  restartForWorldProgression(nextProgression, note) {
+    const snapshot = this.createRunResumeSnapshot(nextProgression, note);
+    this.scene.restart({
+      resumeRunState: snapshot,
+      sceneVariantKey: nextProgression.worldKey,
+      resumeSkipSplash: true,
+    });
+    return `restart:${nextProgression.worldKey}`;
+  }
+
   restoreRunStateFromResume() {
     if (!this.resumeRunState) {
       return;
@@ -2869,19 +2879,7 @@ class FairyGuildScene extends Phaser.Scene {
     };
     const theme = WORLD_ENEMY_THEMES[nextProgression.worldKey as SeasonPreset];
     const transitionNote = `${theme.label} debug transition.`;
-    if (this.generatedLevelActive) {
-      const snapshot = this.createRunResumeSnapshot(nextProgression, transitionNote);
-      this.scene.restart({
-        resumeRunState: snapshot,
-        sceneVariantKey: nextProgression.worldKey,
-        resumeSkipSplash: true,
-      });
-      return `restart:${nextProgression.worldKey}`;
-    }
-    this.state = { ...this.state, ...nextProgression };
-    this.addGuildNote(transitionNote);
-    this.startLevelCountdown();
-    return `countdown:${nextProgression.worldKey}`;
+    return this.restartForWorldProgression(nextProgression, transitionNote);
   }
 
   syncDevDiagnostics() {
@@ -2898,6 +2896,7 @@ class FairyGuildScene extends Phaser.Scene {
     const repairTargetState = repairTarget ? this.getRepairModeTargetState(repairTarget) : '';
     const repairTargetDamaged = repairTarget && repairTarget.hp < repairTarget.max;
     host.setAttribute('data-phase', String(this.state.phase ?? ''));
+    host.setAttribute('data-map-mode', this.generatedLevelActive ? 'generated' : 'static');
     host.setAttribute('data-level', String(this.state.level ?? 0));
     host.setAttribute('data-gold', String(this.state.gold ?? 0));
     host.setAttribute('data-xp', String(this.state.xp ?? 0));
@@ -2905,6 +2904,7 @@ class FairyGuildScene extends Phaser.Scene {
     host.setAttribute('data-world-round', String(this.state.worldRound ?? 0));
     host.setAttribute('data-world-cycle', String(this.state.worldCycle ?? 0));
     host.setAttribute('data-boss-round', this.state.bossRound ? '1' : '0');
+    host.setAttribute('data-game-over-reason', String(this.state.gameOverReason ?? ''));
     host.setAttribute('data-hero-choice', String(this.heroChoice ?? ''));
     host.setAttribute('data-pending-hero-choice', String(this.pendingHeroChoice ?? ''));
     host.setAttribute('data-splash-ready', this.pendingHeroChoice ? '1' : '0');
@@ -6096,16 +6096,8 @@ class FairyGuildScene extends Phaser.Scene {
     if (wasBossRound) {
       const theme = WORLD_ENEMY_THEMES[nextProgression.worldKey as SeasonPreset];
       const transitionNote = `${theme.label} rises over the village.`;
-      if (this.generatedLevelActive) {
-        const snapshot = this.createRunResumeSnapshot(nextProgression, transitionNote);
-        this.scene.restart({
-          resumeRunState: snapshot,
-          sceneVariantKey: nextProgression.worldKey,
-          resumeSkipSplash: true,
-        });
-        return;
-      }
-      this.addGuildNote(transitionNote);
+      this.restartForWorldProgression(nextProgression, transitionNote);
+      return;
     }
     this.startLevelCountdown();
   }

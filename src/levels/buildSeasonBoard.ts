@@ -80,6 +80,14 @@ const place = (matrix: LevelToken[][], token: LevelToken, x: number, y: number) 
   matrix[point.y][point.x] = token;
 };
 
+const canCarveLaneToken = (token: LevelToken) => (
+  token === 'grass'
+  || token === 'decoration'
+  || token === 'path'
+  || token === 'village-center'
+  || token === 'player-spawn'
+);
+
 const stamp = (
   matrix: LevelToken[][],
   token: Extract<LevelToken, 'path' | 'village-center'>,
@@ -88,7 +96,7 @@ const stamp = (
 ) => {
   const point = clampPoint(x, y);
   const current = matrix[point.y][point.x];
-  if (current === 'monster-spawn') {
+  if (!canCarveLaneToken(current)) {
     return;
   }
   matrix[point.y][point.x] = token;
