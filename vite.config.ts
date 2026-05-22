@@ -5,6 +5,9 @@ export default defineConfig(({ command }) => {
   const isBuild = command === 'build';
 
   return {
+    define: {
+      global: 'globalThis',
+    },
     resolve: {
       alias: isBuild
         ? [
