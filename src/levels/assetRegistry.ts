@@ -49,7 +49,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     protected: true,
     importance: BUILDING_IMPORTANCE['castle'],
     maxHealth: 110,
-    render: { textureKey: 'buildingsAtlas', frameKey: 'castle_01', displaySize: [316, 316], origin: [0.5, 0.84], alpha: 1, z: 18 },
+    render: { textureKey: 'buildingsAtlas', frameKey: 'castle_01', origin: [0.5, 1], floorFrameWidth: 339, floorFrameBottomPadding: 22, alpha: 1, z: 18 },
   },
   'house-1': {
     token: 'house-1',
@@ -61,7 +61,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     protected: true,
     importance: BUILDING_IMPORTANCE['house-1'],
     maxHealth: 74,
-    render: { textureKey: 'buildingsAtlas', frameKey: 'house_orange_01', displaySize: [276, 276], origin: [0.5, 0.84], alpha: 1, z: 18 },
+    render: { textureKey: 'buildingsAtlas', frameKey: 'house_orange_01', origin: [0.5, 1], floorFrameWidth: 324, floorFrameBottomPadding: 30, alpha: 1, z: 18 },
   },
   'house-2': {
     token: 'house-2',
@@ -73,7 +73,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     protected: true,
     importance: BUILDING_IMPORTANCE['house-2'],
     maxHealth: 76,
-    render: { textureKey: 'buildingsAtlas', frameKey: 'bakery_blue_01', displaySize: [276, 276], origin: [0.5, 0.84], alpha: 1, z: 18 },
+    render: { textureKey: 'buildingsAtlas', frameKey: 'bakery_blue_01', origin: [0.5, 1], floorFrameWidth: 324, floorFrameBottomPadding: 28, alpha: 1, z: 18 },
   },
   'market': {
     token: 'market',
@@ -85,7 +85,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     protected: true,
     importance: BUILDING_IMPORTANCE['market'],
     maxHealth: 68,
-    render: { textureKey: 'buildingsAtlas', frameKey: 'market_01', displaySize: [276, 276], origin: [0.5, 0.86], alpha: 1, z: 18 },
+    render: { textureKey: 'buildingsAtlas', frameKey: 'market_01', origin: [0.5, 1], floorFrameWidth: 324, floorFrameBottomPadding: 26, alpha: 1, z: 18 },
   },
   'well': {
     token: 'well',
@@ -94,7 +94,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     walkable: false,
     blocksMovement: true,
     footprint: { w: 2, h: 2 },
-    render: { textureKey: 'buildingsAtlas', frameKey: 'well_01', displaySize: [276, 276], origin: [0.5, 0.82], alpha: 1, z: 7 },
+    render: { textureKey: 'buildingsAtlas', frameKey: 'well_01', origin: [0.5, 1], floorFrameWidth: 260, floorFrameBottomPadding: 46, alpha: 1, z: 7 },
   },
   'tree': {
     token: 'tree',

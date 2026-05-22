@@ -4,6 +4,7 @@ import { ASSET_REGISTRY } from './levels/assetRegistry';
 import { buildSeasonBoardConfig } from './levels/buildSeasonBoard';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
+import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
 import { findGridPath, pathCost } from './levels/pathfinding';
 import { isFootprintWalkable } from './levels/playerFootprint';
 import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
@@ -63,6 +64,19 @@ type GeneratedSurroundAnchor =
   | 'bottomCenter'
   | 'bottomRight';
 type GeneratedSurroundLayer = 'background' | 'shadow' | 'edge' | 'water' | 'decor';
+
+interface ScreenFootprintBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+  bottomCenterX: number;
+  bottomCenterY: number;
+}
 
 interface GeneratedSurroundPiece {
   frame: string;
@@ -749,6 +763,72 @@ class FairyGuildScene extends Phaser.Scene {
   scaleGeneratedSize(size) {
     const scale = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.config.tileSize / 64 : 1;
     return [size[0] * scale, size[1] * scale];
+  }
+
+  getFootprintScreenBounds(footprintCells: GridPoint[]): ScreenFootprintBounds {
+    const { tileW, tileH } = this.getIsoMetrics();
+    const halfW = tileW / 2;
+    const halfH = tileH / 2;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    let top = Number.POSITIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+
+    footprintCells.forEach((cell) => {
+      const center = this.isoToScreen(cell.x, cell.y);
+      left = Math.min(left, center.x - halfW);
+      right = Math.max(right, center.x + halfW);
+      top = Math.min(top, center.y - halfH);
+      bottom = Math.max(bottom, center.y + halfH);
+    });
+
+    if (!Number.isFinite(left) || !Number.isFinite(right) || !Number.isFinite(top) || !Number.isFinite(bottom)) {
+      const center = this.isoToScreen(0, 0);
+      left = center.x - halfW;
+      right = center.x + halfW;
+      top = center.y - halfH;
+      bottom = center.y + halfH;
+    }
+
+    return {
+      left,
+      right,
+      top,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+      centerX: (left + right) / 2,
+      centerY: (top + bottom) / 2,
+      bottomCenterX: (left + right) / 2,
+      bottomCenterY: bottom,
+    };
+  }
+
+  getGeneratedFootprintSpriteLayout(
+    placement: LevelPlacement,
+    render: AssetRenderMetadata,
+    fallbackFrameSize: [number, number],
+  ) {
+    const footprintCells = placement.cells?.length
+      ? placement.cells
+      : this.getFootprintCells(placement.iso.x, placement.iso.y, placement.footprint);
+    const footprintBounds = this.getFootprintScreenBounds(footprintCells);
+    const textureFrame = render.textureKey
+      ? this.textures.getFrame(render.textureKey, render.frameKey)
+      : null;
+    const frameWidth = textureFrame?.width ?? fallbackFrameSize[0];
+    const frameHeight = textureFrame?.height ?? fallbackFrameSize[1];
+    const floorFrameWidth = Math.max(1, render.floorFrameWidth ?? frameWidth);
+    const displayScale = footprintBounds.width / floorFrameWidth;
+    const bottomPadding = render.floorFrameBottomPadding ?? 0;
+
+    return {
+      x: footprintBounds.bottomCenterX,
+      y: footprintBounds.bottomCenterY + bottomPadding * displayScale,
+      depth: footprintBounds.bottomCenterY,
+      size: [frameWidth * displayScale, frameHeight * displayScale] as [number, number],
+      bounds: footprintBounds,
+    };
   }
 
   isoToScreen(x, y, z = 0) {
@@ -2039,24 +2119,26 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderGeneratedBuilding(placement) {
     const render = placement.render ?? {};
-    const p = this.isoToGroundedEntityScreen(placement.iso.x, placement.iso.y, 0);
-    const size = this.scaleGeneratedSize(render.displaySize ?? [80, 70]);
-    const base = this.add.graphics();
-    base.fillStyle(0x8f7346, 0.14);
-    base.fillEllipse(p.x, p.y + 22, size[0] * 0.62, 28);
-    const sprite = this.add.image(p.x, p.y, render.textureKey ?? 'cottageTexture', render.frameKey)
-      .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.84)
+    const textureKey = render.textureKey ?? 'cottageTexture';
+    const layout = this.getGeneratedFootprintSpriteLayout(
+      placement,
+      { ...render, textureKey },
+      [80, 70],
+    );
+    const size = layout.size;
+    const sprite = this.add.image(layout.x, layout.y, textureKey, render.frameKey)
+      .setOrigin(0.5, 1)
       .setDisplaySize(size[0], size[1])
-      .setDepth(p.y)
+      .setDepth(layout.depth)
       .setAlpha(1);
     const healthBar = this.createBuildingHealthBar(
-      p.x,
-      p.y - size[1] * 0.78,
+      layout.x,
+      layout.y - size[1] * 0.78,
       Math.max(42, Math.min(76, size[0] * 0.7)),
       10,
-      p.y + 140,
+      layout.depth + 140,
     );
-    this.entityLayer.add([base, sprite, healthBar.container]);
+    this.entityLayer.add([sprite, healthBar.container]);
     const building = {
       name: placement.label,
       x: placement.iso.x,
@@ -2072,7 +2154,6 @@ class FairyGuildScene extends Phaser.Scene {
       footprint: placement.footprint,
       footprintCells: placement.cells.map((cell) => ({ ...cell })),
       sprite,
-      base,
       healthBar,
       underAttackUntil: 0,
     };
@@ -2084,21 +2165,22 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.generatedLevelActive && this.generatedLevel && placement.token === 'tree' && this.isGeneratedBoardEdgeCell(placement.grid)) {
       return;
     }
-    const render = placement.render;
+    const render = placement.render ?? {};
     const override = this.getSceneVariantPropTexture(placement);
     const textureKey = override?.textureKey ?? render?.textureKey;
     const frameKey = override?.frameKey ?? render?.frameKey;
     if (!textureKey) {
       return;
     }
-    const p = textureKey === 'buildingsAtlas'
-      ? this.isoToGroundedEntityScreen(placement.iso.x, placement.iso.y, 0)
-      : this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
-    const size = this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
+    const layout = textureKey === 'buildingsAtlas'
+      ? this.getGeneratedFootprintSpriteLayout(placement, { ...render, textureKey, frameKey }, [42, 42])
+      : null;
+    const p = layout ?? this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
+    const size = layout?.size ?? this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
     const sprite = this.add.image(p.x, p.y, textureKey, frameKey)
-      .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
+      .setOrigin(layout ? 0.5 : render.origin?.[0] ?? 0.5, layout ? 1 : render.origin?.[1] ?? 0.82)
       .setDisplaySize(size[0], size[1])
-      .setDepth(p.y + 8)
+      .setDepth((layout?.depth ?? p.y) + 8)
       .setAlpha(render.alpha ?? 0.72);
     this.entityLayer.add(sprite);
   }

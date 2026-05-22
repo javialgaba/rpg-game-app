@@ -51,6 +51,8 @@ export interface AssetRenderMetadata {
   frameKey?: string;
   displaySize?: [number, number];
   origin?: [number, number];
+  floorFrameWidth?: number;
+  floorFrameBottomPadding?: number;
   alpha?: number;
   z?: number;
   terrainFill?: number;
