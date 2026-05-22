@@ -5,6 +5,7 @@ import { buildSeasonBoardConfig } from './levels/buildSeasonBoard';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import { findGridPath, pathCost } from './levels/pathfinding';
+import { isFootprintWalkable } from './levels/playerFootprint';
 import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
 import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
@@ -795,8 +796,11 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevelActive || !this.generatedLevel) {
       return true;
     }
-    const cell = this.isoToGridCell(iso);
-    return Boolean(this.generatedLevel.playerWalkableGrid[cell.y]?.[cell.x]);
+    return isFootprintWalkable(
+      this.generatedLevel.walkableGrid,
+      iso,
+      this.generatedLevel.playableBounds,
+    );
   }
 
   createBackground() {

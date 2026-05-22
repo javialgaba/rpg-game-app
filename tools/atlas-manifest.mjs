@@ -6,6 +6,11 @@ const generatedWorldEdgesBackdropSheet = 'public/assets/atlas-sources/generated/
 const generatedEnvironmentStructuralSheet = 'public/assets/atlas-sources/generated/environment-structural.png';
 const generatedEnvironmentAtmosphericSheet = 'public/assets/atlas-sources/generated/environment-atmospheric.png';
 const generatedEnvironmentSurroundSheet = 'public/assets/atlas-sources/generated/environment-surround.png';
+const generatedCastleFootprint = 'public/assets/atlas-sources/generated/building-footprint-castle.png';
+const generatedHouseOrangeFootprint = 'public/assets/atlas-sources/generated/building-footprint-house-orange.png';
+const generatedBakeryBlueFootprint = 'public/assets/atlas-sources/generated/building-footprint-bakery-blue.png';
+const generatedMarketFootprint = 'public/assets/atlas-sources/generated/building-footprint-market.png';
+const generatedWellFootprint = 'public/assets/atlas-sources/generated/building-footprint-well.png';
 
 const envCellXs = [0, 314, 627, 940];
 const envCellYs = [0, 314, 627, 940];
@@ -135,11 +140,11 @@ export const atlasManifest = {
     cellSize: 384,
     columns: 3,
     frames: [
-      { name: 'castle_01', source: worldSheet, crop: [805, 14, 229, 324], padding: 22, align: 'bottom' },
-      { name: 'house_orange_01', source: worldSheet, crop: [1044, 40, 223, 298], padding: 30, align: 'bottom' },
-      { name: 'bakery_blue_01', source: worldSheet, crop: [1278, 90, 239, 258], padding: 28, align: 'bottom' },
-      { name: 'market_01', source: worldSheet, crop: [16, 313, 244, 250], padding: 26, align: 'bottom' },
-      { name: 'well_01', source: worldSheet, crop: [272, 330, 163, 235], padding: 46, align: 'bottom' },
+      { name: 'castle_01', source: generatedCastleFootprint, padding: 22, align: 'bottom' },
+      { name: 'house_orange_01', source: generatedHouseOrangeFootprint, padding: 30, align: 'bottom' },
+      { name: 'bakery_blue_01', source: generatedBakeryBlueFootprint, padding: 28, align: 'bottom' },
+      { name: 'market_01', source: generatedMarketFootprint, padding: 26, align: 'bottom' },
+      { name: 'well_01', source: generatedWellFootprint, padding: 46, align: 'bottom' },
     ],
   },
   ui: {
