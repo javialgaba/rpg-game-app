@@ -5628,29 +5628,29 @@ class FairyGuildScene extends Phaser.Scene {
 
   getLevelUpOverlayLayout() {
     const compact = this.isCompactOverlayLayout();
-    const panelHeight = compact ? 424 : 470;
+    const panelHeight = compact ? 390 : 430;
     return {
       compact,
       panelWidth: compact ? 720 : 780,
       panelHeight,
       offsetY: this.getOverlayContentOffset(panelHeight),
       decorScale: compact ? 0.48 : 0.54,
-      titleY: compact ? -154 : -174,
+      titleY: compact ? -140 : -154,
       titleWidth: compact ? 360 : 390,
       titleTextWidth: compact ? 292 : 318,
       titleHeight: compact ? 66 : 72,
       titleSize: compact ? 30 : 32,
       titleMinSize: compact ? 21 : 23,
-      rewardY: compact ? -108 : -122,
-      helperY: compact ? -68 : -80,
-      cardY: compact ? 56 : 62,
+      rewardY: compact ? -94 : -104,
+      helperY: compact ? -70 : -76,
+      cardY: compact ? 44 : 48,
       cardXScale: compact ? 0.88 : 0.94,
       cardWidth: compact ? 176 : 188,
-      cardHeight: compact ? 188 : 202,
-      iconY: compact ? -40 : -44,
-      pipsY: compact ? 30 : 34,
-      labelY: compact ? 58 : 64,
-      detailY: compact ? 78 : 86,
+      cardHeight: compact ? 176 : 188,
+      iconY: compact ? -38 : -42,
+      pipsY: compact ? 20 : 24,
+      labelY: compact ? 48 : 52,
+      detailY: compact ? 66 : 72,
     };
   }
 
