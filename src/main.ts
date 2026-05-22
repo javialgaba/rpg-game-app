@@ -2554,6 +2554,9 @@ class FairyGuildScene extends Phaser.Scene {
     if (kind === 'rocks') {
       return 0xd0d5dd;
     }
+    if (kind === 'puddle') {
+      return 0x7fd8f6;
+    }
     if (kind === 'grassPatch') {
       return 0x9be86b;
     }

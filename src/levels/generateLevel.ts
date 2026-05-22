@@ -18,9 +18,18 @@ import { SeededRandom } from './seededRandom';
 
 const PROTECTED_EDGE_PADDING = 4;
 const MIN_SPAWN_TARGET_PATH = 10;
+const MIN_BUILDING_FOOTPRINT_DISTANCE = 3;
+const BUILDING_CLEARANCE_TOKENS = new Set<LevelToken>(['castle', 'house-1', 'house-2', 'market', 'well']);
 const FULL_TREE_FRAMES = new Set(['pine_tree_01', 'oak_tree_01']);
 const PARTIAL_TREE_FRAMES = new Set(['world-forest-cluster', 'world-pine']);
 const VALID_TERRAIN_FRAMES = new Set(['grass_01', 'grass_02', 'stone_path_01', 'flower_bed_01']);
+const BLOCKING_DECORATION_KINDS = new Set<NonNullable<LevelPlacement['decorationKind']>>([
+  'rocks',
+  'sapling',
+  'fullTree',
+  'treeCluster',
+  'puddle',
+]);
 
 const clonePoint = (point: GridPoint) => ({ x: point.x, y: point.y });
 
@@ -93,6 +102,36 @@ const getBoundsEdgeDistance = (point: GridPoint, bounds: PlayableBounds) => Math
 );
 
 const pointKey = (point: GridPoint) => `${point.x},${point.y}`;
+
+const getCellDistance = (a: GridPoint, b: GridPoint) => Math.max(
+  Math.abs(a.x - b.x),
+  Math.abs(a.y - b.y),
+);
+
+const getFootprintDistance = (a: GridPoint[], b: GridPoint[]) => (
+  a.reduce((best, aCell) => Math.min(
+    best,
+    b.reduce((cellBest, bCell) => Math.min(cellBest, getCellDistance(aCell, bCell)), Infinity),
+  ), Infinity)
+);
+
+const shouldEnforceBuildingClearance = (placement: LevelPlacement) => (
+  BUILDING_CLEARANCE_TOKENS.has(placement.token)
+);
+
+const getBuildingClearanceErrors = (placements: LevelPlacement[]) => {
+  const clearanced = placements.filter(shouldEnforceBuildingClearance);
+  const errors: string[] = [];
+  clearanced.forEach((placement, index) => {
+    clearanced.slice(index + 1).forEach((other) => {
+      const distance = getFootprintDistance(placement.cells, other.cells);
+      if (distance < MIN_BUILDING_FOOTPRINT_DISTANCE) {
+        errors.push(`${placement.label} at ${pointKey(placement.grid)} and ${other.label} at ${pointKey(other.grid)} must keep 2 clear cells between building footprints.`);
+      }
+    });
+  });
+  return errors;
+};
 
 const getNeighborCells = (point: GridPoint, radius = 1) => {
   const cells: GridPoint[] = [];
@@ -205,6 +244,7 @@ const createRoadPlan = (
   const protectedAnchors: GridPoint[] = [];
   const utilityAnchors: GridPoint[] = [];
   const villageCenters: GridPoint[] = [];
+  const requiredRoadKeys = new Set<string>();
   let playerSpawn: GridPoint | null = null;
 
   matrix.forEach((row, y) => {
@@ -247,14 +287,19 @@ const createRoadPlan = (
     && !blockedGrid[point.y][point.x]
     && canCarveRoadToken(matrix[point.y]?.[point.x])
   );
-  const walkableForRoads = blockedGrid.map((row) => row.map((blocked) => !blocked));
+  const walkableForRoads = blockedGrid.map((row, y) => row.map((blocked, x) => (
+    !blocked
+    && isInsidePlayableBounds({ x, y }, playableBounds)
+    && canCarveRoadToken(matrix[y]?.[x])
+  )));
 
-  const carveRoadCell = (point: GridPoint) => {
+  const markRoadCell = (point: GridPoint) => {
     if (!isRoadable(point)) {
       return;
     }
+    requiredRoadKeys.add(pointKey(point));
     const token = matrix[point.y][point.x];
-    if (token === 'grass' || token === 'decoration' || token === 'village-center') {
+    if (token === 'grass' || token === 'decoration' || token === 'path' || token === 'village-center') {
       matrix[point.y][point.x] = 'path';
     }
   };
@@ -294,9 +339,17 @@ const createRoadPlan = (
       warnings.push(`Road generator could not find a route to ${label} at ${pointKey(anchor)}.`);
       return;
     }
-    path.forEach(carveRoadCell);
+    path.forEach(markRoadCell);
   };
 
+  if (playerSpawn && isRoadable(center)) {
+    const path = findGridPath(walkableForRoads, playerSpawn, [center]);
+    if (path) {
+      path.forEach(markRoadCell);
+    } else {
+      warnings.push(`Road generator could not connect player spawn at ${pointKey(playerSpawn)} to the village hub.`);
+    }
+  }
   [...protectedAnchors, ...utilityAnchors].forEach((anchor) => {
     connectTo(anchor, matrix[anchor.y]?.[anchor.x] ?? 'target');
   });
@@ -304,7 +357,13 @@ const createRoadPlan = (
   const roadGrid = makeGrid(width, height, false);
   matrix.forEach((row, y) => {
     row.forEach((token, x) => {
-      roadGrid[y][x] = isRoadToken(token);
+      if ((token === 'path' || token === 'village-center') && !requiredRoadKeys.has(pointKey({ x, y }))) {
+        matrix[y][x] = 'grass';
+      }
+      roadGrid[y][x] = isRoadToken(matrix[y][x]) && (
+        requiredRoadKeys.has(pointKey({ x, y }))
+        || matrix[y][x] === 'player-spawn'
+      );
     });
   });
 
@@ -420,6 +479,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     });
   });
 
+  errors.push(...getBuildingClearanceErrors(objects));
+
   protectedTargets.forEach((target) => {
     target.attackCells = getAttackCells(target.cells, blockedGrid, width, height);
     if (!target.attackCells.length) {
@@ -450,7 +511,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     y: (playableBounds.minY + playableBounds.maxY) / 2,
   };
   const attackCellKeys = new Set(protectedTargets.flatMap((target) => target.attackCells.map(pointKey)));
-  const canDecorate = (grid: GridPoint, options?: { allowNearEdge?: boolean }) => {
+  const canDecorate = (grid: GridPoint, options?: { allowNearEdge?: boolean; blocksMovement?: boolean }) => {
     if (!isInside(grid, width, height) || !isInsidePlayableBounds(grid, playableBounds)) {
       return false;
     }
@@ -470,6 +531,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       || token === 'player-spawn'
       || token === 'monster-spawn'
       || (playerSpawn && grid.x === playerSpawn.x && grid.y === playerSpawn.y)
+      || (options?.blocksMovement && playerSpawn && getCellDistance(grid, playerSpawn) <= 1)
       || distanceFromCenter < 2.6
     ) {
       return false;
@@ -482,9 +544,10 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     decorationKind: NonNullable<LevelPlacement['decorationKind']>,
     label: string,
     render?: AssetRenderMetadata,
-    options?: { allowNearEdge?: boolean },
+    options?: { allowNearEdge?: boolean; blocksMovement?: boolean },
   ) => {
-    if (!canDecorate(grid, options)) {
+    const blocksMovement = options?.blocksMovement ?? BLOCKING_DECORATION_KINDS.has(decorationKind);
+    if (!canDecorate(grid, { ...options, blocksMovement })) {
       return false;
     }
     const decoration = {
@@ -497,10 +560,14 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       label,
       decorationKind,
       render,
-      blocksMovement: false,
+      blocksMovement,
     } satisfies LevelPlacement;
     decorations.push(decoration);
     decorationGrid[grid.y][grid.x] = decoration;
+    if (blocksMovement) {
+      blockedGrid[grid.y][grid.x] = true;
+      walkableGrid[grid.y][grid.x] = false;
+    }
     return true;
   };
 
@@ -567,6 +634,14 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 8,
+  };
+  const puddleRender: AssetRenderMetadata = {
+    textureKey: 'environmentFrameAtlas',
+    frameKey: 'pond_tile',
+    displaySize: [138, 110],
+    origin: [0.5, 0.72],
+    alpha: 0.92,
+    z: 3,
   };
   const mushroomPatchRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -688,6 +763,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     }
     if (token === 'grass' && !isNearEdge && rng.chance(config.decorationDensity * 0.13)) {
       addDecoration(placement.grid, 'sapling', 'Young Pine', saplingRender);
+    }
+    if (token === 'grass' && !isNearEdge && rng.chance(config.decorationDensity * 0.045)) {
+      addDecoration(placement.grid, 'puddle', 'Rain Puddle', puddleRender);
     }
     if (token === 'grass' && !isNearEdge && rng.chance(config.decorationDensity * 0.10)) {
       const interiorRender = rng.chance(0.52) ? bushRender : flowerPatchRender;
@@ -870,12 +948,28 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     || level.spawnGrid[decoration.grid.y]?.[decoration.grid.x]
   ));
   blockedDecorationCells.forEach((decoration) => {
-    warnings.push(`${decoration.label} decoration at ${pointKey(decoration.grid)} is on a blocked or spawn cell.`);
+    if (!decoration.blocksMovement) {
+      warnings.push(`${decoration.label} decoration at ${pointKey(decoration.grid)} is on a blocked or spawn cell.`);
+    }
+  });
+
+  getBuildingClearanceErrors(level.objects).forEach((error) => {
+    if (!errors.includes(error)) {
+      errors.push(error);
+    }
   });
 
   [...level.objects, ...level.decorations].forEach((placement) => {
     if (!isInsideLevel(level, placement.grid)) {
       errors.push(`${placement.label} is outside board bounds.`);
+    }
+    if (placement.decorationKind && BLOCKING_DECORATION_KINDS.has(placement.decorationKind)) {
+      if (placement.cells.length !== 1) {
+        errors.push(`${placement.label} must use exactly one collision cell.`);
+      }
+      if (!placement.blocksMovement || !level.blockedGrid[placement.grid.y]?.[placement.grid.x]) {
+        errors.push(`${placement.label} must block exactly its anchor cell.`);
+      }
     }
     const frameKey = placement.render?.frameKey;
     if ((placement.token === 'tree' || placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree') && !FULL_TREE_FRAMES.has(frameKey ?? '')) {

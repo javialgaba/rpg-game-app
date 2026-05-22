@@ -7,54 +7,113 @@ const PLAYABLE_MIN = 2;
 const PLAYABLE_MAX = 16;
 
 type OptionalBuildingToken = 'market' | 'well' | 'house-2';
+type BoardBuildingToken = 'castle' | 'house-1' | OptionalBuildingToken;
+type BoardPoint = { x: number; y: number };
 
 interface LayoutTemplate {
-  castle: { x: number; y: number };
-  house: { x: number; y: number };
-  playerSpawn: { x: number; y: number };
-  villageCenters: Array<{ x: number; y: number }>;
-  extraSlots: Record<OptionalBuildingToken, { x: number; y: number }>;
-  decorations: Array<{ x: number; y: number }>;
+  castle: BoardPoint;
+  house: BoardPoint;
+  playerSpawn: BoardPoint;
+  villageCenters: BoardPoint[];
+  extraSlots: Record<OptionalBuildingToken, BoardPoint[]>;
+  decorations: BoardPoint[];
 }
+
+interface BoardBuildingPlacement {
+  token: BoardBuildingToken;
+  point: BoardPoint;
+}
+
+const REQUIRED_BUILDING_CLEARANCE = 3;
+const BUILDING_FOOTPRINTS: Record<BoardBuildingToken, { w: number; h: number }> = {
+  castle: { w: 3, h: 3 },
+  'house-1': { w: 3, h: 2 },
+  'house-2': { w: 3, h: 2 },
+  market: { w: 3, h: 2 },
+  well: { w: 2, h: 2 },
+};
 
 const LAYOUT_TEMPLATES: LayoutTemplate[] = [
   {
-    castle: { x: 10, y: 9 },
-    house: { x: 6, y: 11 },
+    castle: { x: 9, y: 8 },
+    house: { x: 5, y: 13 },
     playerSpawn: { x: 6, y: 7 },
-    villageCenters: [{ x: 9, y: 9 }, { x: 10, y: 10 }, { x: 8, y: 8 }],
+    villageCenters: [{ x: 8, y: 10 }, { x: 9, y: 11 }, { x: 7, y: 9 }],
     extraSlots: {
-      market: { x: 13, y: 11 },
-      well: { x: 12, y: 7 },
-      'house-2': { x: 13, y: 8 },
+      market: [{ x: 10, y: 13 }, { x: 11, y: 13 }, { x: 12, y: 13 }, { x: 13, y: 13 }],
+      well: [{ x: 5, y: 9 }, { x: 10, y: 13 }, { x: 11, y: 13 }, { x: 5, y: 8 }],
+      'house-2': [{ x: 10, y: 13 }, { x: 11, y: 13 }, { x: 12, y: 13 }, { x: 13, y: 13 }],
     },
     decorations: [{ x: 4, y: 6 }, { x: 14, y: 5 }, { x: 5, y: 14 }, { x: 14, y: 14 }],
   },
   {
-    castle: { x: 8, y: 9 },
-    house: { x: 12, y: 7 },
+    castle: { x: 8, y: 8 },
+    house: { x: 13, y: 6 },
     playerSpawn: { x: 6, y: 12 },
-    villageCenters: [{ x: 9, y: 9 }, { x: 8, y: 10 }, { x: 10, y: 8 }],
+    villageCenters: [{ x: 9, y: 10 }, { x: 8, y: 11 }, { x: 10, y: 9 }],
     extraSlots: {
-      market: { x: 8, y: 13 },
-      well: { x: 12, y: 12 },
-      'house-2': { x: 13, y: 10 },
+      market: [{ x: 9, y: 13 }, { x: 8, y: 13 }, { x: 10, y: 13 }, { x: 13, y: 10 }],
+      well: [{ x: 9, y: 13 }, { x: 8, y: 13 }, { x: 10, y: 13 }, { x: 13, y: 10 }],
+      'house-2': [{ x: 9, y: 13 }, { x: 8, y: 13 }, { x: 10, y: 13 }, { x: 13, y: 10 }],
     },
     decorations: [{ x: 4, y: 5 }, { x: 14, y: 6 }, { x: 6, y: 15 }, { x: 15, y: 13 }],
   },
   {
-    castle: { x: 9, y: 10 },
-    house: { x: 7, y: 7 },
-    playerSpawn: { x: 12, y: 12 },
-    villageCenters: [{ x: 9, y: 9 }, { x: 10, y: 9 }, { x: 8, y: 11 }],
+    castle: { x: 10, y: 10 },
+    house: { x: 6, y: 6 },
+    playerSpawn: { x: 13, y: 13 },
+    villageCenters: [{ x: 9, y: 9 }, { x: 10, y: 8 }, { x: 8, y: 10 }],
     extraSlots: {
-      market: { x: 12, y: 10 },
-      well: { x: 6, y: 11 },
-      'house-2': { x: 13, y: 13 },
+      market: [{ x: 5, y: 10 }, { x: 11, y: 6 }, { x: 5, y: 11 }, { x: 12, y: 6 }],
+      well: [{ x: 6, y: 10 }, { x: 11, y: 6 }, { x: 5, y: 10 }, { x: 6, y: 11 }],
+      'house-2': [{ x: 5, y: 10 }, { x: 11, y: 6 }, { x: 5, y: 11 }, { x: 12, y: 6 }],
     },
     decorations: [{ x: 5, y: 5 }, { x: 14, y: 6 }, { x: 6, y: 14 }, { x: 14, y: 15 }],
   },
 ];
+
+const getFootprintCells = (token: BoardBuildingToken, point: BoardPoint) => {
+  const footprint = BUILDING_FOOTPRINTS[token];
+  const offsetX = Math.floor(footprint.w / 2);
+  const offsetY = Math.floor(footprint.h / 2);
+  return Array.from({ length: footprint.h }, (_, row) => (
+    Array.from({ length: footprint.w }, (__, col) => ({
+      x: point.x - offsetX + col,
+      y: point.y - offsetY + row,
+    }))
+  )).flat();
+};
+
+const getFootprintDistance = (a: BoardBuildingPlacement, b: BoardBuildingPlacement) => (
+  getFootprintCells(a.token, a.point).reduce((best, aCell) => Math.min(
+    best,
+    getFootprintCells(b.token, b.point).reduce((cellBest, bCell) => Math.min(
+      cellBest,
+      Math.max(Math.abs(aCell.x - bCell.x), Math.abs(aCell.y - bCell.y)),
+    ), Infinity),
+  ), Infinity)
+);
+
+const hasPlayerSpawnClearance = (candidate: BoardBuildingPlacement, playerSpawn: BoardPoint) => (
+  getFootprintCells(candidate.token, candidate.point)
+    .every((cell) => Math.max(Math.abs(cell.x - playerSpawn.x), Math.abs(cell.y - playerSpawn.y)) > 1)
+);
+
+const hasBuildingClearance = (candidate: BoardBuildingPlacement, placed: BoardBuildingPlacement[]) => (
+  placed.every((placement) => getFootprintDistance(candidate, placement) >= REQUIRED_BUILDING_CLEARANCE)
+);
+
+const getOptionalCandidates = (
+  optionalPool: Array<OptionalBoardBuilding | null>,
+  selected: OptionalBuildingToken | null,
+) => {
+  if (!selected) {
+    return [];
+  }
+  return [selected, ...optionalPool.filter((token): token is OptionalBuildingToken => (
+    Boolean(token) && token !== selected
+  ))].filter((token, index, candidates) => candidates.indexOf(token) === index);
+};
 
 const clampPoint = (x: number, y: number) => ({
   x: Math.max(PLAYABLE_MIN, Math.min(PLAYABLE_MAX, x)),
@@ -154,8 +213,13 @@ export const buildSeasonBoardConfig = (
   const template = LAYOUT_TEMPLATES[rng.integer(0, LAYOUT_TEMPLATES.length - 1)];
   const sceneVariant = SCENE_VARIANTS[worldKey];
   const optionalPool = sceneVariant.boardGeneration.optionalBuildings as Array<OptionalBoardBuilding | null>;
-  const optionalBuilding = optionalPool[rng.integer(0, optionalPool.length - 1)] as OptionalBuildingToken | null;
+  const selectedOptionalBuilding = optionalPool[rng.integer(0, optionalPool.length - 1)] as OptionalBuildingToken | null;
+  const optionalCandidates = getOptionalCandidates(optionalPool, selectedOptionalBuilding);
   const matrix = createBaseMatrix();
+  const placedBuildings: BoardBuildingPlacement[] = [
+    { token: 'castle', point: template.castle },
+    { token: 'house-1', point: template.house },
+  ];
 
   [
     { x: PLAYABLE_MIN, y: PLAYABLE_MIN },
@@ -174,10 +238,20 @@ export const buildSeasonBoardConfig = (
   place(matrix, 'castle', template.castle.x, template.castle.y);
   place(matrix, 'house-1', template.house.x, template.house.y);
 
-  if (optionalBuilding) {
-    const slot = template.extraSlots[optionalBuilding];
+  for (const optionalBuilding of optionalCandidates) {
+    const slot = template.extraSlots[optionalBuilding]
+      .find((point) => {
+        const candidate = { token: optionalBuilding, point };
+        return hasBuildingClearance(candidate, placedBuildings)
+          && hasPlayerSpawnClearance(candidate, template.playerSpawn);
+      });
+    if (!slot) {
+      continue;
+    }
     paintWideLane(matrix, boardHub, slot, sceneVariant.boardGeneration.laneHalfWidth);
     place(matrix, optionalBuilding, slot.x, slot.y);
+    placedBuildings.push({ token: optionalBuilding, point: slot });
+    break;
   }
 
   template.decorations.forEach((point, index) => {
