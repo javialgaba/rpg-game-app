@@ -12,9 +12,13 @@ import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS,
 import {
   BOSS_CONFIGS,
   BOSS_ROUND_INDEX,
+  BOW_EVOLUTION_POWER_BONUS,
   COLORS,
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
+  getLevelUpProgressForStat,
+  getRangeLevelUpPresentationForStats,
+  isBowEvolutionReadyForStats,
   HEIGHT,
   LEVEL_FIRST_SPAWN_DELAY,
   LEVEL_SPAWN_BASE,
@@ -5639,14 +5643,14 @@ class FairyGuildScene extends Phaser.Scene {
       titleMinSize: compact ? 21 : 23,
       rewardY: compact ? -108 : -122,
       helperY: compact ? -68 : -80,
-      cardY: compact ? 84 : 94,
+      cardY: compact ? 56 : 62,
       cardXScale: compact ? 0.88 : 0.94,
       cardWidth: compact ? 176 : 188,
-      cardHeight: compact ? 198 : 216,
-      iconY: compact ? -36 : -40,
-      pipsY: compact ? 36 : 40,
-      labelY: compact ? 62 : 70,
-      detailY: compact ? 84 : 94,
+      cardHeight: compact ? 188 : 202,
+      iconY: compact ? -40 : -44,
+      pipsY: compact ? 30 : 34,
+      labelY: compact ? 58 : 64,
+      detailY: compact ? 78 : 86,
     };
   }
 
@@ -5989,7 +5993,7 @@ class FairyGuildScene extends Phaser.Scene {
         apply: () => {
           if (this.isBowEvolutionReady()) {
             this.playerStats.bowEvolved = true;
-            this.playerStats.bowPower += 2;
+            this.playerStats.bowPower += BOW_EVOLUTION_POWER_BONUS;
             this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 90);
             this.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
             return;
@@ -6116,7 +6120,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   updateLevelUpProgressBars(previewIndex = null) {
     this.levelUpProgressBars.forEach((bar, index) => {
-      const current = Phaser.Math.Clamp(this.playerStats[bar.stat] - PLAYER_BASE[bar.stat], 0, LEVEL_UP_MAX_PIPS);
+      const current = this.getLevelUpStatProgress(bar.stat);
       const preview = previewIndex === index ? Phaser.Math.Clamp(current + 1, 0, LEVEL_UP_MAX_PIPS) : current;
       const evolvedRange = bar.key === 'range' && (this.playerStats.bowEvolved || this.isBowEvolutionReady());
       const fillColor = evolvedRange ? 0xf2c94c : bar.color;
@@ -6136,33 +6140,18 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getLevelUpStatProgress(stat) {
+    if (stat === 'swordPower' || stat === 'bowPower' || stat === 'spellPower') {
+      return getLevelUpProgressForStat(this.playerStats, stat);
+    }
     return Phaser.Math.Clamp(this.playerStats[stat] - PLAYER_BASE[stat], 0, LEVEL_UP_MAX_PIPS);
   }
 
   isBowEvolutionReady() {
-    return !this.playerStats.bowEvolved && this.getLevelUpStatProgress('bowPower') >= LEVEL_UP_MAX_PIPS;
+    return isBowEvolutionReadyForStats(this.playerStats);
   }
 
   getRangeLevelUpPresentation() {
-    if (this.playerStats.bowEvolved) {
-      return {
-        label: 'Evolved Bow',
-        detail: '+1 master bow',
-        evolved: true,
-      };
-    }
-    if (this.isBowEvolutionReady()) {
-      return {
-        label: 'Bow Evolution',
-        detail: 'Improved bow',
-        evolved: true,
-      };
-    }
-    return {
-      label: 'Range Damage',
-      detail: '+1 bow',
-      evolved: false,
-    };
+    return getRangeLevelUpPresentationForStats(this.playerStats);
   }
 
   updateLevelUpChoicePresentation() {

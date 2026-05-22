@@ -18,7 +18,8 @@
     "validate:game-ui": "node tools/build-game-ui-atlas.mjs --validate-only",
     "validate:world-enemies": "node tools/build-world-enemy-sheets.mjs --validate-only",
     "validate:levels": "node tools/validate-level-generation.mjs",
-    "test": "npm run validate:levels && npm run validate:world-enemies && npm run validate:game-ui && npm run typecheck && npm run lint && npm run build"
+    "validate:level-up": "node tools/validate-level-up-progress.mjs",
+    "test": "npm run validate:levels && npm run validate:level-up && npm run validate:world-enemies && npm run validate:game-ui && npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "phaser": "^3.90.0",

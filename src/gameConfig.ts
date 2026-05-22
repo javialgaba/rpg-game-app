@@ -22,6 +22,59 @@ export const PLAYER_BASE = {
 
 export const LEVEL_UP_CARD_XS = [-210, 0, 210];
 export const LEVEL_UP_MAX_PIPS = 5;
+export const BOW_EVOLUTION_POWER_BONUS = 2;
+export const BOW_EVOLVED_PROGRESS_BASELINE = PLAYER_BASE.bowPower + LEVEL_UP_MAX_PIPS + BOW_EVOLUTION_POWER_BONUS;
+
+export interface LevelUpProgressStats {
+  bowPower: number;
+  bowEvolved: boolean;
+  swordPower: number;
+  spellPower: number;
+}
+
+export const clampLevelUpProgress = (value: number) => Math.min(LEVEL_UP_MAX_PIPS, Math.max(0, value));
+
+export const getBowLevelUpProgress = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => (
+  stats.bowEvolved
+    ? clampLevelUpProgress(stats.bowPower - BOW_EVOLVED_PROGRESS_BASELINE)
+    : clampLevelUpProgress(stats.bowPower - PLAYER_BASE.bowPower)
+);
+
+export const isBowEvolutionReadyForStats = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => (
+  !stats.bowEvolved && getBowLevelUpProgress(stats) >= LEVEL_UP_MAX_PIPS
+);
+
+export const getRangeLevelUpPresentationForStats = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => {
+  if (stats.bowEvolved) {
+    return {
+      label: 'Evolved Bow',
+      detail: '+1 master bow',
+      evolved: true,
+    };
+  }
+  if (isBowEvolutionReadyForStats(stats)) {
+    return {
+      label: 'Bow Evolution',
+      detail: 'Improved bow',
+      evolved: true,
+    };
+  }
+  return {
+    label: 'Range Damage',
+    detail: '+1 bow',
+    evolved: false,
+  };
+};
+
+export const getLevelUpProgressForStat = (
+  stats: LevelUpProgressStats,
+  stat: 'swordPower' | 'bowPower' | 'spellPower',
+) => {
+  if (stat === 'bowPower') {
+    return getBowLevelUpProgress(stats);
+  }
+  return clampLevelUpProgress(stats[stat] - PLAYER_BASE[stat]);
+};
 
 export const REPAIR_COST = 5;
 export const REPAIR_AMOUNT = 16;
