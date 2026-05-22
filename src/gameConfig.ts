@@ -1,3 +1,5 @@
+import type { SeasonPreset } from './sceneVariants';
+
 export const WIDTH = 1280;
 export const HEIGHT = 720;
 export const TILE_W = 92;
@@ -12,6 +14,7 @@ export const PLAYER_BASE = {
   speed: 3.15,
   swordPower: 1,
   bowPower: 1,
+  bowEvolved: false,
   spellPower: 2,
   bowCooldown: 560,
   spellCost: 28,
@@ -19,11 +22,73 @@ export const PLAYER_BASE = {
 
 export const LEVEL_UP_CARD_XS = [-210, 0, 210];
 export const LEVEL_UP_MAX_PIPS = 5;
+export const BOW_EVOLUTION_POWER_BONUS = 2;
+export const BOW_EVOLVED_PROGRESS_BASELINE = PLAYER_BASE.bowPower + LEVEL_UP_MAX_PIPS + BOW_EVOLUTION_POWER_BONUS;
+
+export interface LevelUpProgressStats {
+  bowPower: number;
+  bowEvolved: boolean;
+  swordPower: number;
+  spellPower: number;
+}
+
+export const clampLevelUpProgress = (value: number) => Math.min(LEVEL_UP_MAX_PIPS, Math.max(0, value));
+
+export const getBowLevelUpProgress = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => (
+  stats.bowEvolved
+    ? clampLevelUpProgress(stats.bowPower - BOW_EVOLVED_PROGRESS_BASELINE)
+    : clampLevelUpProgress(stats.bowPower - PLAYER_BASE.bowPower)
+);
+
+export const isBowEvolutionReadyForStats = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => (
+  !stats.bowEvolved && getBowLevelUpProgress(stats) >= LEVEL_UP_MAX_PIPS
+);
+
+export const getRangeLevelUpPresentationForStats = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => {
+  if (stats.bowEvolved) {
+    return {
+      label: 'Evolved Bow',
+      detail: '+1 master bow',
+      evolved: true,
+    };
+  }
+  if (isBowEvolutionReadyForStats(stats)) {
+    return {
+      label: 'Bow Evolution',
+      detail: 'Improved bow',
+      evolved: true,
+    };
+  }
+  return {
+    label: 'Range Damage',
+    detail: '+1 bow',
+    evolved: false,
+  };
+};
+
+export const getLevelUpProgressForStat = (
+  stats: LevelUpProgressStats,
+  stat: 'swordPower' | 'bowPower' | 'spellPower',
+) => {
+  if (stat === 'bowPower') {
+    return getBowLevelUpProgress(stats);
+  }
+  return clampLevelUpProgress(stats[stat] - PLAYER_BASE[stat]);
+};
 
 export const REPAIR_COST = 5;
 export const REPAIR_AMOUNT = 16;
 export const REPAIR_RANGE = 1.55;
 export const REPAIR_COOLDOWN = 650;
+export const REPAIR_OUTLINE_COLORS = {
+  perfect: 0x42d46b,
+  repairable: 0xffffff,
+  unaffordable: 0xff4f57,
+} as const;
+export const REPAIR_OUTLINE_BACKING_COLOR = 0x203047;
+export const REPAIR_OUTLINE_BACKING_WIDTH = 10;
+export const REPAIR_OUTLINE_STROKE_WIDTH = 7;
+export const REPAIR_OUTLINE_FILL_ALPHA = 0.12;
 
 export const LEVEL_SPAWN_BASE = 3;
 export const LEVEL_SPAWN_PER_LEVEL = 2;
@@ -32,6 +97,8 @@ export const LEVEL_FIRST_SPAWN_DELAY = 740;
 export const LEVEL_SPAWN_INTERVAL_BASE = 820;
 export const LEVEL_SPAWN_INTERVAL_STEP = 28;
 export const LEVEL_SPAWN_INTERVAL_MIN = 300;
+export const ROUNDS_PER_WORLD = 4;
+export const BOSS_ROUND_INDEX = 4;
 
 export const COMPACT_NOTES_MAX_VISIBLE = 2;
 export const DESKTOP_NOTES_MAX_VISIBLE = 3;
@@ -151,6 +218,207 @@ export const ENEMY_VARIANTS = [
     reward: 1.55,
   },
 ];
+
+export const WORLD_SEQUENCE: SeasonPreset[] = [
+  'day_spring',
+  'afternoon_summer',
+  'night_spring',
+  'noon_winter',
+];
+
+export const WORLD_ENEMY_THEMES: Record<SeasonPreset, {
+  label: string;
+  bossLabel: string;
+  bossIntro: string;
+  bossDefeat: string;
+  frameCount: number;
+  eliteCellSize: number;
+  bossCellSize: number;
+  safeBorderPx: number;
+  eliteAssetKey: string;
+  eliteFramePrefix: string;
+  eliteIdleFrames: number[];
+  eliteDefeatFrame: number;
+  eliteDisplayScaleX: number;
+  eliteDisplayScaleY: number;
+  bossAssetKey: string;
+  bossFramePrefix: string;
+  bossIdleFrames: number[];
+  bossDefeatFrame: number;
+  bossDisplayScaleX: number;
+  bossDisplayScaleY: number;
+  eliteSpawnChance: number;
+  preferredArchetypes: string[];
+  ambientTint: number | null;
+}> = {
+  day_spring: {
+    label: 'Spring',
+    bossLabel: 'Spring Boss',
+    bossIntro: 'The Blossom Guardian appears!',
+    bossDefeat: 'Spring is safe. Summer stirs beyond the clouds!',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
+    eliteAssetKey: 'worldElite_day_spring',
+    eliteFramePrefix: 'world-elite-day-spring',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 1,
+    eliteDisplayScaleY: 1,
+    bossAssetKey: 'worldBoss_day_spring',
+    bossFramePrefix: 'world-boss-day-spring',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
+    bossDisplayScaleX: 1,
+    bossDisplayScaleY: 1,
+    eliteSpawnChance: 0.34,
+    preferredArchetypes: ['sprite', 'blob', 'mushroom'],
+    ambientTint: 0xffe7f4,
+  },
+  afternoon_summer: {
+    label: 'Summer',
+    bossLabel: 'Summer Boss',
+    bossIntro: 'A Sun-Bramble Guardian charges from the grove!',
+    bossDefeat: 'Summer bows out. Twilight settles over the village!',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
+    eliteAssetKey: 'worldElite_afternoon_summer',
+    eliteFramePrefix: 'world-elite-afternoon-summer',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 1,
+    eliteDisplayScaleY: 1,
+    bossAssetKey: 'worldBoss_afternoon_summer',
+    bossFramePrefix: 'world-boss-afternoon-summer',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
+    bossDisplayScaleX: 1,
+    bossDisplayScaleY: 1,
+    eliteSpawnChance: 0.38,
+    preferredArchetypes: ['lizard', 'blob', 'acorn'],
+    ambientTint: 0xffe2a6,
+  },
+  night_spring: {
+    label: 'Twilight',
+    bossLabel: 'Twilight Boss',
+    bossIntro: 'A Moonlit Guardian drifts into the lantern glow!',
+    bossDefeat: 'The twilight guardian fades. Winter winds answer next.',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
+    eliteAssetKey: 'worldElite_night_spring',
+    eliteFramePrefix: 'world-elite-night-spring',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 1,
+    eliteDisplayScaleY: 1,
+    bossAssetKey: 'worldBoss_night_spring',
+    bossFramePrefix: 'world-boss-night-spring',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
+    bossDisplayScaleX: 1,
+    bossDisplayScaleY: 1,
+    eliteSpawnChance: 0.42,
+    preferredArchetypes: ['sprite', 'mushroom', 'acorn'],
+    ambientTint: 0xb8c7ff,
+  },
+  noon_winter: {
+    label: 'Winter',
+    bossLabel: 'Winter Boss',
+    bossIntro: 'The Frost Guardian stomps across the snow!',
+    bossDefeat: 'Winter is quiet again. Spring will bloom once more.',
+    frameCount: 8,
+    eliteCellSize: 256,
+    bossCellSize: 384,
+    safeBorderPx: 16,
+    eliteAssetKey: 'worldElite_noon_winter',
+    eliteFramePrefix: 'world-elite-noon-winter',
+    eliteIdleFrames: [0, 1, 2, 3],
+    eliteDefeatFrame: 7,
+    eliteDisplayScaleX: 1,
+    eliteDisplayScaleY: 1,
+    bossAssetKey: 'worldBoss_noon_winter',
+    bossFramePrefix: 'world-boss-noon-winter',
+    bossIdleFrames: [0, 1, 2, 3],
+    bossDefeatFrame: 7,
+    bossDisplayScaleX: 1,
+    bossDisplayScaleY: 1,
+    eliteSpawnChance: 0.42,
+    preferredArchetypes: ['mushroom', 'acorn', 'blob'],
+    ambientTint: 0xe6f7ff,
+  },
+};
+
+export const BOSS_CONFIGS: Record<SeasonPreset, {
+  name: string;
+  hp: number;
+  speed: number;
+  size: number;
+  buildingDamage: number;
+  contactDamage: number;
+  rewardGold: [number, number];
+  rewardXp: number;
+  clearGold: number;
+  clearXp: number;
+  tint: number | null;
+}> = {
+  day_spring: {
+    name: 'Blossom Guardian',
+    hp: 22,
+    speed: 0.56,
+    size: 118,
+    buildingDamage: 11,
+    contactDamage: 1,
+    rewardGold: [22, 34],
+    rewardXp: 52,
+    clearGold: 58,
+    clearXp: 72,
+    tint: null,
+  },
+  afternoon_summer: {
+    name: 'Sun-Bramble Guardian',
+    hp: 26,
+    speed: 0.62,
+    size: 124,
+    buildingDamage: 12,
+    contactDamage: 1,
+    rewardGold: [26, 39],
+    rewardXp: 60,
+    clearGold: 66,
+    clearXp: 84,
+    tint: 0xffd385,
+  },
+  night_spring: {
+    name: 'Moonlit Guardian',
+    hp: 30,
+    speed: 0.58,
+    size: 130,
+    buildingDamage: 13,
+    contactDamage: 1,
+    rewardGold: [30, 44],
+    rewardXp: 72,
+    clearGold: 74,
+    clearXp: 96,
+    tint: 0xd5deff,
+  },
+  noon_winter: {
+    name: 'Frost Guardian',
+    hp: 34,
+    speed: 0.54,
+    size: 138,
+    buildingDamage: 14,
+    contactDamage: 1,
+    rewardGold: [34, 48],
+    rewardXp: 84,
+    clearGold: 84,
+    clearXp: 108,
+    tint: 0xe7ffff,
+  },
+};
 
 export const COLORS = {
   skyTop: 0x8bd6ff,

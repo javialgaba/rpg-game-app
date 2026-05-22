@@ -1,12 +1,24 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import './style.css';
+import { ASSET_REGISTRY } from './levels/assetRegistry';
+import { buildSeasonBoardConfig } from './levels/buildSeasonBoard';
+import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
+import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
+import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
+import { findGridPath, pathCost } from './levels/pathfinding';
+import { isFootprintWalkable } from './levels/playerFootprint';
+import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
+import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
+  BOSS_CONFIGS,
+  BOSS_ROUND_INDEX,
+  BOW_EVOLUTION_POWER_BONUS,
   COLORS,
-  COMPACT_NOTE_MAX_CHARS,
-  COMPACT_NOTES_MAX_VISIBLE,
-  DESKTOP_NOTES_MAX_VISIBLE,
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
+  getLevelUpProgressForStat,
+  getRangeLevelUpPresentationForStats,
+  isBowEvolutionReadyForStats,
   HEIGHT,
   LEVEL_FIRST_SPAWN_DELAY,
   LEVEL_SPAWN_BASE,
@@ -24,13 +36,154 @@ import {
   REPAIR_AMOUNT,
   REPAIR_COOLDOWN,
   REPAIR_COST,
+  REPAIR_OUTLINE_BACKING_COLOR,
+  REPAIR_OUTLINE_BACKING_WIDTH,
+  REPAIR_OUTLINE_COLORS,
+  REPAIR_OUTLINE_FILL_ALPHA,
+  REPAIR_OUTLINE_STROKE_WIDTH,
   REPAIR_RANGE,
+  ROUNDS_PER_WORLD,
   TILE_H,
   TILE_W,
   WIDTH,
+  WORLD_ENEMY_THEMES,
+  WORLD_SEQUENCE,
 } from './gameConfig';
 
-type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'use' | 'inventory';
+type HeroChoice = 'male' | 'princess';
+type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'repairConfirm' | 'repairCancel';
+type TouchButtonSlot = 'left' | 'top' | 'right' | 'bottom';
+type UpgradePauseContext = 'roundClear' | 'chestBonus';
+type TouchActionIcon = { texture: string; frame?: string } | null;
+type RepairModeTargetState = keyof typeof REPAIR_OUTLINE_COLORS;
+type GeneratedSurroundAnchor =
+  | 'topLeft'
+  | 'topCenter'
+  | 'topRight'
+  | 'leftUpper'
+  | 'leftLower'
+  | 'rightUpper'
+  | 'rightLower'
+  | 'bottomLeft'
+  | 'bottomCenter'
+  | 'bottomRight';
+type GeneratedSurroundLayer = 'background' | 'shadow' | 'edge' | 'water' | 'decor';
+
+const GENERATED_BUILDING_SPRITE_ALPHA = 1;
+const STATIC_BUILDING_BASE_ALPHA = 0.14;
+const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
+const OCCLUDED_BUILDING_SPRITE_ALPHA = 0.5;
+const OCCLUDED_STATIC_BUILDING_BASE_ALPHA = 0.06;
+const BUILDING_OCCLUSION_PLAYER_Y_OFFSET_MAX = 12;
+const BUILDING_OCCLUSION_PLAYER_Y_OFFSET_RATIO = 0.18;
+const BUILDING_OCCLUSION_VERTICAL_CLEARANCE = 6;
+const BUILDING_OCCLUSION_SPRITE_TOP_PADDING_RATIO = 0.12;
+const BUILDING_OCCLUSION_HORIZONTAL_PADDING = 12;
+const SPLASH_HERO_CARD_FILL_COLOR = 0xfff1b8;
+const SPLASH_HERO_CARD_SELECTED_FILL_ALPHA = 0.18;
+const SPLASH_HERO_CARD_IDLE_FILL_ALPHA = 0.045;
+const SPLASH_HERO_CARD_SELECTION_STROKE_WIDTH = 3;
+const SPLASH_HERO_CARD_SELECTED_STROKE_COLOR = 0xffd26d;
+const SPLASH_HERO_CARD_IDLE_STROKE_COLOR = 0xd0a24b;
+const SPLASH_HERO_CARD_SELECTED_STROKE_ALPHA = 0.95;
+const SPLASH_HERO_CARD_IDLE_STROKE_ALPHA = 0.35;
+const SPLASH_HERO_CARD_SELECTED_LABEL_COLOR = '#5f3b12';
+const SPLASH_HERO_CARD_IDLE_LABEL_COLOR = '#7d6039';
+const SPLASH_START_BUTTON_READY_FILL_ALPHA = 0.1;
+const SPLASH_START_BUTTON_DISABLED_FILL_ALPHA = 0.035;
+const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
+const GENERATED_SURROUND_DEPTH_WATER = 2;
+const GENERATED_SURROUND_DEPTH_SHADOW = 3;
+const GENERATED_SURROUND_DEPTH_BACKGROUND = 4;
+const GENERATED_SURROUND_DEPTH_FOREGROUND = 5;
+const GENERATED_SURROUND_DEPTH_MIST_NEAR = 16;
+const GENERATED_SURROUND_DEPTH_MIST_FAR = 17;
+const GENERATED_SURROUND_DEPTH_GROUND_MIST = 21;
+const GENERATED_SURROUND_DEPTH_GROUND_FOG = 22;
+const GENERATED_SURROUND_ORIGIN_SHADOW = 0.5;
+const GENERATED_SURROUND_ORIGIN_WATER = 0.58;
+const GENERATED_SURROUND_ORIGIN_FOREST = 0.64;
+const GENERATED_SURROUND_ORIGIN_CLIFF = 0.66;
+const GENERATED_SURROUND_ORIGIN_CLUSTER = 0.74;
+const GENERATED_SURROUND_ORIGIN_FRAME = 0.62;
+const GENERATED_SURROUND_ORIGIN_MIST_FILL = 0.6;
+const GENERATED_SURROUND_ORIGIN_MIST_PATCH = 0.56;
+const GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER = 0.72;
+const GENERATED_SURROUND_ORIGIN_FOG_PATCH = 0.52;
+const GENERATED_SURROUND_ORIGIN_PINE = 0.84;
+const GENERATED_SURROUND_ALPHA = {
+  opaque: 1,
+  water: {
+    soft: 0.92,
+    highlight: 0.98,
+    recessed: 0.88,
+  },
+  foliage: {
+    highlight: 0.98,
+    strong: 0.96,
+    primary: 0.94,
+    secondary: 0.92,
+    tertiary: 0.9,
+    distant: 0.88,
+  },
+  frame: {
+    accent: 0.98,
+  },
+  shadow: {
+    large: 0.32,
+  },
+  mist: {
+    near: 0.62,
+    side: 0.58,
+    far: 0.38,
+    ground: 0.36,
+    soft: 0.32,
+  },
+  fog: {
+    strong: 0.44,
+    medium: 0.42,
+    soft: 0.32,
+    faint: 0.3,
+    ground: 0.28,
+  },
+  purpleMist: {
+    accent: 0.18,
+  },
+  silhouette: {
+    leftPine: 0.22,
+    rightPine: 0.2,
+  },
+} as const;
+
+type GeneratedSurroundDepth = number | { edge: 'top' | 'bottom'; tileOffset: number };
+
+interface ScreenFootprintBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+  bottomCenterX: number;
+  bottomCenterY: number;
+}
+
+interface GeneratedSurroundPiece {
+  frame: string;
+  anchor: GeneratedSurroundAnchor;
+  offsetXUnits: number;
+  offsetYUnits: number;
+  uniformScale: number;
+  layer: GeneratedSurroundLayer;
+  depth: GeneratedSurroundDepth;
+  alpha?: number;
+  originX?: number;
+  originY?: number;
+}
+
+type GeneratedSurroundTransform = Readonly<Pick<GeneratedSurroundPiece, 'offsetXUnits' | 'offsetYUnits' | 'uniformScale'>>;
 
 interface TouchControlsState {
   container: Phaser.GameObjects.Container;
@@ -39,9 +192,196 @@ interface TouchControlsState {
   joystickVector: { x: number; y: number };
   joystickPointerId: number | null;
   joystickCenter: { x: number; y: number };
-  buttons: Record<TouchActionKey, Phaser.GameObjects.Container>;
+  buttons: Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
+  repairButtons: Phaser.GameObjects.Container[];
   portraitOverlay: Phaser.GameObjects.Container;
 }
+
+interface RunResumeBuildingSnapshot {
+  id?: string;
+  name: string;
+  hp: number;
+  max: number;
+}
+
+interface RunResumeStateSnapshot {
+  playerStats?: Partial<typeof PLAYER_BASE>;
+  state?: Partial<FairyGuildScene['state']>;
+  buildings?: RunResumeBuildingSnapshot[];
+  heroChoice?: HeroChoice;
+  upgradeLevels?: number[];
+  note?: string;
+}
+
+interface DroppedChest {
+  iso: { x: number; y: number };
+  sprite: Phaser.GameObjects.Image;
+  glow: Phaser.GameObjects.Arc;
+  reward: string;
+  opened: boolean;
+  bob: number;
+  source: 'enemyDrop';
+  spawnedAt: number;
+  despawnAt: number;
+  blinkAt: number;
+}
+
+const GENERATED_SURROUND_TOP_EDGE_DEPTH: GeneratedSurroundDepth = { edge: 'top', tileOffset: 0.18 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.62 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.98 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.02 };
+const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.04 };
+
+const GENERATED_SURROUND_LAYOUT = {
+  shadow: {
+    bottomCenterBase: { offsetXUnits: 0, offsetYUnits: 0.82, uniformScale: 2.72 },
+  },
+  water: {
+    topLeftWide: { offsetXUnits: -1.86, offsetYUnits: 2.04, uniformScale: 2.04 },
+    topLeftInset: { offsetXUnits: 1.36, offsetYUnits: 1.42, uniformScale: 1.36 },
+    topRightHighlight: { offsetXUnits: 1.86, offsetYUnits: 1.98, uniformScale: 1.8 },
+    topRightRecess: { offsetXUnits: -1.28, offsetYUnits: 1.26, uniformScale: 1.28 },
+  },
+  forest: {
+    topLeftOuter: { offsetXUnits: -3.3, offsetYUnits: 0.96, uniformScale: 1.28 },
+    topRightOuter: { offsetXUnits: 3.4, offsetYUnits: 0.18, uniformScale: 1.08 },
+    topLeftMid: { offsetXUnits: 2.28, offsetYUnits: 1.78, uniformScale: 0.9 },
+    topRightMid: { offsetXUnits: -1.92, offsetYUnits: 1.84, uniformScale: 0.84 },
+    topLeftRearRight: { offsetXUnits: 3.24, offsetYUnits: 2.46, uniformScale: 0.78 },
+    topLeftRearCenter: { offsetXUnits: 0.82, offsetYUnits: 3.22, uniformScale: 0.74 },
+    topLeftRearInner: { offsetXUnits: 1.9, offsetYUnits: 3.56, uniformScale: 0.84 },
+    topRightRearLeft: { offsetXUnits: -3.16, offsetYUnits: 2.44, uniformScale: 0.76 },
+    topRightRearCenter: { offsetXUnits: -0.92, offsetYUnits: 3.18, uniformScale: 0.74 },
+    topRightRearInner: { offsetXUnits: -1.98, offsetYUnits: 3.52, uniformScale: 0.82 },
+    rightUpperBackdrop: { offsetXUnits: 1.66, offsetYUnits: -1.16, uniformScale: 0.92 },
+    leftLowerBackdrop: { offsetXUnits: -1.28, offsetYUnits: 1.46, uniformScale: 0.88 },
+    bottomCenterFill: { offsetXUnits: 0, offsetYUnits: 0.86, uniformScale: 0.9 },
+  },
+  cliff: {
+    topLeftOuter: { offsetXUnits: -3.6, offsetYUnits: 2.44, uniformScale: 0.92 },
+    topRightOuter: { offsetXUnits: 3.32, offsetYUnits: 2.38, uniformScale: 0.9 },
+    topLeftInner: { offsetXUnits: 2.84, offsetYUnits: 2.84, uniformScale: 0.88 },
+    topRightInner: { offsetXUnits: -2.74, offsetYUnits: 2.88, uniformScale: 0.86 },
+    topLeftEdge: { offsetXUnits: 4.6, offsetYUnits: 0.38, uniformScale: 0.9 },
+    topRightEdge: { offsetXUnits: -4.6, offsetYUnits: 0.52, uniformScale: 0.96 },
+    bottomCenterFill: { offsetXUnits: -2.18, offsetYUnits: 0.76, uniformScale: 0.76 },
+  },
+  cluster: {
+    topLeftNear: { offsetXUnits: -0.38, offsetYUnits: 2.76, uniformScale: 1.36 },
+    topLeftMid: { offsetXUnits: 1.54, offsetYUnits: 3.08, uniformScale: 1.22 },
+    topLeftOuter: { offsetXUnits: -2.28, offsetYUnits: 3.12, uniformScale: 1.46 },
+    topRightNear: { offsetXUnits: 0.42, offsetYUnits: 2.92, uniformScale: 1.3 },
+    topRightMid: { offsetXUnits: -1.44, offsetYUnits: 3.04, uniformScale: 1.18 },
+    topRightOuter: { offsetXUnits: 2.22, offsetYUnits: 3.14, uniformScale: 1.38 },
+    bottomCenterAccent: { offsetXUnits: 2.08, offsetYUnits: 0.78, uniformScale: 1.08 },
+    bottomLeftBackdrop: { offsetXUnits: -2.12, offsetYUnits: 0.96, uniformScale: 1.02 },
+    bottomRightBackdrop: { offsetXUnits: 2.12, offsetYUnits: 0.96, uniformScale: 1.02 },
+  },
+  frame: {
+    topLeftCap: { offsetXUnits: -0.82, offsetYUnits: 1.12, uniformScale: 1.24 },
+    topCenterLeftAccent: { offsetXUnits: -1.6, offsetYUnits: 0.74, uniformScale: 1.2 },
+    topCenterRightAccent: { offsetXUnits: 1.6, offsetYUnits: 0.74, uniformScale: 1.2 },
+    topCenterMain: { offsetXUnits: 0, offsetYUnits: 0.94, uniformScale: 1.3 },
+    topRightCap: { offsetXUnits: 0.92, offsetYUnits: 1.06, uniformScale: 1.24 },
+    leftUpper: { offsetXUnits: -0.26, offsetYUnits: 1.52, uniformScale: 1.26 },
+    rightUpper: { offsetXUnits: 0.3, offsetYUnits: 1.66, uniformScale: 1.28 },
+    leftLower: { offsetXUnits: -0.22, offsetYUnits: 0.1, uniformScale: 1.1 },
+    rightLower: { offsetXUnits: 0.22, offsetYUnits: 0.1, uniformScale: 1.1 },
+    bottomLeft: { offsetXUnits: -0.46, offsetYUnits: 0.54, uniformScale: 0.84 },
+    bottomRight: { offsetXUnits: 0.46, offsetYUnits: 0.54, uniformScale: 0.84 },
+  },
+  mist: {
+    topLeftNear: { offsetXUnits: 0.72, offsetYUnits: 1.18, uniformScale: 1.02 },
+    topLeftFar: { offsetXUnits: -1.42, offsetYUnits: 2.72, uniformScale: 1.2 },
+    topRightNear: { offsetXUnits: -0.52, offsetYUnits: 1.16, uniformScale: 1 },
+    topRightGround: { offsetXUnits: 1.38, offsetYUnits: 2.78, uniformScale: 1.14 },
+    bottomLeftSoft: { offsetXUnits: 0.44, offsetYUnits: 0.82, uniformScale: 1.02 },
+    bottomCenterGround: { offsetXUnits: 0, offsetYUnits: 0.9, uniformScale: 1.16 },
+    bottomRightSoft: { offsetXUnits: -0.44, offsetYUnits: 0.82, uniformScale: 1.02 },
+  },
+  fog: {
+    topLeftStrong: { offsetXUnits: 1.46, offsetYUnits: 2.92, uniformScale: 1.54 },
+    topLeftSoft: { offsetXUnits: 3.16, offsetYUnits: 2.66, uniformScale: 1.06 },
+    topRightMedium: { offsetXUnits: -1.54, offsetYUnits: 2.88, uniformScale: 1.42 },
+    topRightFaint: { offsetXUnits: -3.06, offsetYUnits: 2.6, uniformScale: 1.02 },
+    bottomLeftGround: { offsetXUnits: 1.72, offsetYUnits: 1.02, uniformScale: 1.26 },
+    bottomRightGround: { offsetXUnits: -1.72, offsetYUnits: 1.02, uniformScale: 1.26 },
+  },
+  purpleMist: {
+    topLeftAccent: { offsetXUnits: -0.12, offsetYUnits: 3.26, uniformScale: 1.18 },
+    topRightAccent: { offsetXUnits: 0.12, offsetYUnits: 3.22, uniformScale: 1.14 },
+  },
+  silhouette: {
+    topLeftPine: { offsetXUnits: -2.42, offsetYUnits: 3.7, uniformScale: 1.24 },
+    topRightPine: { offsetXUnits: 2.46, offsetYUnits: 3.62, uniformScale: 1.2 },
+  },
+} as const satisfies Record<string, Record<string, GeneratedSurroundTransform>>;
+
+// Generated surround art is tuned in tile-space units so layout changes live in one place.
+const GENERATED_SURROUND_PIECES: ReadonlyArray<GeneratedSurroundPiece> = [
+  { frame: 'large_shadow', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.shadow.bottomCenterBase, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.shadow.large, originY: GENERATED_SURROUND_ORIGIN_SHADOW },
+  { frame: 'surround_water_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.water.topLeftWide, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_water_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.water.topLeftInset, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.soft, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_water_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.water.topRightHighlight, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.highlight, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_water_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.water.topRightRecess, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.recessed, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftNear, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearRight, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearCenter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightNear, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
+  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearLeft, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearCenter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'surround_top_left_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.frame.topLeftCap, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterLeftAccent, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterRightAccent, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterMain, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_top_right_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.frame.topRightCap, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_left_upper_01', anchor: 'leftUpper', ...GENERATED_SURROUND_LAYOUT.frame.leftUpper, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_right_upper_01', anchor: 'rightUpper', ...GENERATED_SURROUND_LAYOUT.frame.rightUpper, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
+  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftEdge, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightEdge, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_mist_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.mist.topLeftNear, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.near, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
+  { frame: 'surround_mist_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.mist.topLeftFar, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.far, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'fog_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.fog.topLeftStrong, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.strong, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'fog_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.fog.topLeftSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'purple_mist_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.purpleMist.topLeftAccent, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_mist_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.mist.topRightNear, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.side, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
+  { frame: 'surround_mist_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.mist.topRightGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_WATER },
+  { frame: 'fog_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.fog.topRightMedium, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.medium, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'fog_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.fog.topRightFaint, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.faint, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'purple_mist_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.purpleMist.topRightAccent, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_left_lower_01', anchor: 'leftLower', ...GENERATED_SURROUND_LAYOUT.frame.leftLower, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_right_lower_01', anchor: 'rightLower', ...GENERATED_SURROUND_LAYOUT.frame.rightLower, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_bottom_left_01', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.frame.bottomLeft, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_cliff_filler_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.cliff.bottomCenterFill, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_forest_mass_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.forest.bottomCenterFill, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
+  { frame: 'forest_cluster_back', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.cluster.bottomCenterAccent, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
+  { frame: 'surround_bottom_right_01', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.frame.bottomRight, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
+  { frame: 'surround_mist_fill_01', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.mist.bottomLeftSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_mist_fill_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.mist.bottomCenterGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'surround_mist_fill_01', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.mist.bottomRightSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
+  { frame: 'fog_patch', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.fog.bottomLeftGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
+  { frame: 'fog_patch', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.fog.bottomRightGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
+  { frame: 'surround_forest_mass_01', anchor: 'rightUpper', ...GENERATED_SURROUND_LAYOUT.forest.rightUpperBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
+  { frame: 'surround_forest_mass_01', anchor: 'leftLower', ...GENERATED_SURROUND_LAYOUT.forest.leftLowerBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
+  { frame: 'forest_cluster_back', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.cluster.bottomLeftBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
+  { frame: 'forest_cluster_back', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.cluster.bottomRightBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
+  { frame: 'pine_silhouette_tall', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.silhouette.topLeftPine, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.leftPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
+  { frame: 'pine_silhouette_tall', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.silhouette.topRightPine, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.rightPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
+];
 
 class FairyGuildScene extends Phaser.Scene {
   [key: string]: any;
@@ -56,6 +396,11 @@ class FairyGuildScene extends Phaser.Scene {
       gold: 0,
       xp: 0,
       level: 1,
+      worldIndex: 0,
+      worldKey: WORLD_SEQUENCE[0],
+      worldRound: 1,
+      bossRound: false,
+      worldCycle: 0,
       phase: 'splash',
       villageSafety: 100,
       equipped: 'Wooden Sword',
@@ -64,6 +409,8 @@ class FairyGuildScene extends Phaser.Scene {
       inventoryOpen: false,
       gameOverReason: '',
     };
+    this.heroChoice = this.resolveRequestedHeroChoice();
+    this.heroAnimPrefix = 'hero';
     this.keys = {};
     this.enemies = [];
     this.projectiles = [];
@@ -74,13 +421,20 @@ class FairyGuildScene extends Phaser.Scene {
     this.notes = [];
     this.upgrades = [];
     this.levelUpProgressBars = [];
+    this.levelUpChoiceCards = [];
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
+    this.levelRequiredDefeats = 0;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
     this.levelClearQueued = false;
+    this.levelSpawnedCount = 0;
     this.levelTimers = [];
+    this.generatedValidSpawnPoints = [];
     this.lastRepairAt = 0;
     this.repairModeIndicator = null;
+    this.repairModeOutline = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
     this.touchDetection = null;
@@ -88,36 +442,124 @@ class FairyGuildScene extends Phaser.Scene {
     this.controlsHint = null;
     this.debugOverlay = null;
     this.debugOverlayVisible = false;
+    this.generatedLevel = null;
+    this.generatedLevelValidation = null;
+    this.generatedLevelActive = false;
+    this.generatedLevelConfigId = '';
+    this.generatedLevelConfigLabel = '';
+    this.generatedLevelSelectionWarnings = [];
+    this.levelDebugLayer = null;
+    this.levelDebugGraphics = null;
+    this.levelDebugVisible = false;
+    this.levelDebugLastRenderAt = 0;
+    this.generatedTerrainMask = null;
+    this.generatedTerrainMaskGraphics = null;
+    this.lightingLayer = null;
+    this.timeOfDayOverlay = null;
+    this.timeOfDayMist = null;
+    this.lampGlowGraphics = null;
+    this.timeOfDayOverride = null;
+    this.sceneVariant = null;
+    this.sceneVariantOverrideKey = null;
+    this.resumeRunState = null as RunResumeStateSnapshot | null;
+    this.resumeSkipSplash = false;
+    this.forceFreshStart = false;
+    this.upgradePauseContext = 'roundClear';
+    this.pausedRoundTimers = [];
+    this.parallaxSprites = [];
+  }
+
+  init(data) {
+    this.sceneVariantOverrideKey = data?.sceneVariantKey ?? null;
+    this.forceFreshStart = Boolean(data?.forceFreshStart);
+    this.resumeRunState = this.forceFreshStart ? null : data?.resumeRunState ?? null;
+    this.resumeSkipSplash = !this.forceFreshStart && Boolean(data?.resumeSkipSplash);
+    this.heroChoice = data?.heroChoice ?? data?.resumeRunState?.heroChoice ?? this.resolveRequestedHeroChoice();
   }
 
   preload() {
     this.load.image('villageBoard', '/assets/village-board.png');
-    this.load.image('levelUpUI', '/assets/level-up-ui.png');
-    this.load.image('gameOverUI', '/assets/game-over-ui.png');
-    this.load.image('statusPanelUI', '/assets/status-panel-ui.png');
-    this.load.image('guildNotesUI', '/assets/guild-notes-ui-transparent.png');
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
+    this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
+    this.load.image('repairModeCancelIcon', '/assets/repair-mode-cancel-icon.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
-    this.load.image('worldSheet', '/assets/world-ui-sheet.png');
+    this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
+    this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
+    this.load.atlas('uiAtlas', '/assets/ui_atlas.png', '/assets/ui_atlas.json');
+    this.load.atlas('gameUiAtlas', '/assets/game_ui_atlas.png', '/assets/game_ui_atlas.json');
+    this.load.atlas('touchControlsAtlas', '/assets/touch_controls_atlas.png', '/assets/touch_controls_atlas.json');
+    this.load.atlas('worldEdgesAtlas', '/assets/world_edges_atlas.png', '/assets/world_edges_atlas.json');
+    this.load.atlas('environmentFrameAtlas', '/assets/environment_frame_atlas.png', '/assets/environment_frame_atlas.json');
+    this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
+    this.preloadSceneVariantAssets();
+    this.preloadWorldEnemyAssets();
+  }
+
+  preloadSceneVariantAssets() {
+    const variantKeys = ['day_spring', 'afternoon_summer', 'night_spring', 'noon_winter'];
+    variantKeys.forEach((variantKey) => {
+      this.load.image(`sceneVariantBackground_${variantKey}`, `/assets/scene-variants/${variantKey}-bg.png`);
+      this.load.image(`sceneVariantFrame_${variantKey}`, `/assets/scene-variants/${variantKey}-frame.png`);
+      this.load.image(`sceneVariantForeground_${variantKey}`, `/assets/scene-variants/${variantKey}-fg.png`);
+    });
+    this.load.image('winter_grass_01', '/assets/scene-variants/winter-grass-01.png');
+    this.load.image('winter_path_01', '/assets/scene-variants/winter-path-01.png');
+    this.load.image('winter_pine_01', '/assets/scene-variants/winter-pine-01.png');
+    this.load.image('winter_oak_01', '/assets/scene-variants/winter-oak-01.png');
+    this.load.image('winter_flower_patch_01', '/assets/scene-variants/winter-flower-patch-01.png');
+  }
+
+  preloadWorldEnemyAssets() {
+    const assetVersion = import.meta.env.DEV ? `${Date.now()}` : '20260519-world-enemies';
+    WORLD_SEQUENCE.forEach((worldKey) => {
+      const theme = WORLD_ENEMY_THEMES[worldKey];
+      this.load.image(
+        theme.eliteAssetKey,
+        `/assets/world-monsters/${worldKey}-elite.png?v=${assetVersion}`,
+      );
+      this.load.image(
+        theme.bossAssetKey,
+        `/assets/world-bosses/${worldKey}-boss.png?v=${assetVersion}`,
+      );
+    });
   }
 
   create() {
     this.resetRuntimeState();
+    if (import.meta.env.DEV) {
+      (window as typeof window & { __fairyGuildScene?: FairyGuildScene }).__fairyGuildScene = this;
+    }
     this.createAudio();
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
+    if (this.textures.exists('princessHeroSheet')) {
+      this.registerSheetFrames('princessHeroSheet', 8, 4, 'princess');
+    }
     this.registerSheetFrames('monsterSheet', 8, 5, 'monster');
-    this.registerSheetFrames('worldSheet', 6, 4, 'world');
-    this.registerUiArtFrames();
+    this.registerWorldEnemySheets();
     this.createGeneratedTextures();
 
-    this.worldLayer = this.add.layer();
-    this.entityLayer = this.add.layer();
-    this.fxLayer = this.add.layer();
-    this.uiLayer = this.add.layer().setDepth(5000);
+    this.backgroundLayer = this.add.layer().setDepth(0);
+    this.shadowLayer = this.add.layer().setDepth(40);
+    this.terrainBaseLayer = this.add.layer().setDepth(100);
+    this.edgeLayer = this.add.layer().setDepth(150);
+    this.waterLayer = this.add.layer().setDepth(190);
+    this.decorLayer = this.add.layer().setDepth(240);
+    this.buildingLayer = this.add.layer().setDepth(300);
+    this.characterLayer = this.add.layer().setDepth(360);
+    this.effectsLayer = this.add.layer().setDepth(440);
+    this.levelDebugLayer = this.add.layer().setDepth(4600);
+    this.lightingLayer = this.add.layer().setDepth(4700);
+    this.hudLayer = this.add.layer().setDepth(5000);
+    this.touchLayer = this.add.layer().setDepth(7700);
+    this.worldLayer = this.terrainBaseLayer;
+    this.entityLayer = this.characterLayer;
+    this.fxLayer = this.effectsLayer;
+    this.uiLayer = this.hudLayer;
 
     this.createBackground();
     this.createVillage();
+    this.createTimeOfDayLayer();
     this.createPlayer();
     this.createControls();
     this.createHud();
@@ -126,7 +568,15 @@ class FairyGuildScene extends Phaser.Scene {
     this.createUpgrades();
     this.createPhaseOverlays();
     this.spawnInitialChests();
-    this.showSplashScreen();
+    if (this.resumeRunState && this.resumeSkipSplash) {
+      this.restoreRunStateFromResume();
+      this.startLevelCountdown();
+      this.resumeRunState = null;
+      this.resumeSkipSplash = false;
+      this.sceneVariantOverrideKey = null;
+    } else {
+      this.showSplashScreen();
+    }
 
     this.time.addEvent({
       delay: 1250,
@@ -141,7 +591,33 @@ class FairyGuildScene extends Phaser.Scene {
     });
 
     this.addGuildNote('The village is safe for now!');
-    this.addGuildNote('Press E near a chest for a cheerful surprise.');
+    this.addGuildNote('Dropped chests open on contact and fade quickly.');
+  }
+
+  registerWorldEnemySheets() {
+    WORLD_SEQUENCE.forEach((worldKey) => {
+      const theme = WORLD_ENEMY_THEMES[worldKey];
+      if (this.textures.exists(theme.eliteAssetKey)) {
+        this.validateWorldEnemySheet(theme.eliteAssetKey, theme.eliteCellSize, theme.frameCount, worldKey, 'elite');
+        this.registerSheetFrames(theme.eliteAssetKey, theme.frameCount, 1, theme.eliteFramePrefix);
+      }
+      if (this.textures.exists(theme.bossAssetKey)) {
+        this.validateWorldEnemySheet(theme.bossAssetKey, theme.bossCellSize, theme.frameCount, worldKey, 'boss');
+        this.registerSheetFrames(theme.bossAssetKey, theme.frameCount, 1, theme.bossFramePrefix);
+      }
+    });
+  }
+
+  validateWorldEnemySheet(textureKey: string, cellSize: number, frameCount: number, worldKey: string, kind: 'elite' | 'boss') {
+    const texture = this.textures.get(textureKey);
+    const image = texture.getSourceImage();
+    const expectedWidth = cellSize * frameCount;
+    const expectedHeight = cellSize;
+    if (image.width !== expectedWidth || image.height !== expectedHeight) {
+      console.warn(
+        `Unexpected ${kind} sheet geometry for ${worldKey}: expected ${expectedWidth}x${expectedHeight}, received ${image.width}x${image.height}.`,
+      );
+    }
   }
 
   resetRuntimeState() {
@@ -153,6 +629,11 @@ class FairyGuildScene extends Phaser.Scene {
       gold: 0,
       xp: 0,
       level: 1,
+      worldIndex: 0,
+      worldKey: WORLD_SEQUENCE[0],
+      worldRound: 1,
+      bossRound: false,
+      worldCycle: 0,
       phase: 'splash',
       villageSafety: 100,
       equipped: 'Wooden Sword',
@@ -173,10 +654,16 @@ class FairyGuildScene extends Phaser.Scene {
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
+    this.levelRequiredDefeats = 0;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
     this.levelClearQueued = false;
+    this.levelSpawnedCount = 0;
     this.levelTimers = [];
+    this.generatedValidSpawnPoints = [];
     this.lastRepairAt = 0;
     this.repairModeIndicator = null;
+    this.repairModeOutline = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
     this.touchDetection = null;
@@ -184,6 +671,27 @@ class FairyGuildScene extends Phaser.Scene {
     this.controlsHint = null;
     this.debugOverlay = null;
     this.debugOverlayVisible = false;
+    this.generatedLevel = null;
+    this.generatedLevelValidation = null;
+    this.generatedLevelActive = false;
+    this.generatedLevelConfigId = '';
+    this.generatedLevelConfigLabel = '';
+    this.generatedLevelSelectionWarnings = [];
+    this.levelDebugLayer = null;
+    this.levelDebugGraphics = null;
+    this.levelDebugVisible = false;
+    this.levelDebugLastRenderAt = 0;
+    this.generatedTerrainMask = null;
+    this.generatedTerrainMaskGraphics = null;
+    this.lightingLayer = null;
+    this.timeOfDayOverlay = null;
+    this.timeOfDayMist = null;
+    this.lampGlowGraphics = null;
+    this.timeOfDayOverride = null;
+    this.sceneVariant = null;
+    this.upgradePauseContext = 'roundClear';
+    this.pausedRoundTimers = [];
+    this.parallaxSprites = [];
   }
 
   update(time, delta) {
@@ -204,6 +712,10 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateTouchControls();
     this.updateHud();
     this.updateDebugOverlay();
+    this.updateGeneratedLevelDebug(time);
+    this.updateCinematicParallax();
+    this.syncDevDiagnostics();
+    this.consumeDevCommand();
   }
 
   registerSheetFrames(key, cols, rows, prefix) {
@@ -219,27 +731,6 @@ class FairyGuildScene extends Phaser.Scene {
         const nextY = Math.round((image.height / rows) * (row + 1));
         texture.add(frameName, 0, x, y, nextX - x, nextY - y);
       }
-    }
-  }
-
-  registerUiArtFrames() {
-    const status = this.textures.get('statusPanelUI');
-    if (!status.has('panel')) {
-      status.add('panel', 0, 34, 310, 1764, 250);
-    }
-    const notes = this.textures.get('guildNotesUI');
-    if (!notes.has('panel')) {
-      notes.add('panel', 0, 94, 126, 1352, 770);
-    }
-    const world = this.textures.get('worldSheet');
-    if (!world.has('level-sword-icon')) {
-      world.add('level-sword-icon', 0, 28, 611, 136, 134);
-    }
-    if (!world.has('level-bow-icon')) {
-      world.add('level-bow-icon', 0, 330, 611, 133, 134);
-    }
-    if (!world.has('level-spell-icon')) {
-      world.add('level-spell-icon', 0, 479, 611, 135, 135);
     }
   }
 
@@ -503,54 +994,1693 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
-  isoToScreen(x, y, z = 0) {
+  getIsoMetrics() {
+    const generated = this.generatedLevelActive && this.generatedLevel;
+    const scale = generated ? this.generatedLevel.config.tileSize / 64 : 1;
+    const tileW = TILE_W * scale;
+    const tileH = TILE_H * scale;
+    const mapW = generated ? this.generatedLevel.width : MAP_W;
+    const mapH = generated ? this.generatedLevel.height : MAP_H;
+    const defaultCenterY = ORIGIN.y + ((MAP_W - 1 + MAP_H - 1) * TILE_H) / 4;
+    const origin = generated
+      ? {
+        x: ORIGIN.x,
+        y: defaultCenterY - ((mapW - 1 + mapH - 1) * tileH) / 4,
+      }
+      : ORIGIN;
+    return { origin, tileW, tileH, scale, mapW, mapH };
+  }
+
+  scaleGeneratedSize(size) {
+    const scale = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.config.tileSize / 64 : 1;
+    return [size[0] * scale, size[1] * scale];
+  }
+
+  getFootprintScreenBounds(footprintCells: GridPoint[]): ScreenFootprintBounds {
+    const { tileW, tileH } = this.getIsoMetrics();
+    const halfW = tileW / 2;
+    const halfH = tileH / 2;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    let top = Number.POSITIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+
+    footprintCells.forEach((cell) => {
+      const center = this.isoToScreen(cell.x, cell.y);
+      left = Math.min(left, center.x - halfW);
+      right = Math.max(right, center.x + halfW);
+      top = Math.min(top, center.y - halfH);
+      bottom = Math.max(bottom, center.y + halfH);
+    });
+
+    if (!Number.isFinite(left) || !Number.isFinite(right) || !Number.isFinite(top) || !Number.isFinite(bottom)) {
+      const center = this.isoToScreen(0, 0);
+      left = center.x - halfW;
+      right = center.x + halfW;
+      top = center.y - halfH;
+      bottom = center.y + halfH;
+    }
+
     return {
-      x: ORIGIN.x + (x - y) * (TILE_W / 2),
-      y: ORIGIN.y + (x + y) * (TILE_H / 2) - z,
+      left,
+      right,
+      top,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+      centerX: (left + right) / 2,
+      centerY: (top + bottom) / 2,
+      bottomCenterX: (left + right) / 2,
+      bottomCenterY: bottom,
     };
   }
 
-  screenToIso(x, y) {
-    const sx = x - ORIGIN.x;
-    const sy = y - ORIGIN.y;
+  getGeneratedFootprintSpriteLayout(
+    placement: LevelPlacement,
+    render: AssetRenderMetadata,
+    fallbackFrameSize: [number, number],
+  ) {
+    const footprintCells = placement.cells?.length
+      ? placement.cells
+      : this.getFootprintCells(placement.iso.x, placement.iso.y, placement.footprint);
+    const footprintBounds = this.getFootprintScreenBounds(footprintCells);
+    const textureFrame = render.textureKey
+      ? this.textures.getFrame(render.textureKey, render.frameKey)
+      : null;
+    const frameWidth = textureFrame?.width ?? fallbackFrameSize[0];
+    const frameHeight = textureFrame?.height ?? fallbackFrameSize[1];
+    const floorFrameWidth = Math.max(1, render.floorFrameWidth ?? frameWidth);
+    const displayScale = footprintBounds.width / floorFrameWidth;
+    const bottomPadding = render.floorFrameBottomPadding ?? 0;
+
     return {
-      x: sy / TILE_H + sx / TILE_W,
-      y: sy / TILE_H - sx / TILE_W,
+      x: footprintBounds.bottomCenterX,
+      y: footprintBounds.bottomCenterY + bottomPadding * displayScale,
+      depth: footprintBounds.bottomCenterY,
+      size: [frameWidth * displayScale, frameHeight * displayScale] as [number, number],
+      bounds: footprintBounds,
+    };
+  }
+
+  isoToScreen(x, y, z = 0) {
+    const { origin, tileW, tileH, scale } = this.getIsoMetrics();
+    return {
+      x: origin.x + (x - y) * (tileW / 2),
+      y: origin.y + (x + y) * (tileH / 2) - z * scale,
+    };
+  }
+
+  isoToGroundedEntityScreen(x, y, z = 18) {
+    const point = this.isoToScreen(x, y, this.generatedLevelActive ? 0 : z);
+    if (!this.generatedLevelActive) {
+      return point;
+    }
+    const { tileH } = this.getIsoMetrics();
+    return { x: point.x, y: point.y + tileH / 2 };
+  }
+
+  screenToIso(x, y) {
+    const { origin, tileW, tileH } = this.getIsoMetrics();
+    const sx = x - origin.x;
+    const sy = y - origin.y;
+    return {
+      x: sy / tileH + sx / tileW,
+      y: sy / tileH - sx / tileW,
     };
   }
 
   clampIso(point, padding = 0.5) {
-    point.x = Phaser.Math.Clamp(point.x, padding, MAP_W - 1 - padding);
-    point.y = Phaser.Math.Clamp(point.y, padding, MAP_H - 1 - padding);
+    if (this.generatedLevelActive && this.generatedLevel) {
+      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+      point.x = Phaser.Math.Clamp(point.x, minX, maxX);
+      point.y = Phaser.Math.Clamp(point.y, minY, maxY);
+      return point;
+    }
+    const maxX = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.width : MAP_W) - 1 - padding;
+    const maxY = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.height : MAP_H) - 1 - padding;
+    point.x = Phaser.Math.Clamp(point.x, padding, maxX);
+    point.y = Phaser.Math.Clamp(point.y, padding, maxY);
     return point;
   }
 
+  isGeneratedIsoWalkable(iso) {
+    if (!this.generatedLevelActive || !this.generatedLevel) {
+      return true;
+    }
+    return isFootprintWalkable(
+      this.generatedLevel.walkableGrid,
+      iso,
+      this.generatedLevel.playableBounds,
+    );
+  }
+
   createBackground() {
+    const useGeneratedMap = this.shouldRenderGeneratedLevel();
+    const sceneVariant = this.sceneVariant ?? resolveSceneVariantFromParams(new URLSearchParams(window.location.search));
+    this.sceneVariant = sceneVariant;
     const bg = this.add.graphics();
-    bg.fillGradientStyle(COLORS.skyTop, COLORS.skyTop, COLORS.skyBottom, COLORS.skyBottom, 1);
+    const topColor = useGeneratedMap ? 0xb2d9ec : 0x7fc8f4;
+    const bottomColor = useGeneratedMap ? 0xe7f1ef : 0xd6f3ff;
+    bg.fillGradientStyle(topColor, topColor, bottomColor, bottomColor, 1);
     bg.fillRect(0, 0, WIDTH, HEIGHT);
-    bg.fillStyle(0x68c878, 1);
-    bg.fillEllipse(WIDTH / 2, 696, 1240, 280);
-    bg.fillStyle(0xcdf7f2, 0.45);
-    bg.fillEllipse(200, 108, 190, 38);
-    bg.fillEllipse(1010, 76, 250, 48);
-    bg.fillEllipse(700, 138, 180, 34);
-    this.worldLayer.add(bg);
+    bg.fillStyle(sceneVariant.key === 'night_spring' ? 0x29345a : 0x67c176, useGeneratedMap ? 0.48 : 1);
+    bg.fillEllipse(WIDTH / 2, 700, 1320, 316);
+    this.backgroundLayer.add(bg);
+    if (useGeneratedMap) {
+      this.renderGeneratedScreenBackdropFill();
+      return;
+    }
     const board = this.add.image(WIDTH / 2, HEIGHT / 2, 'villageBoard')
       .setDisplaySize(WIDTH, HEIGHT)
       .setAlpha(0.88);
-    this.worldLayer.add(board);
+    this.backgroundLayer.add(board);
+  }
+
+  renderGeneratedScreenBackdropFill() {
+    // Scenic surround is now composed in world space around the generated board.
+  }
+
+  getActiveSceneVariant() {
+    if (this.sceneVariant) {
+      return this.sceneVariant as SceneVariantConfig;
+    }
+    if (this.sceneVariantOverrideKey && SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset]) {
+      this.sceneVariant = SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset];
+      return this.sceneVariant as SceneVariantConfig;
+    }
+    const resolved = resolveSceneVariantFromParams(new URLSearchParams(window.location.search));
+    this.sceneVariant = resolved;
+    return resolved;
+  }
+
+  syncWorldStateWithSceneVariant() {
+    const variant = this.getActiveSceneVariant();
+    const worldIndex = Math.max(0, WORLD_SEQUENCE.indexOf(variant.key));
+    this.state.worldIndex = worldIndex;
+    this.state.worldKey = variant.key;
+    this.state.worldRound = this.state.worldRound || 1;
+    this.state.bossRound = this.state.worldRound === BOSS_ROUND_INDEX;
+    this.state.worldCycle = this.state.worldCycle || 0;
+  }
+
+  resolveRequestedHeroChoice() {
+    const raw = new URLSearchParams(window.location.search).get('hero');
+    if (raw === 'princess') {
+      return 'princess' as HeroChoice;
+    }
+    if (raw === 'male') {
+      return 'male' as HeroChoice;
+    }
+    return 'male';
+  }
+
+  getHeroProfile(choice = this.heroChoice) {
+    const wantsPrincess = choice === 'princess' && this.textures.exists('princessHeroSheet');
+    const resolvedChoice = wantsPrincess ? 'princess' : 'male';
+    return {
+      choice: resolvedChoice as HeroChoice,
+      label: resolvedChoice === 'princess' ? 'Princess Hero' : 'Village Hero',
+      sheetKey: resolvedChoice === 'princess' ? 'princessHeroSheet' : 'heroSheet',
+      framePrefix: resolvedChoice === 'princess' ? 'princess' : 'hero',
+      animPrefix: resolvedChoice === 'princess' ? 'princess-hero' : 'male-hero',
+      displaySize: [76, 76] as [number, number],
+      origin: [0.5, 0.76] as [number, number],
+    };
+  }
+
+  getHeroAnimationKey(action, choice = this.heroChoice) {
+    return `${this.getHeroProfile(choice).animPrefix}-${action}`;
+  }
+
+  ensureHeroAnimations(profile) {
+    const idleKey = `${profile.animPrefix}-idle`;
+    if (!this.anims.exists(idleKey)) {
+      this.anims.create({
+        key: idleKey,
+        frames: [0, 1, 2, 3].map((col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-0-${col}` })),
+        frameRate: 3,
+        repeat: -1,
+      });
+    }
+    const walkKey = `${profile.animPrefix}-walk`;
+    if (!this.anims.exists(walkKey)) {
+      this.anims.create({
+        key: walkKey,
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-1-${col}` })),
+        frameRate: 9,
+        repeat: -1,
+      });
+    }
+    const meleeKey = `${profile.animPrefix}-melee`;
+    if (!this.anims.exists(meleeKey)) {
+      this.anims.create({
+        key: meleeKey,
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-2-${col}` })),
+        frameRate: 16,
+        repeat: 0,
+      });
+    }
+    const specialKey = `${profile.animPrefix}-special`;
+    if (!this.anims.exists(specialKey)) {
+      this.anims.create({
+        key: specialKey,
+        frames: Array.from({ length: 8 }, (_, col) => ({ key: profile.sheetKey, frame: `${profile.framePrefix}-3-${col}` })),
+        frameRate: 12,
+        repeat: 0,
+      });
+    }
+  }
+
+  applyHeroChoice(choice, options: { announce?: boolean; restartIdle?: boolean } = {}) {
+    const { announce = false, restartIdle = true } = options;
+    const profile = this.getHeroProfile(choice);
+    this.heroChoice = profile.choice;
+    this.heroAnimPrefix = profile.animPrefix;
+    this.ensureHeroAnimations(profile);
+    if (this.player?.sprite) {
+      this.player.sheetKey = profile.sheetKey;
+      this.player.framePrefix = profile.framePrefix;
+      this.player.animPrefix = profile.animPrefix;
+      this.player.sprite
+        .setTexture(profile.sheetKey, `${profile.framePrefix}-0-0`)
+        .setOrigin(profile.origin[0], profile.origin[1])
+        .setDisplaySize(profile.displaySize[0], profile.displaySize[1]);
+      if (restartIdle || !this.player.sprite.anims.currentAnim) {
+        this.player.sprite.play(`${profile.animPrefix}-idle`, true);
+      }
+    }
+    if (announce) {
+      this.addGuildNote(profile.choice === 'princess' ? 'The princess joins the village watch!' : 'The village hero is ready to patrol!');
+    }
+    this.updateSplashHeroChoiceUi?.();
+    return profile;
+  }
+
+  selectHeroChoice(choice) {
+    this.pendingHeroChoice = choice;
+    this.applyHeroChoice(choice, { announce: false, restartIdle: true });
+    this.updateSplashHeroChoiceUi();
+  }
+
+  updateSplashHeroChoiceUi() {
+    const activeChoice = this.pendingHeroChoice ?? null;
+    ['male', 'princess'].forEach((choice) => {
+      const card = this.splashHeroCards?.[choice];
+      if (!card) {
+        return;
+      }
+      const selected = activeChoice === choice;
+      card.hit.setFillStyle(
+        SPLASH_HERO_CARD_FILL_COLOR,
+        selected ? SPLASH_HERO_CARD_SELECTED_FILL_ALPHA : SPLASH_HERO_CARD_IDLE_FILL_ALPHA,
+      );
+      card.selection?.setStrokeStyle(
+        SPLASH_HERO_CARD_SELECTION_STROKE_WIDTH,
+        selected ? SPLASH_HERO_CARD_SELECTED_STROKE_COLOR : SPLASH_HERO_CARD_IDLE_STROKE_COLOR,
+        selected ? SPLASH_HERO_CARD_SELECTED_STROKE_ALPHA : SPLASH_HERO_CARD_IDLE_STROKE_ALPHA,
+      );
+      if (selected) {
+        card.frame.setTint(0xffffff);
+      } else {
+        card.frame.clearTint();
+      }
+      card.label.setColor(selected ? SPLASH_HERO_CARD_SELECTED_LABEL_COLOR : SPLASH_HERO_CARD_IDLE_LABEL_COLOR);
+      card.badge?.setVisible(selected);
+    });
+    const ready = Boolean(activeChoice);
+    if (this.splashStartButton) {
+      if (!this.splashStartButton.input) {
+        this.splashStartButton.setInteractive({ useHandCursor: true });
+      }
+      this.splashStartButton.setFillStyle(
+        SPLASH_HERO_CARD_FILL_COLOR,
+        ready ? SPLASH_START_BUTTON_READY_FILL_ALPHA : SPLASH_START_BUTTON_DISABLED_FILL_ALPHA,
+      );
+    }
+    if (this.splashStartText) {
+      this.splashStartText.setAlpha(ready ? 1 : SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA);
+    }
+    if (this.splashHeroChoiceText) {
+      this.splashHeroChoiceText.setText(
+        activeChoice
+          ? `Chosen hero: ${activeChoice === 'princess' ? 'Princess' : 'Village Adventurer'}`
+          : 'Choose your hero before you begin.',
+      );
+    }
+  }
+
+  restartGameFromBeginning() {
+    this.scene.restart({ forceFreshStart: true });
+  }
+
+  updateCinematicParallax() {
+    if (!this.parallaxSprites?.length || !this.player || !this.generatedLevel) {
+      return;
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const spanX = Math.max(1, (maxX - minX) / 2);
+    const spanY = Math.max(1, (maxY - minY) / 2);
+    const nx = Phaser.Math.Clamp((this.player.iso.x - centerX) / spanX, -1, 1);
+    const ny = Phaser.Math.Clamp((this.player.iso.y - centerY) / spanY, -1, 1);
+    this.parallaxSprites.forEach((entry) => {
+      entry.sprite.setPosition(
+        entry.baseX - nx * 46 * entry.factor,
+        entry.baseY - ny * 30 * entry.factor,
+      );
+    });
+  }
+
+  getCurrentWorldTheme() {
+    return WORLD_ENEMY_THEMES[this.state.worldKey as SeasonPreset] ?? WORLD_ENEMY_THEMES.day_spring;
+  }
+
+  getCurrentRoundTitle() {
+    if (this.state.bossRound) {
+      return this.getCurrentWorldTheme().bossLabel;
+    }
+    return `Level ${this.state.level}`;
+  }
+
+  getNextWorldProgressionState() {
+    if (!this.state.bossRound) {
+      const nextWorldRound = Math.min(ROUNDS_PER_WORLD, this.state.worldRound + 1);
+      return {
+        worldIndex: this.state.worldIndex,
+        worldKey: this.state.worldKey,
+        worldRound: nextWorldRound,
+        bossRound: nextWorldRound === BOSS_ROUND_INDEX,
+        worldCycle: this.state.worldCycle,
+      };
+    }
+    const nextIndex = (this.state.worldIndex + 1) % WORLD_SEQUENCE.length;
+    const looped = nextIndex === 0;
+    return {
+      worldIndex: nextIndex,
+      worldKey: WORLD_SEQUENCE[nextIndex],
+      worldRound: 1,
+      bossRound: false,
+      worldCycle: this.state.worldCycle + (looped ? 1 : 0),
+    };
+  }
+
+  createRunResumeSnapshot(nextProgression, note) {
+    return {
+      playerStats: { ...this.playerStats },
+      state: {
+        health: this.state.health,
+        mana: this.state.mana,
+        gold: this.state.gold,
+        xp: this.state.xp,
+        level: this.state.level,
+        villageSafety: 100,
+        equipped: this.state.equipped,
+        repairMode: false,
+        spell: this.state.spell,
+        inventoryOpen: false,
+        gameOverReason: '',
+        ...nextProgression,
+      },
+      buildings: [],
+      heroChoice: this.heroChoice,
+      upgradeLevels: this.upgrades.map((upgrade) => upgrade.level),
+      note,
+    };
+  }
+
+  restartForWorldProgression(nextProgression, note) {
+    const snapshot = this.createRunResumeSnapshot(nextProgression, note);
+    this.scene.restart({
+      resumeRunState: snapshot,
+      sceneVariantKey: nextProgression.worldKey,
+      resumeSkipSplash: true,
+    });
+    return `restart:${nextProgression.worldKey}`;
+  }
+
+  restoreRunStateFromResume() {
+    if (!this.resumeRunState) {
+      return;
+    }
+    if (this.resumeRunState.playerStats) {
+      this.playerStats = { ...this.playerStats, ...this.resumeRunState.playerStats };
+    }
+    if (this.resumeRunState.heroChoice) {
+      this.heroChoice = this.resumeRunState.heroChoice;
+    }
+    if (this.resumeRunState.state) {
+      this.state = { ...this.state, ...this.resumeRunState.state, phase: 'countdown', inventoryOpen: false, repairMode: false };
+    }
+    if (this.resumeRunState.upgradeLevels?.length) {
+      this.resumeRunState.upgradeLevels.forEach((level, index) => {
+        if (this.upgrades[index]) {
+          this.upgrades[index].level = level;
+        }
+      });
+    }
+    const buildingMap = new Map<string, RunResumeBuildingSnapshot>(
+      (this.resumeRunState.buildings ?? []).map((building) => [building.id ?? building.name, building] as const),
+    );
+    this.buildings.forEach((building) => {
+      const snapshot = buildingMap.get(building.levelPlacementId ?? building.name) ?? buildingMap.get(building.name);
+      if (!snapshot) {
+        return;
+      }
+      building.hp = Math.max(0, Math.min(snapshot.hp, building.max));
+      building.max = snapshot.max ?? building.max;
+      this.updateBuildingRepairState(building);
+    });
+    if (this.resumeRunState.note) {
+      this.addGuildNote(this.resumeRunState.note);
+    }
+    this.updateVillageSafety();
+  }
+
+  getSceneVariantTerrainTexture(token) {
+    const variant = this.getActiveSceneVariant();
+    if (variant.key === 'noon_winter') {
+      if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
+        return { textureKey: 'winter_path_01', frameKey: undefined };
+      }
+      return { textureKey: 'winter_grass_01', frameKey: undefined };
+    }
+    if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
+      return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.path[0] };
+    }
+    return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.grass[0] };
+  }
+
+  getSceneVariantPropTexture(placement) {
+    const variant = this.getActiveSceneVariant();
+    if (variant.key !== 'noon_winter') {
+      return null;
+    }
+    if (placement.token === 'tree') {
+      return { textureKey: 'winter_pine_01', frameKey: undefined };
+    }
+    if (placement.type === 'terrain' && placement.token === 'decoration') {
+      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
+    }
+    return null;
+  }
+
+  getSceneVariantDecorationTexture(placement) {
+    const variant = this.getActiveSceneVariant();
+    if (variant.key !== 'noon_winter') {
+      return null;
+    }
+    if (placement.decorationKind === 'flowers' || placement.decorationKind === 'grassPatch') {
+      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
+    }
+    if (placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree' || placement.decorationKind === 'treeCluster') {
+      return { textureKey: 'winter_pine_01', frameKey: undefined };
+    }
+    return null;
+  }
+
+  addSceneVariantImage(
+    layer,
+    textureKey,
+    x,
+    y,
+    uniformScale,
+    depth,
+    options: { alpha?: number; originX?: number; originY?: number; tint?: number } = {},
+  ) {
+    if (!this.textures.exists(textureKey)) {
+      return null;
+    }
+    const sprite = this.add.image(x, y, textureKey)
+      .setOrigin(options.originX ?? 0.5, options.originY ?? 0.5)
+      .setScale(uniformScale)
+      .setDepth(depth)
+      .setAlpha(options.alpha ?? 1);
+    if (options.tint) {
+      sprite.setTint(options.tint);
+    }
+    layer.add(sprite);
+    return sprite;
+  }
+
+  registerParallaxSprite(sprite, factor, baseX, baseY) {
+    if (!sprite) {
+      return;
+    }
+    this.parallaxSprites.push({ sprite, factor, baseX, baseY });
+  }
+
+  hasStaticSceneVariantFrame(config) {
+    return Boolean(config)
+      && this.textures.exists(config.backgroundAssetKey)
+      && this.textures.exists(config.exteriorFrameAssetKey);
+  }
+
+  renderSceneVariantBackground(config, bounds) {
+    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
+    const sprite = this.addSceneVariantImage(
+      this.backgroundLayer,
+      config.backgroundAssetKey,
+      bounds.centerX,
+      bounds.centerY - 24,
+      baseScale * 1.04 * (config.worldZoom ?? 1),
+      2,
+      { alpha: 1 },
+    );
+    this.registerParallaxSprite(sprite, config.backgroundParallax ?? 0, bounds.centerX, bounds.centerY - 24);
+  }
+
+  renderSceneVariantFrame(config, bounds) {
+    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
+    const sprite = this.addSceneVariantImage(
+      this.edgeLayer,
+      config.exteriorFrameAssetKey,
+      bounds.centerX,
+      bounds.centerY - 20,
+      baseScale * 1.04 * (config.worldZoom ?? 1),
+      70,
+      { alpha: 1 },
+    );
+    this.registerParallaxSprite(sprite, config.frameParallax ?? 0, bounds.centerX, bounds.centerY - 20);
+  }
+
+  renderSceneVariantForeground(config, bounds) {
+    if (!config.foregroundFogAssetKey) {
+      return;
+    }
+    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
+    const sprite = this.addSceneVariantImage(
+      this.lightingLayer,
+      config.foregroundFogAssetKey,
+      bounds.centerX,
+      bounds.centerY - 20,
+      baseScale * 1.04 * (config.worldZoom ?? 1),
+      4705,
+      { alpha: config.key === 'night_spring' ? 0.9 : 0.72 },
+    );
+    this.registerParallaxSprite(sprite, config.foregroundParallax ?? 0, bounds.centerX, bounds.centerY - 20);
+  }
+
+  renderSceneVariantOverlapDecor(config, bounds, tileW, tileH) {
+    config.overlapDecorAnchors.forEach((anchor) => {
+      const x = bounds.centerX + anchor.x * tileW;
+      const y = bounds.centerY + anchor.y * tileH;
+      this.addEnvironmentUniformSprite(
+        this.edgeLayer,
+        anchor.frame,
+        x,
+        y,
+        anchor.scale,
+        bounds.centerY + anchor.depthBias,
+        { alpha: anchor.alpha, originY: 0.82 },
+      );
+    });
+  }
+
+  applySceneVariantAmbient(config) {
+    if (config.ambientAlpha <= 0) {
+      return;
+    }
+    const ambient = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, config.ambientTint, config.ambientAlpha)
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(4701);
+    this.lightingLayer.add(ambient);
   }
 
   createVillage() {
+    this.prepareGeneratedLevel();
+    this.generatedLevelActive = this.shouldRenderGeneratedLevel();
     this.tileGraphics = this.add.graphics();
-    this.tileGraphics.setAlpha(0.15);
-    this.worldLayer.add(this.tileGraphics);
-    this.drawMapTiles();
+    this.tileGraphics.setAlpha(this.generatedLevelActive ? 1 : 0.15);
+    this.terrainBaseLayer.add(this.tileGraphics);
+    if (this.generatedLevelActive) {
+      this.createGeneratedTerrainMask();
+      if (this.generatedTerrainMask) {
+        this.tileGraphics.setMask(this.generatedTerrainMask);
+      }
+      this.renderGeneratedLevel();
+    } else {
+      this.drawMapTiles();
+      this.createPathStones();
+      this.createForestBorder();
+      this.createBuildings();
+      this.createProps();
+    }
+    this.levelDebugVisible = this.isLevelDebugRequested();
+    if (this.levelDebugVisible) {
+      this.drawGeneratedLevelDebug();
+    }
+  }
+
+  prepareGeneratedLevel() {
+    const params = new URLSearchParams(window.location.search);
+    const selection = resolveLevelConfigFromParams(params);
+    this.generatedLevelConfigId = selection.id;
+    this.generatedLevelConfigLabel = selection.label;
+    this.generatedLevelSelectionWarnings = selection.warnings;
+    this.sceneVariant = this.sceneVariantOverrideKey && SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset]
+      ? SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset]
+      : resolveSceneVariantFromParams(params);
+    const worldCycle = Number(this.resumeRunState?.state?.worldCycle ?? this.state.worldCycle ?? 0);
+    selection.config.playableBounds = this.sceneVariant.playableBounds;
+    const boardConfig = buildSeasonBoardConfig(selection.config, this.sceneVariant.key as SeasonPreset, worldCycle);
+    boardConfig.playableBounds = this.sceneVariant.playableBounds;
+    this.generatedLevel = generateLevel(boardConfig, ASSET_REGISTRY);
+    this.generatedLevelValidation = validateGeneratedLevel(this.generatedLevel);
+    if (!this.resumeRunState) {
+      this.syncWorldStateWithSceneVariant();
+    }
+    if (!this.generatedLevelValidation.valid) {
+      console.warn('[generated-level] validation failed', this.generatedLevelValidation);
+    } else if (this.generatedLevelValidation.warnings.length > 0 || selection.warnings.length > 0) {
+      console.info('[generated-level] validation warnings', {
+        selectionWarnings: selection.warnings,
+        validationWarnings: this.generatedLevelValidation.warnings,
+      });
+    }
+  }
+
+  shouldRenderGeneratedLevel() {
+    return shouldRenderGeneratedLevelFromParams(new URLSearchParams(window.location.search));
+  }
+
+  isLevelDebugRequested() {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('debugLevel') ?? params.get('debugGrid');
+    return (params.has('debugLevel') || params.has('debugGrid'))
+      && raw !== '0'
+      && raw !== 'false'
+      && raw !== 'off';
+  }
+
+  shouldAutoStartFromParams() {
+    const raw = new URLSearchParams(window.location.search).get('autostart');
+    return raw === '1' || raw === 'true' || raw === 'on';
+  }
+
+  shouldSkipCountdownFromParams() {
+    const raw = new URLSearchParams(window.location.search).get('skipCountdown');
+    return raw === '1' || raw === 'true' || raw === 'on';
+  }
+
+  renderGeneratedLevel() {
+    if (!this.generatedLevel) {
+      return;
+    }
+    const variant = this.getActiveSceneVariant();
+    const { tileW, tileH } = this.getIsoMetrics();
+    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
+    const usesStaticSceneFrame = this.hasStaticSceneVariantFrame(variant);
+    if (bounds) {
+      this.renderSceneVariantBackground(variant, bounds);
+      if (!usesStaticSceneFrame) {
+        this.renderGeneratedWorldEdges();
+      }
+      this.renderSceneVariantFrame(variant, bounds);
+    }
+    this.generatedLevel.terrain.forEach((placement) => {
+      const center = this.isoToScreen(placement.iso.x, placement.iso.y);
+      const render = placement.render ?? {};
+      const terrainTexture = this.getSceneVariantTerrainTexture(placement.token);
+      const textureKey = terrainTexture?.textureKey ?? render.textureKey;
+      const frameKey = terrainTexture?.frameKey ?? render.frameKey;
+      const texture = textureKey ? this.textures.get(textureKey) : null;
+      if (textureKey && texture && (!frameKey || texture.has(frameKey))) {
+        const size = this.scaleGeneratedSize(render.displaySize ?? [160, 160]);
+        const sprite = this.add.image(center.x, center.y, textureKey, frameKey)
+          .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.62)
+          .setDisplaySize(size[0], size[1])
+          .setDepth(center.y - tileH)
+          .setAlpha(1);
+        this.terrainBaseLayer.add(sprite);
+        return;
+      }
+      const fill = render.terrainFill ?? COLORS.grassA;
+      const stroke = render.terrainStroke ?? 0x5dbb65;
+      this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, 1, 0);
+    });
+    if (bounds) {
+      this.renderSceneVariantOverlapDecor(variant, bounds, tileW, tileH);
+    }
     this.createPathStones();
-    this.createForestBorder();
-    this.createBuildings();
-    this.createProps();
+    this.generatedLevel.objects.forEach((placement) => {
+      if (placement.type === 'building') {
+        this.renderGeneratedBuilding(placement);
+      } else {
+        this.renderGeneratedProp(placement);
+      }
+    });
+    this.generatedLevel.decorations.forEach((placement) => this.renderGeneratedDecoration(placement));
+    if (bounds) {
+      this.renderSceneVariantForeground(variant, bounds);
+      this.applySceneVariantAmbient(variant);
+    }
+  }
+
+  renderGeneratedWorldEdges() {
+    if (!this.generatedLevel || !this.textures.exists('worldEdgesAtlas')) {
+      return;
+    }
+    const texture = this.textures.get('worldEdgesAtlas');
+    const { tileW, tileH } = this.getIsoMetrics();
+    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
+    if (!bounds) {
+      return;
+    }
+    this.renderGeneratedWorldShadow(bounds, tileW, tileH, texture);
+    this.generatedLevel.terrain.forEach((placement) => {
+      if (!this.isGeneratedBoardEdgeCell(placement.grid)) {
+        return;
+      }
+      if (!this.shouldRenderGeneratedCellCliff(placement.grid)) {
+        return;
+      }
+      const frame = this.getGeneratedWorldCliffFrame(placement.grid);
+      if (!frame || !texture.has(frame)) {
+        return;
+      }
+      const center = this.isoToScreen(placement.iso.x, placement.iso.y);
+      const offset = this.getGeneratedWorldCliffOffset(placement.grid, tileW, tileH);
+      const isCorner = frame.includes('corner');
+      const size = this.scaleGeneratedSize(isCorner ? [246, 238] : [320, 244]);
+      const border = this.add.image(
+        center.x + offset.x,
+        center.y + offset.y,
+        'worldEdgesAtlas',
+        frame,
+      )
+        .setOrigin(0.5, 0.46)
+        .setDisplaySize(size[0], size[1])
+        .setDepth(center.y - tileH - 46)
+        .setAlpha(1);
+      this.edgeLayer.add(border);
+    });
+  }
+
+  shouldRenderGeneratedCellCliff(grid) {
+    if (!this.generatedLevel) {
+      return false;
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const isCorner = (
+      (grid.x === minX && grid.y === minY)
+      || (grid.x === maxX && grid.y === minY)
+      || (grid.x === maxX && grid.y === maxY)
+      || (grid.x === minX && grid.y === maxY)
+    );
+    if (isCorner) {
+      return true;
+    }
+    if (grid.y === maxY) {
+      return true;
+    }
+    if (grid.y === minY) {
+      return false;
+    }
+    if (grid.x === minX || grid.x === maxX) {
+      return grid.y >= Math.max(minY + 4, minY + Math.floor((maxY - minY) * 0.28));
+    }
+    return false;
+  }
+
+  addEnvironmentFrameSprite(
+    layer,
+    frame,
+    x,
+    y,
+    width,
+    height,
+    depth,
+    options: { originX?: number; originY?: number; alpha?: number } = {},
+  ) {
+    if (!this.textures.exists('environmentFrameAtlas')) {
+      return null;
+    }
+    const texture = this.textures.get('environmentFrameAtlas');
+    if (!texture.has(frame)) {
+      return null;
+    }
+    const sprite = this.add.image(x, y, 'environmentFrameAtlas', frame)
+      .setOrigin(options.originX ?? 0.5, options.originY ?? 0.82)
+      .setDisplaySize(width, height)
+      .setDepth(depth)
+      .setAlpha(options.alpha ?? 1);
+    layer.add(sprite);
+    return sprite;
+  }
+
+  addEnvironmentUniformSprite(
+    layer,
+    frame,
+    x,
+    y,
+    uniformScale,
+    depth,
+    options: { originX?: number; originY?: number; alpha?: number } = {},
+  ) {
+    if (!this.textures.exists('environmentFrameAtlas')) {
+      return null;
+    }
+    const texture = this.textures.get('environmentFrameAtlas');
+    if (!texture.has(frame)) {
+      return null;
+    }
+    const atlasScale = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.config.tileSize / 64 : 1;
+    const sprite = this.add.image(x, y, 'environmentFrameAtlas', frame)
+      .setOrigin(options.originX ?? 0.5, options.originY ?? 0.78)
+      .setScale(uniformScale * atlasScale)
+      .setDepth(depth)
+      .setAlpha(options.alpha ?? 1);
+    layer.add(sprite);
+    return sprite;
+  }
+
+  getGeneratedSurroundLayer(layer: GeneratedSurroundLayer) {
+    switch (layer) {
+      case 'shadow':
+        return this.shadowLayer;
+      case 'edge':
+        return this.edgeLayer;
+      case 'water':
+        return this.waterLayer;
+      case 'decor':
+        return this.decorLayer;
+      case 'background':
+      default:
+        return this.backgroundLayer;
+    }
+  }
+
+  getGeneratedSurroundAnchorPoint(bounds, tileW, tileH, anchor: GeneratedSurroundAnchor) {
+    switch (anchor) {
+      case 'topLeft':
+        return { x: bounds.centerX - bounds.boardWidth * 0.3, y: bounds.top.y - tileH * 2.46 };
+      case 'topCenter':
+        return { x: bounds.centerX, y: bounds.top.y - tileH * 2.62 };
+      case 'topRight':
+        return { x: bounds.centerX + bounds.boardWidth * 0.3, y: bounds.top.y - tileH * 2.46 };
+      case 'leftUpper':
+        return { x: bounds.left.x - tileW * 3.55, y: bounds.centerY - tileH * 1.78 };
+      case 'leftLower':
+        return { x: bounds.left.x - tileW * 3.9, y: bounds.bottom.y + tileH * 1.88 };
+      case 'rightUpper':
+        return { x: bounds.right.x + tileW * 3.55, y: bounds.centerY - tileH * 1.78 };
+      case 'rightLower':
+        return { x: bounds.right.x + tileW * 3.9, y: bounds.bottom.y + tileH * 1.88 };
+      case 'bottomLeft':
+        return { x: bounds.centerX - bounds.boardWidth * 0.28, y: bounds.bottom.y + tileH * 4.26 };
+      case 'bottomCenter':
+        return { x: bounds.centerX, y: bounds.bottom.y + tileH * 4.5 };
+      case 'bottomRight':
+      default:
+        return { x: bounds.centerX + bounds.boardWidth * 0.28, y: bounds.bottom.y + tileH * 4.26 };
+    }
+  }
+
+  renderGeneratedSceneSurround(bounds, tileW, tileH) {
+    GENERATED_SURROUND_PIECES.forEach((piece) => {
+      const anchor = this.getGeneratedSurroundAnchorPoint(bounds, tileW, tileH, piece.anchor);
+      const depth = typeof piece.depth === 'number'
+        ? piece.depth
+        : (piece.depth.edge === 'top' ? bounds.top.y : bounds.bottom.y) + tileH * piece.depth.tileOffset;
+      this.addEnvironmentUniformSprite(
+        this.getGeneratedSurroundLayer(piece.layer),
+        piece.frame,
+        anchor.x + piece.offsetXUnits * tileW,
+        anchor.y + piece.offsetYUnits * tileH,
+        piece.uniformScale,
+        depth,
+        { alpha: piece.alpha, originX: piece.originX, originY: piece.originY },
+      );
+    });
+  }
+
+  renderGeneratedEnvironmentFrame() {
+    // Retained for compatibility while the hybrid scene variant frame owns the perimeter.
+  }
+
+  getGeneratedWorldBounds(tileW, tileH) {
+    if (!this.generatedLevel) {
+      return null;
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const top = this.isoToScreen(minX, minY);
+    const right = this.isoToScreen(maxX, minY);
+    const bottom = this.isoToScreen(maxX, maxY);
+    const left = this.isoToScreen(minX, maxY);
+    return {
+      top,
+      right,
+      bottom,
+      left,
+      centerX: (left.x + right.x) / 2,
+      centerY: (top.y + bottom.y) / 2,
+      boardWidth: Math.abs(right.x - left.x) + tileW * 2.55,
+      boardHeight: Math.abs(bottom.y - top.y) + tileH * 2.55,
+    };
+  }
+
+  renderGeneratedWorldFog(bounds, tileW, tileH, texture) {
+    const fogDepth = 8;
+    const fogPieces = [
+      {
+        frame: 'edge_fog_n_01',
+        x: bounds.centerX,
+        y: bounds.top.y - tileH * 3.3,
+        width: bounds.boardWidth * 2.42,
+        height: tileH * 22.4,
+        alpha: 0.42,
+      },
+      {
+        frame: 'edge_fog_n_01',
+        x: bounds.centerX - bounds.boardWidth * 0.38,
+        y: bounds.top.y - tileH * 1.3,
+        width: bounds.boardWidth * 1.24,
+        height: tileH * 16.6,
+        alpha: 0.32,
+      },
+      {
+        frame: 'edge_fog_n_01',
+        x: bounds.centerX + bounds.boardWidth * 0.38,
+        y: bounds.top.y - tileH * 1.3,
+        width: bounds.boardWidth * 1.24,
+        height: tileH * 16.6,
+        alpha: 0.32,
+      },
+      {
+        frame: 'edge_fog_e_01',
+        x: bounds.right.x + tileW * 4.9,
+        y: bounds.centerY + tileH * 0.12,
+        width: tileW * 18.4,
+        height: bounds.boardHeight * 1.62,
+        alpha: 0.28,
+      },
+      {
+        frame: 'edge_fog_s_01',
+        x: bounds.centerX,
+        y: bounds.bottom.y + tileH * 3.85,
+        width: bounds.boardWidth * 1.88,
+        height: tileH * 15.6,
+        alpha: 0.3,
+      },
+      {
+        frame: 'edge_fog_w_01',
+        x: bounds.left.x - tileW * 4.9,
+        y: bounds.centerY + tileH * 0.12,
+        width: tileW * 18.4,
+        height: bounds.boardHeight * 1.62,
+        alpha: 0.28,
+      },
+    ];
+    fogPieces.forEach((piece) => {
+      if (!texture.has(piece.frame)) {
+        return;
+      }
+      const fog = this.add.image(piece.x, piece.y, 'worldEdgesAtlas', piece.frame)
+        .setOrigin(0.5)
+        .setDisplaySize(piece.width, piece.height)
+        .setDepth(fogDepth)
+        .setAlpha(piece.alpha);
+      this.backgroundLayer.add(fog);
+    });
+  }
+
+  renderGeneratedWorldBackdrop(bounds, tileW, tileH, texture) {
+    const backdropDepth = 6;
+    const backdrops = [
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX,
+        y: bounds.top.y - tileH * 1.62,
+        width: bounds.boardWidth * 2.38,
+        height: tileH * 29.4,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX - bounds.boardWidth * 0.44,
+        y: bounds.top.y - tileH * 0.58,
+        width: bounds.boardWidth * 1.28,
+        height: tileH * 20.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX + bounds.boardWidth * 0.44,
+        y: bounds.top.y - tileH * 0.58,
+        width: bounds.boardWidth * 1.28,
+        height: tileH * 20.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX - bounds.boardWidth * 0.16,
+        y: bounds.top.y - tileH * 0.02,
+        width: bounds.boardWidth * 0.96,
+        height: tileH * 15.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX + bounds.boardWidth * 0.16,
+        y: bounds.top.y - tileH * 0.02,
+        width: bounds.boardWidth * 0.96,
+        height: tileH * 15.8,
+      },
+      {
+        frame: 'edge_backdrop_n_01',
+        x: bounds.centerX,
+        y: bounds.top.y + tileH * 0.58,
+        width: bounds.boardWidth * 1.14,
+        height: tileH * 13.2,
+      },
+      {
+        frame: 'edge_backdrop_w_01',
+        x: bounds.left.x - tileW * 6.4,
+        y: bounds.centerY - tileH * 1.45,
+        width: tileW * 17.2,
+        height: bounds.boardHeight * 1.26,
+      },
+      {
+        frame: 'edge_backdrop_w_01',
+        x: bounds.left.x - tileW * 6.3,
+        y: bounds.centerY + tileH * 2.35,
+        width: tileW * 17.4,
+        height: bounds.boardHeight * 1.18,
+      },
+      {
+        frame: 'edge_backdrop_e_01',
+        x: bounds.right.x + tileW * 6.4,
+        y: bounds.centerY - tileH * 1.45,
+        width: tileW * 17.2,
+        height: bounds.boardHeight * 1.26,
+      },
+      {
+        frame: 'edge_backdrop_e_01',
+        x: bounds.right.x + tileW * 6.3,
+        y: bounds.centerY + tileH * 2.35,
+        width: tileW * 17.4,
+        height: bounds.boardHeight * 1.18,
+      },
+      {
+        frame: 'edge_backdrop_s_01',
+        x: bounds.centerX,
+        y: bounds.bottom.y + tileH * 5.1,
+        width: bounds.boardWidth * 1.96,
+        height: tileH * 18.4,
+      },
+      {
+        frame: 'edge_backdrop_nw_01',
+        x: bounds.left.x - tileW * 4.7,
+        y: bounds.top.y - tileH * 0.66,
+        width: tileW * 21.4,
+        height: tileH * 25.2,
+      },
+      {
+        frame: 'edge_backdrop_ne_01',
+        x: bounds.right.x + tileW * 4.7,
+        y: bounds.top.y - tileH * 0.66,
+        width: tileW * 21.4,
+        height: tileH * 25.2,
+      },
+      {
+        frame: 'edge_backdrop_sw_01',
+        x: bounds.left.x - tileW * 5.8,
+        y: bounds.bottom.y + tileH * 4.35,
+        width: tileW * 15.8,
+        height: tileH * 18.4,
+      },
+      {
+        frame: 'edge_backdrop_se_01',
+        x: bounds.right.x + tileW * 5.8,
+        y: bounds.bottom.y + tileH * 4.35,
+        width: tileW * 15.8,
+        height: tileH * 18.4,
+      },
+    ];
+    backdrops.forEach((piece) => {
+      if (!texture.has(piece.frame)) {
+        return;
+      }
+      const backdrop = this.add.image(piece.x, piece.y, 'worldEdgesAtlas', piece.frame)
+        .setOrigin(0.5, 0.72)
+        .setDisplaySize(piece.width, piece.height)
+        .setDepth(backdropDepth)
+        .setAlpha(1);
+      this.backgroundLayer.add(backdrop);
+    });
+  }
+
+  renderGeneratedWorldShadow(bounds, tileW, tileH, texture) {
+    if (!texture.has('edge_shadow_01')) {
+      return;
+    }
+    const shadow = this.add.image(
+      bounds.centerX,
+      bounds.bottom.y + tileH * 1.58,
+      'worldEdgesAtlas',
+      'edge_shadow_01',
+    )
+      .setOrigin(0.5)
+      .setDisplaySize(bounds.boardWidth * 1.18, Math.max(tileH * 9, bounds.boardHeight * 0.42))
+      .setDepth(10)
+      .setAlpha(0.44);
+    this.shadowLayer.add(shadow);
+  }
+
+  renderGeneratedWorldEdgeClusters() {
+    if (!this.generatedLevel || !this.textures.exists('worldEdgesAtlas')) {
+      return;
+    }
+    const texture = this.textures.get('worldEdgesAtlas');
+    const { tileW, tileH } = this.getIsoMetrics();
+    const bounds = this.getGeneratedWorldBounds(tileW, tileH);
+    if (!bounds) {
+      return;
+    }
+    const size = this.scaleGeneratedSize([524, 454]);
+    const clusters = [
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.left.x - tileW * 2.9,
+        y: bounds.top.y + tileH * 1.15,
+        depth: bounds.top.y + tileH * 0.34,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.right.x + tileW * 2.9,
+        y: bounds.top.y + tileH * 1.15,
+        depth: bounds.top.y + tileH * 0.34,
+      },
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.centerX - bounds.boardWidth * 0.3,
+        y: bounds.top.y - tileH * 0.08,
+        depth: bounds.top.y + tileH * 0.18,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.centerX + bounds.boardWidth * 0.3,
+        y: bounds.top.y - tileH * 0.08,
+        depth: bounds.top.y + tileH * 0.18,
+      },
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.centerX - tileW * 1.9,
+        y: bounds.top.y - tileH * 0.42,
+        depth: bounds.top.y + tileH * 0.08,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.centerX + tileW * 1.9,
+        y: bounds.top.y - tileH * 0.42,
+        depth: bounds.top.y + tileH * 0.08,
+      },
+      {
+        frame: 'edge_cluster_nw_01',
+        x: bounds.left.x - tileW * 4.25,
+        y: bounds.centerY - tileH * 2.75,
+        depth: bounds.centerY - tileH * 2.15,
+      },
+      {
+        frame: 'edge_cluster_ne_01',
+        x: bounds.right.x + tileW * 4.25,
+        y: bounds.centerY - tileH * 2.75,
+        depth: bounds.centerY - tileH * 2.15,
+      },
+      {
+        frame: 'edge_cluster_sw_01',
+        x: bounds.left.x - tileW * 4.25,
+        y: bounds.centerY + tileH * 3.05,
+        depth: bounds.centerY + tileH * 2.2,
+      },
+      {
+        frame: 'edge_cluster_se_01',
+        x: bounds.right.x + tileW * 4.25,
+        y: bounds.centerY + tileH * 3.05,
+        depth: bounds.centerY + tileH * 2.2,
+      },
+      {
+        frame: 'edge_cluster_sw_01',
+        x: bounds.left.x - tileW * 2.9,
+        y: bounds.bottom.y + tileH * 3.15,
+        depth: bounds.bottom.y + tileH * 1.72,
+      },
+      {
+        frame: 'edge_cluster_se_01',
+        x: bounds.right.x + tileW * 2.9,
+        y: bounds.bottom.y + tileH * 3.15,
+        depth: bounds.bottom.y + tileH * 1.72,
+      },
+      {
+        frame: 'edge_cluster_sw_01',
+        x: bounds.centerX - bounds.boardWidth * 0.2,
+        y: bounds.bottom.y + tileH * 3.55,
+        depth: bounds.bottom.y + tileH * 1.84,
+      },
+      {
+        frame: 'edge_cluster_se_01',
+        x: bounds.centerX + bounds.boardWidth * 0.2,
+        y: bounds.bottom.y + tileH * 3.55,
+        depth: bounds.bottom.y + tileH * 1.84,
+      },
+    ];
+    clusters.forEach((cluster) => {
+      if (!texture.has(cluster.frame)) {
+        return;
+      }
+      const decoration = this.add.image(cluster.x, cluster.y, 'worldEdgesAtlas', cluster.frame)
+        .setOrigin(0.5, 0.72)
+        .setDisplaySize(size[0], size[1])
+        .setDepth(cluster.depth)
+        .setAlpha(0.98);
+      this.decorLayer.add(decoration);
+    });
+  }
+
+  getGeneratedWorldCliffFrame(grid) {
+    if (!this.generatedLevel) {
+      return null;
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    if (grid.x === minX && grid.y === minY) {return 'edge_corner_n_01';}
+    if (grid.x === maxX && grid.y === minY) {return 'edge_corner_e_01';}
+    if (grid.x === maxX && grid.y === maxY) {return 'edge_corner_s_01';}
+    if (grid.x === minX && grid.y === maxY) {return 'edge_corner_w_01';}
+    if (grid.y === minY) {return 'edge_cliff_nw_01';}
+    if (grid.x === maxX) {return 'edge_cliff_ne_01';}
+    if (grid.y === maxY) {return 'edge_cliff_se_01';}
+    if (grid.x === minX) {return 'edge_cliff_sw_01';}
+    return null;
+  }
+
+  getGeneratedWorldCliffOffset(grid, tileW, tileH) {
+    if (!this.generatedLevel) {
+      return { x: 0, y: 0 };
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    if (grid.x === minX && grid.y === minY) {return { x: 0, y: tileH * 0.72 };}
+    if (grid.x === maxX && grid.y === minY) {return { x: tileW * 0.54, y: tileH * 0.92 };}
+    if (grid.x === maxX && grid.y === maxY) {return { x: 0, y: tileH * 1.46 };}
+    if (grid.x === minX && grid.y === maxY) {return { x: -tileW * 0.54, y: tileH * 0.92 };}
+    if (grid.y === minY) {return { x: tileW * 0.16, y: tileH * 0.52 };}
+    if (grid.x === maxX) {return { x: tileW * 0.48, y: tileH * 0.92 };}
+    if (grid.y === maxY) {return { x: -tileW * 0.16, y: tileH * 1.3 };}
+    if (grid.x === minX) {return { x: -tileW * 0.48, y: tileH * 0.92 };}
+    return { x: 0, y: 0 };
+  }
+
+  isGeneratedBoardEdgeCell(grid) {
+    if (!this.generatedLevel) {
+      return false;
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    return grid.x === minX
+      || grid.y === minY
+      || grid.x === maxX
+      || grid.y === maxY;
+  }
+
+  createGeneratedTerrainMask() {
+    if (!this.generatedLevel) {
+      return;
+    }
+    this.generatedTerrainMaskGraphics?.destroy();
+    const { tileW, tileH } = this.getIsoMetrics();
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const topCenter = this.isoToScreen(minX, minY);
+    const rightCenter = this.isoToScreen(maxX, minY);
+    const bottomCenter = this.isoToScreen(maxX, maxY);
+    const leftCenter = this.isoToScreen(minX, maxY);
+    const top = new Phaser.Geom.Point(topCenter.x, topCenter.y - tileH / 2);
+    const right = new Phaser.Geom.Point(rightCenter.x + tileW / 2, rightCenter.y);
+    const bottom = new Phaser.Geom.Point(bottomCenter.x, bottomCenter.y + tileH / 2);
+    const left = new Phaser.Geom.Point(leftCenter.x - tileW / 2, leftCenter.y);
+    const maskGraphics = this.make.graphics({ x: 0, y: 0, add: false } as any);
+    maskGraphics.fillStyle(0xffffff, 1);
+    maskGraphics.beginPath();
+    maskGraphics.moveTo(top.x, top.y);
+    maskGraphics.lineTo(right.x, right.y);
+    maskGraphics.lineTo(bottom.x, bottom.y);
+    maskGraphics.lineTo(left.x, left.y);
+    maskGraphics.closePath();
+    maskGraphics.fillPath();
+    this.generatedTerrainMaskGraphics = maskGraphics;
+    this.generatedTerrainMask = maskGraphics.createGeometryMask();
+  }
+
+  renderGeneratedBuilding(placement) {
+    const render = placement.render ?? {};
+    const textureKey = render.textureKey ?? 'cottageTexture';
+    const layout = this.getGeneratedFootprintSpriteLayout(
+      placement,
+      { ...render, textureKey },
+      [80, 70],
+    );
+    const size = layout.size;
+    const sprite = this.add.image(layout.x, layout.y, textureKey, render.frameKey)
+      .setOrigin(0.5, 1)
+      .setDisplaySize(size[0], size[1])
+      .setDepth(layout.depth)
+      .setAlpha(GENERATED_BUILDING_SPRITE_ALPHA);
+    const healthBar = this.createBuildingHealthBar(
+      layout.x,
+      layout.y - size[1] * 0.78,
+      Math.max(42, Math.min(76, size[0] * 0.7)),
+      10,
+      layout.depth + 140,
+    );
+    this.entityLayer.add([sprite, healthBar.container]);
+    const building = {
+      name: placement.label,
+      x: placement.iso.x,
+      y: placement.iso.y,
+      hp: placement.maxHealth,
+      max: placement.maxHealth,
+      importance: placement.importance,
+      levelPlacementId: placement.id,
+      texture: render.textureKey,
+      size,
+      reward: Math.round(placement.importance / 4),
+      iso: { x: placement.iso.x, y: placement.iso.y },
+      footprint: placement.footprint,
+      footprintCells: placement.cells.map((cell) => ({ ...cell })),
+      spriteAlpha: GENERATED_BUILDING_SPRITE_ALPHA,
+      sprite,
+      healthBar,
+      underAttackUntil: 0,
+    };
+    this.buildings.push(building);
+    this.updateBuildingHealthBar(building);
+  }
+
+  renderGeneratedProp(placement) {
+    if (this.generatedLevelActive && this.generatedLevel && placement.token === 'tree' && this.isGeneratedBoardEdgeCell(placement.grid)) {
+      return;
+    }
+    const render = placement.render ?? {};
+    const override = this.getSceneVariantPropTexture(placement);
+    const textureKey = override?.textureKey ?? render?.textureKey;
+    const frameKey = override?.frameKey ?? render?.frameKey;
+    if (!textureKey) {
+      return;
+    }
+    const layout = textureKey === 'buildingsAtlas'
+      ? this.getGeneratedFootprintSpriteLayout(placement, { ...render, textureKey, frameKey }, [42, 42])
+      : null;
+    const p = layout ?? this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
+    const size = layout?.size ?? this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
+    const sprite = this.add.image(p.x, p.y, textureKey, frameKey)
+      .setOrigin(layout ? 0.5 : render.origin?.[0] ?? 0.5, layout ? 1 : render.origin?.[1] ?? 0.82)
+      .setDisplaySize(size[0], size[1])
+      .setDepth((layout?.depth ?? p.y) + 8)
+      .setAlpha(render.alpha ?? 0.72);
+    this.entityLayer.add(sprite);
+  }
+
+  renderGeneratedDecoration(placement) {
+    const override = this.getSceneVariantDecorationTexture(placement);
+    if (placement.render?.textureKey || override?.textureKey) {
+      const render = placement.render;
+      const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
+      const size = this.scaleGeneratedSize(render.displaySize ?? [36, 36]);
+      const sprite = this.add.image(
+        p.x,
+        p.y,
+        override?.textureKey ?? render.textureKey,
+        override?.frameKey ?? render.frameKey,
+      )
+        .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
+        .setDisplaySize(size[0], size[1])
+        .setDepth(p.y + 6)
+        .setAlpha(render.alpha ?? 0.76);
+      this.entityLayer.add(sprite);
+      return;
+    }
+    const p = this.isoToScreen(placement.iso.x + 0.16, placement.iso.y - 0.12, 8);
+    const flowers = this.add.graphics();
+    if (placement.decorationKind === 'sparkles') {
+      flowers.fillStyle(0xfff3a6, 0.72);
+      flowers.fillCircle(p.x - 4, p.y, 2.2);
+      flowers.fillStyle(0x91e8ff, 0.62);
+      flowers.fillCircle(p.x + 5, p.y - 5, 2.4);
+      flowers.lineStyle(1, 0xffffff, 0.45);
+      flowers.lineBetween(p.x - 8, p.y - 2, p.x + 7, p.y + 3);
+    } else {
+      flowers.fillStyle(0xffa8d6, 0.72);
+      flowers.fillCircle(p.x - 6, p.y, 3);
+      flowers.fillStyle(0xfff49a, 0.75);
+      flowers.fillCircle(p.x, p.y - 3, 3);
+      flowers.fillStyle(0x8fe287, 0.68);
+      flowers.fillCircle(p.x + 6, p.y + 2, 3);
+    }
+    flowers.setDepth(p.y + 5);
+    this.entityLayer.add(flowers);
+  }
+
+  getActiveTimeOfDay() {
+    if (this.timeOfDayOverride) {
+      return this.timeOfDayOverride;
+    }
+    const paramValue = new URLSearchParams(window.location.search).get('timeOfDay');
+    if (isTimeOfDay(paramValue)) {
+      return paramValue;
+    }
+    return this.generatedLevel?.config.timeOfDay ?? 'morning';
+  }
+
+  cycleTimeOfDay() {
+    const order = ['morning', 'noon', 'afternoon', 'night'];
+    const current = this.getActiveTimeOfDay();
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    this.timeOfDayOverride = next;
+    this.createTimeOfDayLayer();
+    this.addGuildNote(`Time preview: ${next}.`);
+    this.updateDebugOverlay();
+  }
+
+  getLampGlowIsoPoints() {
+    if (this.generatedLevelActive && this.generatedLevel) {
+      return [
+        ...this.generatedLevel.objects
+          .filter((placement) => placement.token === 'lamp')
+          .map((placement) => placement.iso),
+        ...this.generatedLevel.decorations
+          .filter((placement) => placement.decorationKind === 'magicPlant')
+          .map((placement) => placement.iso),
+      ];
+    }
+    return [
+      { x: 8.8, y: 5.8 },
+      { x: 10.8, y: 4.8 },
+      { x: 3.7, y: 9.7 },
+    ];
+  }
+
+  createTimeOfDayLayer() {
+    this.timeOfDayOverlay?.destroy();
+    this.timeOfDayMist?.destroy();
+    this.lampGlowGraphics?.destroy();
+    this.timeOfDayOverlay = null;
+    this.timeOfDayMist = null;
+    this.lampGlowGraphics = null;
+    if (this.generatedLevelActive && this.sceneVariant) {
+      return;
+    }
+    const profile = TIME_OF_DAY_PROFILES[this.getActiveTimeOfDay()];
+    const layerItems = [];
+
+    if (profile.overlayAlpha > 0) {
+      this.timeOfDayOverlay = this.add.rectangle(
+        WIDTH / 2,
+        HEIGHT / 2,
+        WIDTH,
+        HEIGHT,
+        profile.overlayColor,
+        profile.overlayAlpha,
+      ).setScrollFactor(0);
+      layerItems.push(this.timeOfDayOverlay);
+    }
+
+    if (profile.mistAlpha > 0) {
+      const mist = this.add.graphics();
+      mist.fillStyle(0xffffff, profile.mistAlpha);
+      [
+        [190, 184, 210, 34],
+        [612, 156, 260, 42],
+        [1050, 196, 220, 36],
+      ].forEach(([x, y, w, h]) => mist.fillEllipse(x, y, w, h));
+      this.timeOfDayMist = mist;
+      layerItems.push(mist);
+    }
+
+    if (profile.glowAlpha > 0) {
+      const glow = this.add.graphics();
+      glow.setBlendMode(Phaser.BlendModes.ADD);
+      this.getLampGlowIsoPoints().forEach((iso) => {
+        const p = this.isoToScreen(iso.x, iso.y, 20);
+        glow.fillStyle(profile.glowColor, profile.glowAlpha);
+        glow.fillCircle(p.x, p.y, 34);
+        glow.fillStyle(profile.glowColor, profile.glowAlpha * 0.42);
+        glow.fillCircle(p.x, p.y, 58);
+      });
+      this.lampGlowGraphics = glow;
+      layerItems.push(glow);
+    }
+
+    if (layerItems.length > 0) {
+      this.lightingLayer.add(layerItems);
+    }
+  }
+
+  drawDebugDiamond(gfx, grid, color, alpha = 0.18) {
+    const { tileW, tileH } = this.getIsoMetrics();
+    const center = this.isoToScreen(grid.x, grid.y);
+    gfx.fillStyle(color, alpha);
+    gfx.lineStyle(1, color, Math.min(1, alpha + 0.22));
+    gfx.beginPath();
+    gfx.moveTo(center.x, center.y - tileH / 2);
+    gfx.lineTo(center.x + tileW / 2, center.y);
+    gfx.lineTo(center.x, center.y + tileH / 2);
+    gfx.lineTo(center.x - tileW / 2, center.y);
+    gfx.closePath();
+    gfx.fillPath();
+    gfx.strokePath();
+  }
+
+  getDecorationDebugColor(kind) {
+    if (kind === 'fullTree' || kind === 'sapling') {
+      return 0x2ed573;
+    }
+    if (kind === 'treeCluster') {
+      return 0x1fa85f;
+    }
+    if (kind === 'bush') {
+      return 0x78d66a;
+    }
+    if (kind === 'rocks') {
+      return 0xd0d5dd;
+    }
+    if (kind === 'puddle') {
+      return 0x7fd8f6;
+    }
+    if (kind === 'grassPatch') {
+      return 0x9be86b;
+    }
+    if (kind === 'mushrooms') {
+      return 0xffaa55;
+    }
+    if (kind === 'magicPlant') {
+      return 0x6af7ff;
+    }
+    if (kind === 'sparkles') {
+      return 0xffffff;
+    }
+    if (kind === 'lamp') {
+      return 0xffe36a;
+    }
+    if (kind === 'fence' || kind === 'sign') {
+      return 0xc7924e;
+    }
+    return 0xff93d8;
+  }
+
+  drawDebugPath(gfx, path, color, alpha = 0.56) {
+    if (!path?.length) {
+      return;
+    }
+    gfx.lineStyle(2, color, alpha);
+    const first = this.isoToScreen(path[0].x, path[0].y, -5);
+    gfx.beginPath();
+    gfx.moveTo(first.x, first.y);
+    path.slice(1).forEach((cell) => {
+      const p = this.isoToScreen(cell.x, cell.y, -5);
+      gfx.lineTo(p.x, p.y);
+    });
+    gfx.strokePath();
+  }
+
+  drawGeneratedLevelDebug() {
+    if (!this.generatedLevel) {
+      return;
+    }
+    this.levelDebugGraphics?.destroy();
+    const gfx = this.add.graphics().setDepth(0);
+    this.levelDebugGraphics = gfx;
+    for (let y = 0; y < this.generatedLevel.height; y += 1) {
+      for (let x = 0; x < this.generatedLevel.width; x += 1) {
+        this.drawDebugDiamond(gfx, { x, y }, 0xffffff, 0.035);
+        if (this.generatedLevel.roadGrid[y]?.[x]) {
+          this.drawDebugDiamond(gfx, { x, y }, 0xe8d39c, 0.18);
+        }
+        if (this.generatedLevel.blockedGrid[y][x]) {
+          this.drawDebugDiamond(gfx, { x, y }, 0xff6b6b, 0.22);
+        }
+      }
+    }
+    const top = this.isoToScreen((this.generatedLevel.width - 1) / 2, 0, -8);
+    const right = this.isoToScreen(this.generatedLevel.width - 1, (this.generatedLevel.height - 1) / 2, -8);
+    const bottom = this.isoToScreen((this.generatedLevel.width - 1) / 2, this.generatedLevel.height - 1, -8);
+    const left = this.isoToScreen(0, (this.generatedLevel.height - 1) / 2, -8);
+    gfx.lineStyle(3, 0xffffff, 0.38);
+    gfx.strokePoints([top, right, bottom, left, top], false, true);
+    this.generatedLevel.spawnPoints.forEach((spawn) => this.drawDebugDiamond(gfx, spawn, 0xc678ff, 0.38));
+    if (this.generatedLevel.playerSpawn) {
+      this.drawDebugDiamond(gfx, this.generatedLevel.playerSpawn, 0x68d8ff, 0.42);
+    }
+    this.generatedLevel.protectedTargets.forEach((target) => {
+      target.cells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0xffdf6a, 0.34));
+      target.attackCells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x7dff9a, 0.18));
+    });
+    this.generatedLevel.chests.forEach((chest) => this.drawDebugDiamond(gfx, chest.grid, 0xffb84f, 0.42));
+    this.generatedLevel.decorations.forEach((decoration) => (
+      this.drawDebugDiamond(gfx, decoration.grid, this.getDecorationDebugColor(decoration.decorationKind), 0.20)
+    ));
+    const goals = this.generatedLevel.protectedTargets.flatMap((target) => target.attackCells);
+    this.generatedLevel.spawnPoints.forEach((spawn) => {
+      const path = findGridPath(this.generatedLevel.walkableGrid, spawn, goals);
+      path?.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x60ffb2, 0.16));
+      this.drawDebugPath(gfx, path, 0x60ffb2, 0.35);
+    });
+    this.enemies
+      .filter((enemy) => !enemy.defeated && !enemy.retreating)
+      .forEach((enemy) => {
+        this.drawDebugPath(gfx, enemy.path, 0xff5cc6, 0.82);
+        this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.iso), 0xff5cc6, 0.42);
+        if (enemy.target?.iso) {
+          this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.target.iso), 0xfff15c, 0.42);
+        }
+      });
+    this.levelDebugLayer.add(gfx);
+  }
+
+  toggleGeneratedLevelDebug() {
+    if (!this.generatedLevel) {
+      return;
+    }
+    this.levelDebugVisible = !this.levelDebugVisible;
+    try {
+      localStorage.setItem('debugLevelOverlay', this.levelDebugVisible ? '1' : '0');
+    } catch {
+      // Debug persistence is optional.
+    }
+    if (this.levelDebugVisible) {
+      this.drawGeneratedLevelDebug();
+      this.addGuildNote('Level grid debug shown.');
+    } else {
+      this.levelDebugGraphics?.destroy();
+      this.levelDebugGraphics = null;
+      this.addGuildNote('Level grid debug hidden.');
+    }
+    this.updateDebugOverlay();
+  }
+
+  updateGeneratedLevelDebug(time) {
+    if (!this.levelDebugVisible || !this.generatedLevel) {
+      return;
+    }
+    if (time - this.levelDebugLastRenderAt < 260) {
+      return;
+    }
+    this.levelDebugLastRenderAt = time;
+    this.drawGeneratedLevelDebug();
   }
 
   drawMapTiles() {
@@ -577,9 +2707,9 @@ class FairyGuildScene extends Phaser.Scene {
     }
   }
 
-  drawDiamond(x, y, w, h, fill, stroke, alpha = 1) {
+  drawDiamond(x, y, w, h, fill, stroke, alpha = 1, strokeAlpha = 0.45) {
     this.tileGraphics.fillStyle(fill, alpha);
-    this.tileGraphics.lineStyle(1, stroke, 0.45);
+    this.tileGraphics.lineStyle(1, stroke, strokeAlpha);
     this.tileGraphics.beginPath();
     this.tileGraphics.moveTo(x, y - h / 2);
     this.tileGraphics.lineTo(x + w / 2, y);
@@ -593,6 +2723,23 @@ class FairyGuildScene extends Phaser.Scene {
   createPathStones() {
     const stones = this.add.graphics();
     stones.fillStyle(0xe6d3a6, 0.55);
+    if (this.generatedLevelActive && this.generatedLevel) {
+      this.generatedLevel.roadGrid.forEach((row, y) => {
+        row.forEach((isRoad, x) => {
+          if (!isRoad || (x + y) % 2 !== 0) {
+            return;
+          }
+          const p = this.isoToScreen(x + 0.12 * Math.sin(y * 1.7), y + 0.14 * Math.cos(x * 1.3));
+          stones.fillEllipse(p.x, p.y, 8 + ((x + y) % 3) * 2, 4.5, 1);
+        });
+      });
+      stones.setAlpha(0.38);
+      if (this.generatedTerrainMask) {
+        stones.setMask(this.generatedTerrainMask);
+      }
+      this.worldLayer.add(stones);
+      return;
+    }
     for (let y = 3; y < 12; y += 1) {
       for (let x = 6; x <= 8; x += 1) {
         const p = this.isoToScreen(x + 0.12 * Math.sin(y), y + 0.18 * Math.cos(x));
@@ -623,31 +2770,43 @@ class FairyGuildScene extends Phaser.Scene {
 
   createBuildings() {
     const buildingData = [
-      { name: 'Castle', x: 7, y: 4, hp: 110, max: 110, texture: 'castleTexture', size: [112, 96], reward: 24 },
-      { name: 'Bakery', x: 4, y: 7, hp: 76, max: 76, texture: 'bakeryTexture', size: [80, 70], reward: 16 },
-      { name: 'Cottage', x: 10, y: 7, hp: 74, max: 74, texture: 'cottageTexture', size: [78, 68], reward: 15 },
-      { name: 'Market', x: 7, y: 10, hp: 68, max: 68, texture: 'marketTexture', size: [90, 66], reward: 18 },
+      { name: 'Castle', x: 7, y: 4, hp: 110, max: 110, importance: 100, texture: 'castleTexture', size: [112, 96], reward: 24, footprint: { w: 3, h: 3 } },
+      { name: 'Bakery', x: 4, y: 7, hp: 76, max: 76, importance: 50, texture: 'bakeryTexture', size: [80, 70], reward: 16, footprint: { w: 3, h: 2 } },
+      { name: 'Cottage', x: 10, y: 7, hp: 74, max: 74, importance: 50, texture: 'cottageTexture', size: [78, 68], reward: 15, footprint: { w: 3, h: 2 } },
+      { name: 'Market', x: 7, y: 10, hp: 68, max: 68, importance: 70, texture: 'marketTexture', size: [90, 66], reward: 18, footprint: { w: 3, h: 2 } },
     ];
     this.buildings = buildingData.map((data) => {
       const p = this.isoToScreen(data.x, data.y, 18);
       const base = this.add.graphics();
-      base.fillStyle(0x8f7346, 0.14);
+      base.fillStyle(0x8f7346, STATIC_BUILDING_BASE_ALPHA);
       base.fillEllipse(p.x, p.y + 22, data.size[0] * 0.62, 28);
       const sprite = this.add.image(p.x, p.y, data.texture)
         .setOrigin(0.5, 0.84)
         .setDisplaySize(data.size[0], data.size[1])
         .setDepth(p.y)
-        .setAlpha(0.74);
-      const repairIcon = this.add.container(p.x + data.size[0] * 0.34, p.y - data.size[1] * 0.58).setVisible(false).setDepth(p.y + 140);
-      const badge = this.add.circle(0, 0, 15, 0xfff0a3, 1).setStrokeStyle(3, 0xf3a44d, 1);
-      const mark = this.add.text(0, -1, '!', {
-        fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-        fontSize: '21px',
-        color: '#7f521e',
-      }).setOrigin(0.5);
-      repairIcon.add([badge, mark]);
-      this.entityLayer.add([base, sprite, repairIcon]);
-      return { ...data, iso: { x: data.x, y: data.y }, sprite, base, repairIcon, underAttackUntil: 0 };
+        .setAlpha(STATIC_BUILDING_SPRITE_ALPHA);
+      const healthBar = this.createBuildingHealthBar(
+        p.x,
+        p.y - data.size[1] * 0.78,
+        Math.max(42, Math.min(76, data.size[0] * 0.7)),
+        10,
+        p.y + 140,
+      );
+      const footprintCells = this.getFootprintCells(data.x, data.y, data.footprint);
+      this.entityLayer.add([base, sprite, healthBar.container]);
+      const building = {
+        ...data,
+        iso: { x: data.x, y: data.y },
+        footprintCells,
+        baseAlpha: STATIC_BUILDING_BASE_ALPHA,
+        spriteAlpha: STATIC_BUILDING_SPRITE_ALPHA,
+        sprite,
+        base,
+        healthBar,
+        underAttackUntil: 0,
+      };
+      this.updateBuildingHealthBar(building);
+      return building;
     });
   }
 
@@ -686,54 +2845,30 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createPlayer() {
-    const start = this.isoToScreen(7, 7, 18);
+    const playerSpawn = this.generatedLevelActive && this.generatedLevel?.playerSpawn
+      ? this.generatedLevel.playerSpawn
+      : { x: 7, y: 7 };
+    const start = this.isoToGroundedEntityScreen(playerSpawn.x, playerSpawn.y);
+    const profile = this.getHeroProfile(this.heroChoice);
+    this.ensureHeroAnimations(profile);
     this.player = {
-      iso: { x: 7, y: 7 },
+      iso: { x: playerSpawn.x, y: playerSpawn.y },
       facing: { x: 0, y: 1 },
       lastAttack: 0,
       lastBow: 0,
       lastSpell: 0,
       invulnerableUntil: 0,
       actionLockUntil: 0,
+      sheetKey: profile.sheetKey,
+      framePrefix: profile.framePrefix,
+      animPrefix: profile.animPrefix,
       shadow: this.add.ellipse(start.x, start.y + 13, 44, 18, 0x325631, 0.24),
-      sprite: this.add.sprite(start.x, start.y, 'heroSheet', 'hero-0-0')
-        .setOrigin(0.5, 0.76)
-        .setDisplaySize(76, 76)
+      sprite: this.add.sprite(start.x, start.y, profile.sheetKey, `${profile.framePrefix}-0-0`)
+        .setOrigin(profile.origin[0], profile.origin[1])
+        .setDisplaySize(profile.displaySize[0], profile.displaySize[1])
         .setDepth(start.y + 40),
     };
-    if (!this.anims.exists('hero-idle')) {
-      this.anims.create({
-        key: 'hero-idle',
-        frames: [0, 1, 2, 3].map((col) => ({ key: 'heroSheet', frame: `hero-0-${col}` })),
-        frameRate: 3,
-        repeat: -1,
-      });
-    }
-    if (!this.anims.exists('hero-walk')) {
-      this.anims.create({
-        key: 'hero-walk',
-        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-1-${col}` })),
-        frameRate: 9,
-        repeat: -1,
-      });
-    }
-    if (!this.anims.exists('hero-melee')) {
-      this.anims.create({
-        key: 'hero-melee',
-        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-2-${col}` })),
-        frameRate: 16,
-        repeat: 0,
-      });
-    }
-    if (!this.anims.exists('hero-special')) {
-      this.anims.create({
-        key: 'hero-special',
-        frames: Array.from({ length: 8 }, (_, col) => ({ key: 'heroSheet', frame: `hero-3-${col}` })),
-        frameRate: 12,
-        repeat: 0,
-      });
-    }
-    this.player.sprite.play('hero-idle');
+    this.player.sprite.play(`${profile.animPrefix}-idle`);
     this.entityLayer.add([this.player.shadow, this.player.sprite]);
   }
 
@@ -763,6 +2898,8 @@ class FairyGuildScene extends Phaser.Scene {
       restart: Phaser.Input.Keyboard.KeyCodes.R,
       start: Phaser.Input.Keyboard.KeyCodes.ENTER,
       debug: Phaser.Input.Keyboard.KeyCodes.B,
+      levelDebug: Phaser.Input.Keyboard.KeyCodes.G,
+      timeOfDay: Phaser.Input.Keyboard.KeyCodes.N,
     });
     this.input.addPointer(5);
     this.input.on('pointerdown', (pointer) => {
@@ -786,7 +2923,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.keys.repair.on('down', () => this.toggleRepairMode());
     this.keys.interact.on('down', () => {
       if (this.state.repairMode) {this.tryRepairBuilding();}
-      else {this.tryOpenChest();}
     });
     [this.keys.one, this.keys.two, this.keys.three, this.keys.four, this.keys.five, this.keys.six].forEach((key, index) => {
       key.on('down', () => {
@@ -798,9 +2934,11 @@ class FairyGuildScene extends Phaser.Scene {
       });
     });
     this.keys.restart.on('down', () => {
-      if (this.state.phase === 'gameOver') {this.scene.restart();}
+      if (this.state.phase === 'gameOver') {this.restartGameFromBeginning();}
     });
     this.keys.debug.on('down', () => this.toggleDebugOverlay());
+    this.keys.levelDebug.on('down', () => this.toggleGeneratedLevelDebug());
+    this.keys.timeOfDay.on('down', () => this.cycleTimeOfDay());
   }
 
   getTouchCapabilityInfo() {
@@ -829,7 +2967,259 @@ class FairyGuildScene extends Phaser.Scene {
   isTouchDevice() {
     this.touchDetection = this.getTouchCapabilityInfo();
     this.debugTouchControls('touch detection', this.touchDetection);
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('forceDesktop')) {
+      return false;
+    }
     return this.touchDetection.enabled;
+  }
+
+  isDebugAutomationEnabled() {
+    return new URLSearchParams(window.location.search).has('debugAutomation');
+  }
+
+  getDebugAutomationHost() {
+    return document.querySelector('#game');
+  }
+
+  toDebugSlug(value) {
+    return String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  getDebugBuildingSummary() {
+    return this.buildings
+      .map((building) => `${this.toDebugSlug(building.levelPlacementId ?? building.name)}:${building.hp}/${building.max}`)
+      .join('|');
+  }
+
+  setDebugCommandResult(command, result) {
+    const host = this.getDebugAutomationHost();
+    if (!host) {
+      return;
+    }
+    host.setAttribute('data-debug-last-command', String(command));
+    host.setAttribute('data-debug-last-result', String(result));
+  }
+
+  findDebugBuilding(query) {
+    const normalized = this.toDebugSlug(query);
+    if (!normalized) {
+      return null;
+    }
+    return this.buildings.find((building) => {
+      const candidates = [
+        building.levelPlacementId,
+        building.name,
+      ].map((value) => this.toDebugSlug(value));
+      if (normalized === 'house') {
+        return candidates.includes('cottage') || candidates.includes('bakery') || candidates.includes('house-1') || candidates.includes('house-2');
+      }
+      return candidates.includes(normalized);
+    }) ?? null;
+  }
+
+  resolveDebugTeleportPoint(query) {
+    const normalized = this.toDebugSlug(query);
+    if (!this.player) {
+      return null;
+    }
+    if (!normalized || normalized === 'player') {
+      return { x: this.player.iso.x, y: this.player.iso.y };
+    }
+    if (normalized === 'spawn' || normalized === 'player-spawn') {
+      return this.generatedLevel?.playerSpawn
+        ? { x: this.generatedLevel.playerSpawn.x, y: this.generatedLevel.playerSpawn.y }
+        : { x: this.player.iso.x, y: this.player.iso.y };
+    }
+    if (normalized === 'center' && this.generatedLevel) {
+      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+      return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+    }
+    const building = this.findDebugBuilding(normalized);
+    if (!building) {
+      return null;
+    }
+    const footprintCells = building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
+    const minX = Math.min(...footprintCells.map((cell) => cell.x));
+    const maxX = Math.max(...footprintCells.map((cell) => cell.x));
+    const minY = Math.min(...footprintCells.map((cell) => cell.y));
+    const maxY = Math.max(...footprintCells.map((cell) => cell.y));
+    const candidates = [
+      { x: (minX + maxX) / 2, y: maxY + 1 },
+      { x: maxX + 1, y: (minY + maxY) / 2 },
+      { x: (minX + maxX) / 2, y: minY - 1 },
+      { x: minX - 1, y: (minY + maxY) / 2 },
+    ];
+    return candidates.find((point) => !this.generatedLevelActive || this.isGeneratedIsoWalkable(point)) ?? candidates[0];
+  }
+
+  teleportPlayerToDebugTarget(query) {
+    const point = this.resolveDebugTeleportPoint(query);
+    if (!point || !this.player) {
+      return false;
+    }
+    this.player.iso.x = point.x;
+    this.player.iso.y = point.y;
+    this.clampIso(this.player.iso, 1.2);
+    this.lastPointerIso = { x: this.player.iso.x, y: this.player.iso.y };
+    const position = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
+    this.player.sprite.setPosition(position.x, position.y);
+    this.player.shadow.setPosition(position.x, position.y + 15);
+    return true;
+  }
+
+  triggerDebugSeasonTransition() {
+    const nextIndex = (this.state.worldIndex + 1) % WORLD_SEQUENCE.length;
+    const looped = nextIndex === 0;
+    const nextProgression = {
+      worldIndex: nextIndex,
+      worldKey: WORLD_SEQUENCE[nextIndex],
+      worldRound: 1,
+      bossRound: false,
+      worldCycle: this.state.worldCycle + (looped ? 1 : 0),
+    };
+    const theme = WORLD_ENEMY_THEMES[nextProgression.worldKey as SeasonPreset];
+    const transitionNote = `${theme.label} debug transition.`;
+    return this.restartForWorldProgression(nextProgression, transitionNote);
+  }
+
+  syncDevDiagnostics() {
+    if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
+      return;
+    }
+    const host = this.getDebugAutomationHost();
+    if (!host) {
+      return;
+    }
+    const repairTarget = this.state.repairMode && this.state.phase === 'playing'
+      ? this.getRepairModeTarget()
+      : null;
+    const repairTargetState = repairTarget ? this.getRepairModeTargetState(repairTarget) : '';
+    const repairTargetDamaged = repairTarget && repairTarget.hp < repairTarget.max;
+    host.setAttribute('data-phase', String(this.state.phase ?? ''));
+    host.setAttribute('data-map-mode', this.generatedLevelActive ? 'generated' : 'static');
+    host.setAttribute('data-level', String(this.state.level ?? 0));
+    host.setAttribute('data-gold', String(this.state.gold ?? 0));
+    host.setAttribute('data-xp', String(this.state.xp ?? 0));
+    host.setAttribute('data-world-key', String(this.state.worldKey ?? ''));
+    host.setAttribute('data-world-round', String(this.state.worldRound ?? 0));
+    host.setAttribute('data-world-cycle', String(this.state.worldCycle ?? 0));
+    host.setAttribute('data-boss-round', this.state.bossRound ? '1' : '0');
+    host.setAttribute('data-game-over-reason', String(this.state.gameOverReason ?? ''));
+    host.setAttribute('data-hero-choice', String(this.heroChoice ?? ''));
+    host.setAttribute('data-pending-hero-choice', String(this.pendingHeroChoice ?? ''));
+    host.setAttribute('data-splash-ready', this.pendingHeroChoice ? '1' : '0');
+    host.setAttribute('data-repair-mode', this.state.repairMode ? '1' : '0');
+    host.setAttribute('data-repair-target', repairTarget ? this.toDebugSlug(repairTarget.name) : '');
+    host.setAttribute('data-repair-affordable', repairTargetDamaged ? (this.state.gold >= REPAIR_COST ? '1' : '0') : '');
+    host.setAttribute('data-repair-outline-state', repairTargetState);
+    host.setAttribute('data-upgrade-context', String(this.upgradePauseContext ?? ''));
+    host.setAttribute('data-enemies', String(this.enemies.length));
+    host.setAttribute('data-chests', String(this.chests.filter((chest) => !chest.opened).length));
+    host.setAttribute('data-enemy-drop-chests', String(this.chests.filter((chest) => !chest.opened && chest.source === 'enemyDrop').length));
+    host.setAttribute('data-level-spawns-pending', String(this.levelSpawnsPending));
+    host.setAttribute('data-level-required-defeats', String(this.levelRequiredDefeats));
+    host.setAttribute('data-level-defeats', String(this.levelDefeatsThisRound));
+    host.setAttribute('data-level-spawned-count', String(this.levelSpawnedCount));
+    host.setAttribute('data-valid-spawn-points', String(this.generatedValidSpawnPoints?.length ?? 0));
+    host.setAttribute('data-board-seed', String(this.generatedLevel?.config.seed ?? ''));
+    host.setAttribute('data-building-summary', this.getDebugBuildingSummary());
+  }
+
+  consumeDevCommand() {
+    if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
+      return;
+    }
+    const host = this.getDebugAutomationHost();
+    const command = host?.getAttribute('data-debug-command');
+    if (!host || !command) {
+      return;
+    }
+    host.removeAttribute('data-debug-command');
+    let result = 'unknown-command';
+    if (command === 'clearRound') {
+      this.enemies.slice().forEach((enemy) => this.damageEnemy(enemy, enemy.hp + 999, 'debug'));
+      result = 'ok';
+    } else if (command.startsWith('chooseUpgrade:')) {
+      const index = Number(command.split(':')[1]);
+      if (this.state.phase === 'levelUp' && Number.isInteger(index)) {
+        this.chooseLevelUpgrade(Phaser.Math.Clamp(index, 0, 2));
+        result = `upgrade:${Phaser.Math.Clamp(index, 0, 2)}`;
+      } else {
+        result = 'ignored-levelup-inactive';
+      }
+    } else if (command.startsWith('chooseHero:')) {
+      const choice = command.split(':')[1];
+      if (choice === 'male' || choice === 'princess') {
+        this.selectHeroChoice(choice);
+        result = `hero:${choice}`;
+      } else {
+        result = 'invalid-hero';
+      }
+    } else if (command === 'startGame') {
+      this.startGameFromSplash();
+      result = this.state.phase === 'splash' ? 'awaiting-hero' : 'ok';
+    } else if (command === 'startRound') {
+      if (this.state.phase === 'countdown') {
+        this.startLevelRound();
+        result = 'ok';
+      } else {
+        result = 'ignored-countdown-inactive';
+      }
+    } else if (command.startsWith('setGold:')) {
+      const value = Number(command.split(':')[1]);
+      if (Number.isFinite(value)) {
+        this.state.gold = Math.max(0, Math.round(value));
+        this.rebuildInventoryPanel();
+        result = `gold:${this.state.gold}`;
+      } else {
+        result = 'invalid-gold';
+      }
+    } else if (command.startsWith('teleport:')) {
+      const target = command.split(':')[1];
+      result = this.teleportPlayerToDebugTarget(target) ? `teleport:${this.toDebugSlug(target)}` : 'missing-teleport-target';
+    } else if (command === 'spawnChest' || command === 'spawnChestAtPlayer') {
+      if (this.player) {
+        this.spawnChest(this.player.iso.x, this.player.iso.y, 'bonus-upgrade', { source: 'enemyDrop', lifetimeMs: 5000 });
+        result = 'chest:spawned';
+      } else {
+        result = 'missing-player';
+      }
+    } else if (command.startsWith('damageBuilding:')) {
+      const [, rawTarget, rawAmount] = command.split(':');
+      const building = this.findDebugBuilding(rawTarget);
+      if (!building) {
+        result = 'missing-building';
+      } else {
+        const requestedAmount = Number(rawAmount ?? '18');
+        const amount = Number.isFinite(requestedAmount) ? Math.max(1, Math.round(requestedAmount)) : 18;
+        const minHp = building.name === 'Castle' ? 1 : 0;
+        building.hp = Math.max(minHp, building.hp - amount);
+        building.underAttackUntil = this.time.now + 650;
+        this.updateBuildingRepairState(building);
+        this.updateVillageSafety();
+        result = `building:${this.toDebugSlug(building.name)}:${building.hp}`;
+      }
+    } else if (command === 'repairMode:on') {
+      this.setRepairMode(true, false);
+      result = 'repair:on';
+    } else if (command === 'repairMode:off') {
+      this.setRepairMode(false, false);
+      result = 'repair:off';
+    } else if (command === 'repairNearest') {
+      this.tryRepairBuilding();
+      result = 'repair:attempted';
+    } else if (command === 'advanceSeason') {
+      result = this.triggerDebugSeasonTransition();
+    }
+    this.setDebugCommandResult(command, result);
+    if (command === 'advanceSeason') {
+      return;
+    }
   }
 
   createTouchControls() {
@@ -840,7 +3230,7 @@ class FairyGuildScene extends Phaser.Scene {
     }
 
     this.controlsHint?.setVisible(false);
-    const container = this.add.container(0, 0).setDepth(7700);
+    const container = this.add.container(0, 0).setDepth(7700).setScrollFactor(0);
     const joystickCenter = { x: 132, y: HEIGHT - 118 };
     const joystickZone = this.add.zone(joystickCenter.x, joystickCenter.y, 190, 190)
       .setOrigin(0.5)
@@ -849,28 +3239,39 @@ class FairyGuildScene extends Phaser.Scene {
       .setStrokeStyle(4, 0xf8ffe3, 0.42);
     const joystickThumb = this.add.circle(joystickCenter.x, joystickCenter.y, 25, 0xfff4c8, 0.74)
       .setStrokeStyle(3, 0x6abbd7, 0.78);
-    const buttons = {} as Record<TouchActionKey, Phaser.GameObjects.Container>;
-
-    [
-      ['melee', WIDTH - 230, HEIGHT - 124, 'Sword', 'swordIconTexture', 0xf2bf52],
-      ['bow', WIDTH - 150, HEIGHT - 170, 'Bow', 'bowIconTexture', 0x8fd56c],
-      ['spell', WIDTH - 70, HEIGHT - 124, 'Spell', 'spellIconTexture', 0x75d8ff],
-      ['use', WIDTH - 230, HEIGHT - 64, 'Use', 'chestTexture', 0xffcf75],
-      ['repair', WIDTH - 150, HEIGHT - 64, 'Fix', 'repairTool', 0x9fe9bf],
-      ['inventory', WIDTH - 70, HEIGHT - 64, 'Bag', null, 0xd7b9ff],
-    ].forEach(([action, x, y, label, icon, color]) => {
-      buttons[action as TouchActionKey] = this.createTouchActionButton(
-        action as TouchActionKey,
-        x as number,
-        y as number,
-        label as string,
-        icon as string | null,
-        color as number,
-      );
+    const buttons = {} as Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
+    const actionCenterX = WIDTH - 150;
+    const actionCenterY = HEIGHT - 118;
+    const actionRadiusX = 86;
+    const actionRadiusY = 54;
+    const normalLayout: Record<TouchButtonSlot, [TouchActionKey, string, TouchActionIcon, number]> = {
+      left: ['melee', 'Sword', { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }, 0xf2bf52],
+      top: ['bow', 'Bow', { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }, 0x8fd56c],
+      right: ['spell', 'Spell', { texture: 'touchControlsAtlas', frame: 'touch_spell_01' }, 0x75d8ff],
+      bottom: ['repair', 'Repair', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
+    };
+    const slotPositions: Record<TouchButtonSlot, { x: number; y: number }> = {
+      left: { x: actionCenterX - actionRadiusX, y: actionCenterY },
+      top: { x: actionCenterX, y: actionCenterY - actionRadiusY },
+      right: { x: actionCenterX + actionRadiusX, y: actionCenterY },
+      bottom: { x: actionCenterX, y: actionCenterY + actionRadiusY },
+    };
+    Object.entries(normalLayout).forEach(([slot, [action, label, icon, color]]) => {
+      const point = slotPositions[slot as TouchButtonSlot];
+      buttons[action] = this.createTouchActionButton(action, point.x, point.y, label, icon, color);
+    });
+    const repairLayout: Array<[TouchActionKey, TouchButtonSlot, string, TouchActionIcon, number]> = [
+      ['repairConfirm', 'left', '', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
+      ['repairCancel', 'right', '', { texture: 'repairModeCancelIcon' }, 0xff9ca0],
+    ];
+    const repairButtons = repairLayout.map(([action, slot, label, icon, color]) => {
+      const point = slotPositions[slot];
+      return this.createTouchActionButton(action, point.x, point.y, label, icon, color).setVisible(false);
     });
 
     const portraitOverlay = this.createPortraitOverlay();
-    container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons)]);
+    container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons), ...repairButtons]);
+    this.touchLayer.add([container, portraitOverlay]);
     this.touchControls = {
       container,
       joystickBase,
@@ -879,6 +3280,7 @@ class FairyGuildScene extends Phaser.Scene {
       joystickPointerId: null,
       joystickCenter,
       buttons,
+      repairButtons,
       portraitOverlay,
     } as TouchControlsState;
 
@@ -926,37 +3328,35 @@ class FairyGuildScene extends Phaser.Scene {
     x: number,
     y: number,
     label: string,
-    icon: string | null,
+    icon: TouchActionIcon,
     color: number,
   ) {
-    const button = this.add.container(x, y);
-    const hit = this.add.zone(0, 0, 72, 72)
+    const button = this.add.container(x, y).setScrollFactor(0);
+    const hit = this.add.zone(0, 0, 78, 82)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    const bg = this.add.circle(0, 0, 31, 0x24364a, 0.72)
-      .setStrokeStyle(3, color, 0.92);
-    const shine = this.add.circle(-8, -9, 8, 0xffffff, 0.2);
-    const labelText = this.add.text(0, 27, label, {
+    const labelText = label ? this.add.text(0, 34, label, {
       ...this.uiTextStyle(10, '#ffffff'),
       strokeThickness: 3,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5) : null;
     const glyph = icon
-      ? this.add.image(0, -4, icon).setDisplaySize(action === 'repair' ? 34 : 30, action === 'repair' ? 34 : 30)
+      ? this.add.image(0, -3, icon.texture, icon.frame).setDisplaySize(70, 70)
       : this.add.text(0, -5, 'I', {
         ...this.uiTextStyle(24, '#fff0b8'),
         strokeThickness: 4,
       }).setOrigin(0.5);
+    const focusRing = this.add.circle(0, -3, 34, 0xffffff, 0).setStrokeStyle(2, color, 0.28);
     hit.on('pointerdown', () => {
       this.ensureAudio();
       this.pulseTouchButton(button);
       this.handleTouchAction(action);
     });
-    button.add([hit, bg, shine, glyph, labelText]);
+    button.add(labelText ? [hit, focusRing, glyph, labelText] : [hit, focusRing, glyph]);
     return button;
   }
 
   createPortraitOverlay() {
-    const overlay = this.add.container(0, 0).setDepth(7950).setVisible(false);
+    const overlay = this.add.container(0, 0).setDepth(7950).setVisible(false).setScrollFactor(0);
     const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x17344f, 0.76);
     const panel = this.add.graphics();
     panel.fillStyle(0xfff7df, 0.96);
@@ -1010,6 +3410,11 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.updatePortraitHint();
     this.touchControls.container.setAlpha(this.state.phase === 'countdown' ? 0.72 : 1);
+    const repairModeActive = this.state.repairMode && this.state.phase === 'playing';
+    ['melee', 'bow', 'spell', 'repair'].forEach((action) => {
+      this.touchControls?.buttons[action]?.setVisible(!repairModeActive);
+    });
+    this.touchControls.repairButtons?.forEach((button) => button.setVisible(repairModeActive));
     this.setTouchControlsVisible(
       (this.state.phase === 'countdown' || this.state.phase === 'playing') && !this.isPortraitLayout(),
     );
@@ -1174,14 +3579,10 @@ class FairyGuildScene extends Phaser.Scene {
       this.castSpell(now, this.getAutoTargetIso(4.2));
     } else if (action === 'repair') {
       this.toggleRepairMode();
-    } else if (action === 'use') {
-      if (this.state.repairMode) {
-        this.tryRepairBuilding();
-      } else {
-        this.tryOpenChest();
-      }
-    } else if (action === 'inventory') {
-      this.toggleInventory();
+    } else if (action === 'repairConfirm') {
+      this.tryRepairBuilding();
+    } else if (action === 'repairCancel') {
+      this.setRepairMode(false, false);
     }
   }
 
@@ -1352,8 +3753,32 @@ class FairyGuildScene extends Phaser.Scene {
     const moving = dx !== 0 || dy !== 0;
     if (moving) {
       this.player.facing = { x: dx, y: dy };
-      this.player.iso.x += dx * this.playerStats.speed * dt;
-      this.player.iso.y += dy * this.playerStats.speed * dt;
+      const fullStep = {
+        x: this.player.iso.x + dx * this.playerStats.speed * dt,
+        y: this.player.iso.y + dy * this.playerStats.speed * dt,
+      };
+      this.clampIso(fullStep, 1.2);
+      if (this.isGeneratedIsoWalkable(fullStep)) {
+        this.player.iso.x = fullStep.x;
+        this.player.iso.y = fullStep.y;
+      } else {
+        const nextX = {
+          x: this.player.iso.x + dx * this.playerStats.speed * dt,
+          y: this.player.iso.y,
+        };
+        const nextY = {
+          x: this.player.iso.x,
+          y: this.player.iso.y + dy * this.playerStats.speed * dt,
+        };
+        this.clampIso(nextX, 1.2);
+        this.clampIso(nextY, 1.2);
+        if (this.isGeneratedIsoWalkable(nextX)) {
+          this.player.iso.x = nextX.x;
+        }
+        if (this.isGeneratedIsoWalkable(nextY)) {
+          this.player.iso.y = nextY.y;
+        }
+      }
       this.clampIso(this.player.iso, 1.2);
     }
 
@@ -1369,13 +3794,15 @@ class FairyGuildScene extends Phaser.Scene {
       this.castSpell(time);
     }
 
-    const p = this.isoToScreen(this.player.iso.x, this.player.iso.y, 18);
+    const p = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
     this.player.sprite.setPosition(p.x, p.y);
     this.player.shadow.setPosition(p.x, p.y + 15);
     this.player.sprite.setFlipX(this.player.facing.x < -0.05);
 
     if (time > this.player.actionLockUntil) {
-      const desiredAnim = moving ? 'hero-walk' : 'hero-idle';
+      const desiredAnim = moving
+        ? `${this.player.animPrefix}-walk`
+        : `${this.player.animPrefix}-idle`;
       if (this.player.sprite.anims.currentAnim?.key !== desiredAnim) {
         this.player.sprite.play(desiredAnim);
       }
@@ -1390,7 +3817,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.actionLockUntil = time + 300;
     this.setRepairMode(false, false);
     this.state.equipped = 'Wooden Sword';
-    this.player.sprite.play('hero-melee', true);
+    this.player.sprite.play(`${this.player.animPrefix}-melee`, true);
     this.playTone('sparkle');
     const reach = 1.48;
     const center = {
@@ -1416,7 +3843,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.actionLockUntil = time + 260;
     this.setRepairMode(false, false);
     this.state.equipped = 'Guild Bow';
-    this.player.sprite.play('hero-special', true);
+    this.player.sprite.play(`${this.player.animPrefix}-special`, true);
     this.playTone('bow');
     const startIso = { x: this.player.iso.x, y: this.player.iso.y };
     const target = targetIso;
@@ -1427,18 +3854,20 @@ class FairyGuildScene extends Phaser.Scene {
     vy /= len;
     this.player.facing = { x: vx, y: vy };
     const p = this.isoToScreen(startIso.x, startIso.y, 18);
+    const evolvedBow = Boolean(this.playerStats.bowEvolved);
     const arrow = this.add.container(p.x, p.y - 24).setDepth(p.y + 120);
-    const shaft = this.add.rectangle(0, 0, 32, 5, 0xffe6a3, 1).setStrokeStyle(1, 0x9d6d3f, 1);
-    const tip = this.add.triangle(18, 0, 0, -6, 0, 6, 10, 0, 0x82d5ff, 1);
+    const shaft = this.add.rectangle(0, 0, evolvedBow ? 38 : 32, evolvedBow ? 6 : 5, evolvedBow ? 0xfff0a4 : 0xffe6a3, 1)
+      .setStrokeStyle(1, evolvedBow ? 0x4ca6c9 : 0x9d6d3f, 1);
+    const tip = this.add.triangle(evolvedBow ? 21 : 18, 0, 0, -6, 0, 6, 10, 0, evolvedBow ? 0xffdf75 : 0x82d5ff, 1);
     arrow.add([shaft, tip]);
     const screenDir = this.isoToScreen(startIso.x + vx, startIso.y + vy, 18);
     arrow.rotation = Phaser.Math.Angle.Between(p.x, p.y, screenDir.x, screenDir.y);
     this.projectiles.push({
       type: 'arrow',
       iso: { x: startIso.x + vx * 0.45, y: startIso.y + vy * 0.45 },
-      velocity: { x: vx * 8.2, y: vy * 8.2 },
+      velocity: { x: vx * (evolvedBow ? 9.2 : 8.2), y: vy * (evolvedBow ? 9.2 : 8.2) },
       power: this.playerStats.bowPower,
-      range: 6.8 + this.state.level * 0.35,
+      range: 6.8 + this.state.level * 0.35 + (evolvedBow ? 1.2 : 0),
       distance: 0,
       sprite: arrow,
     });
@@ -1458,7 +3887,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.actionLockUntil = time + 430;
     this.setRepairMode(false, false);
     this.state.equipped = 'Sparkle Spell';
-    this.player.sprite.play('hero-special', true);
+    this.player.sprite.play(`${this.player.animPrefix}-special`, true);
     this.playTone('level');
     const center = {
       x: Phaser.Math.Clamp(targetIso.x, this.player.iso.x - 4.2, this.player.iso.x + 4.2),
@@ -1570,21 +3999,24 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   spawnInitialChests() {
-    [
-      { x: 3.5, y: 3.5, reward: 'gold' },
-      { x: 11.4, y: 3.2, reward: 'mana' },
-      { x: 3.1, y: 11.1, reward: 'xp' },
-      { x: 11.6, y: 11.4, reward: 'heart' },
-    ].forEach((data) => this.spawnChest(data.x, data.y, data.reward));
+    // Chests now drop from enemies instead of being pre-placed on the board.
   }
 
-  spawnChest(x, y, reward = 'gold') {
+  spawnChest(
+    x,
+    y,
+    reward = 'bonus-upgrade',
+    options: { source?: 'enemyDrop'; lifetimeMs?: number } = {},
+  ) {
     const p = this.isoToScreen(x, y, 10);
-    const sprite = this.add.image(p.x, p.y, 'chestTexture')
+    const chestTexture = this.generatedLevelActive ? 'worldTilesAtlas' : 'chestTexture';
+    const chestFrame = this.generatedLevelActive ? 'chest_closed_01' : undefined;
+    const chestSize = this.generatedLevelActive ? this.scaleGeneratedSize([101, 103]) : [58, 58];
+    const sprite = this.add.image(p.x, p.y, chestTexture, chestFrame)
       .setOrigin(0.5, 0.78)
-      .setDisplaySize(58, 58)
+      .setDisplaySize(chestSize[0], chestSize[1])
       .setDepth(p.y + 60);
-    const glow = this.add.circle(p.x, p.y - 22, 19, 0xfff2a4, 0.14).setDepth(p.y + 50);
+    const glow = this.add.circle(p.x, p.y - 22, 19 * (chestSize[0] / 58), 0xfff2a4, 0.14).setDepth(p.y + 50);
     this.tweens.add({
       targets: glow,
       scale: 1.35,
@@ -1595,15 +4027,55 @@ class FairyGuildScene extends Phaser.Scene {
       ease: 'Sine.inOut',
     });
     this.entityLayer.add([glow, sprite]);
-    this.chests.push({ iso: { x, y }, sprite, glow, reward, opened: false, bob: Math.random() * 1000 });
+    const lifetimeMs = options.lifetimeMs ?? 5000;
+    const spawnedAt = this.time.now;
+    this.chests.push({
+      iso: { x, y },
+      sprite,
+      glow,
+      reward,
+      opened: false,
+      bob: Math.random() * 1000,
+      source: 'enemyDrop',
+      spawnedAt,
+      despawnAt: spawnedAt + lifetimeMs,
+      blinkAt: spawnedAt + Math.max(2500, lifetimeMs - 1800),
+    } satisfies DroppedChest);
   }
 
   updateChests(time) {
-    this.chests.forEach((chest) => {
+    (this.chests as DroppedChest[]).slice().forEach((chest) => {
       if (chest.opened) {return;}
+      if (chest.despawnAt && time >= chest.despawnAt) {
+        chest.opened = true;
+        this.tweens.add({
+          targets: [chest.sprite, chest.glow],
+          alpha: 0,
+          scale: 0.55,
+          duration: 180,
+          onComplete: () => {
+            chest.sprite.destroy();
+            chest.glow.destroy();
+          },
+        });
+        this.chests = this.chests.filter((candidate) => candidate !== chest);
+        this.checkLevelClear();
+        return;
+      }
       const p = this.isoToScreen(chest.iso.x, chest.iso.y, 10 + Math.sin(time / 450 + chest.bob) * 2.5);
       chest.sprite.setPosition(p.x, p.y);
       chest.glow.setPosition(p.x, p.y - 20);
+      if (chest.blinkAt && time >= chest.blinkAt) {
+        const pulse = 0.45 + Math.abs(Math.sin(time / 65)) * 0.55;
+        chest.sprite.setAlpha(pulse);
+        chest.glow.setAlpha(0.12 + pulse * 0.24);
+      } else {
+        chest.sprite.setAlpha(1);
+        chest.glow.setAlpha(0.18);
+      }
+      if (Phaser.Math.Distance.Between(chest.iso.x, chest.iso.y, this.player.iso.x, this.player.iso.y) < 0.95) {
+        this.openChest(chest);
+      }
     });
   }
 
@@ -1617,6 +4089,13 @@ class FairyGuildScene extends Phaser.Scene {
     ) < 1.35);
     if (!chest) {
       this.addGuildNote('No chest close enough yet.');
+      return;
+    }
+    this.openChest(chest);
+  }
+
+  openChest(chest: DroppedChest) {
+    if (!chest || chest.opened) {
       return;
     }
     chest.opened = true;
@@ -1636,26 +4115,55 @@ class FairyGuildScene extends Phaser.Scene {
     });
     const p = this.isoToScreen(chest.iso.x, chest.iso.y, 18);
     this.spawnSparkleBurst(p.x, p.y - 22, 0xfff0a4, 20, 1.1);
-    this.grantChestReward(chest.reward);
-    if (Phaser.Math.Between(0, 100) < 45) {
-      const edge = Phaser.Math.RND.pick([
-        { x: Phaser.Math.Between(2, 12), y: 1.8 },
-        { x: 1.8, y: Phaser.Math.Between(2, 12) },
-        { x: Phaser.Math.Between(2, 12), y: 13.2 },
-        { x: 13.2, y: Phaser.Math.Between(2, 12) },
-      ]);
-      this.time.delayedCall(2200, () => {
-        if (this.state.phase !== 'playing') {return;}
-        this.spawnChest(edge.x, edge.y, Phaser.Math.RND.pick(['gold', 'gold', 'xp', 'mana', 'heart', 'buff']));
-        this.addGuildNote('A chest appeared near the old oak!');
-      });
+    this.chests = this.chests.filter((candidate) => candidate !== chest);
+    if (chest.reward === 'bonus-upgrade') {
+      this.pauseRoundForChestBonus();
+      return;
     }
+    this.grantChestReward(chest.reward);
+  }
+
+  pauseRoundForChestBonus() {
+    if (this.state.phase !== 'playing') {
+      return;
+    }
+    this.upgradePauseContext = 'chestBonus' as UpgradePauseContext;
+    this.state.phase = 'levelUp';
+    this.state.inventoryOpen = false;
+    this.setRepairMode(false, false);
+    this.inventoryPanel?.setVisible(false);
+    this.levelTimers.forEach((timer) => { timer.paused = true; });
+    this.showLevelUpScreen('chestBonus');
+  }
+
+  resumeRoundAfterChestBonus() {
+    this.upgradePauseContext = 'roundClear' as UpgradePauseContext;
+    this.levelTimers.forEach((timer) => {
+      if (timer && !timer.hasDispatched) {
+        timer.paused = false;
+      }
+    });
+    this.state.phase = 'playing';
+    this.levelUpOverlay?.setVisible(false);
+    this.addGuildNote('The chest blessing settles in. Back to the defense!');
+    this.checkLevelClear();
   }
 
   toggleRepairMode() {
     if (this.state.phase !== 'playing') {return;}
     this.ensureAudio();
     this.setRepairMode(!this.state.repairMode);
+  }
+
+  getFootprintCells(x, y, footprint = { w: 1, h: 1 }) {
+    const offsetX = Math.floor((footprint?.w ?? 1) / 2);
+    const offsetY = Math.floor((footprint?.h ?? 1) / 2);
+    return Array.from({ length: footprint?.h ?? 1 }, (_, row) => (
+      Array.from({ length: footprint?.w ?? 1 }, (__, col) => ({
+        x: x + col - offsetX,
+        y: y + row - offsetY,
+      }))
+    )).flat();
   }
 
   setRepairMode(enabled, announce = true) {
@@ -1680,84 +4188,60 @@ class FairyGuildScene extends Phaser.Scene {
         this.state.equipped = 'Wooden Sword';
         if (announce) {this.addGuildNote('Repair Kit tucked away.');}
       }
+      this.clearRepairModeOutline();
     }
   }
 
   showRepairModeIndicator() {
-    if (!this.player?.sprite) {return;}
-    if (this.repairModeIndicator) {
-      this.repairModeIndicator.setVisible(true);
-      return;
-    }
-    const indicator = this.add.container(this.player.sprite.x + 34, this.player.sprite.y - 58);
-    const glow = this.add.circle(0, 0, 22, 0xb8ffd5, 0.22)
-      .setStrokeStyle(2, 0xf8ffd7, 0.6);
-    const tool = this.add.image(0, 0, 'repairTool')
-      .setOrigin(0.5)
-      .setDisplaySize(50, 50)
-      .setAngle(-10);
-    indicator.add([glow, tool]);
-    (indicator as any).glow = glow;
-    (indicator as any).tool = tool;
-    this.fxLayer.add(indicator);
-    this.repairModeIndicator = indicator;
-    this.tweens.add({
-      targets: tool,
-      y: -4,
-      angle: 8,
-      yoyo: true,
-      repeat: -1,
-      duration: 820,
-      ease: 'Sine.inOut',
-    });
-    this.tweens.add({
-      targets: glow,
-      scale: 1.18,
-      alpha: 0.34,
-      yoyo: true,
-      repeat: -1,
-      duration: 940,
-      ease: 'Sine.inOut',
-    });
     this.updateRepairModeIndicator(this.time.now);
   }
 
   hideRepairModeIndicator() {
-    if (!this.repairModeIndicator) {return;}
-    this.tweens.killTweensOf([this.repairModeIndicator.tool, this.repairModeIndicator.glow]);
-    this.repairModeIndicator.destroy();
-    this.repairModeIndicator = null;
+    if (this.repairModeIndicator) {
+      this.repairModeIndicator.destroy();
+      this.repairModeIndicator = null;
+    }
+    this.clearRepairModeOutline();
   }
 
   updateRepairModeIndicator(time) {
-    if (!this.repairModeIndicator || !this.player?.sprite) {return;}
+    void time;
     if (!this.state.repairMode || this.state.phase !== 'playing') {
       this.hideRepairModeIndicator();
       return;
     }
-    const bob = Math.sin(time / 180) * 3;
-    this.repairModeIndicator
-      .setPosition(this.player.sprite.x + 34, this.player.sprite.y - 58 + bob)
-      .setDepth(this.player.sprite.depth + 150);
+    this.updateRepairModeOutline();
   }
 
   pulseRepairModeIndicator() {
-    if (!this.repairModeIndicator?.tool) {return;}
-    this.tweens.add({
-      targets: this.repairModeIndicator.tool,
-      displayWidth: 62,
-      displayHeight: 62,
-      x: 5,
-      yoyo: true,
-      repeat: 2,
-      duration: 70,
-      ease: 'Sine.easeInOut',
-      onComplete: () => {
-        if (this.repairModeIndicator?.tool) {
-          this.repairModeIndicator.tool.setDisplaySize(50, 50).setX(0);
-        }
-      },
-    });
+    this.updateRepairModeOutline();
+  }
+
+  getBuildingFootprintCells(building) {
+    return building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
+  }
+
+  getRepairDistanceToBuilding(building) {
+    if (!this.player) {
+      return Infinity;
+    }
+    const footprintCells = this.getBuildingFootprintCells(building);
+    return footprintCells.reduce((bestDistance, cell) => (
+      Math.min(
+        bestDistance,
+        Phaser.Math.Distance.Between(
+          cell.x + 0.5,
+          cell.y + 0.5,
+          this.player.iso.x,
+          this.player.iso.y,
+        ),
+      )
+    ), Phaser.Math.Distance.Between(
+      building.iso.x,
+      building.iso.y,
+      this.player.iso.x,
+      this.player.iso.y,
+    ));
   }
 
   getNearestDamagedBuilding(range = REPAIR_RANGE) {
@@ -1766,12 +4250,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.buildings.forEach((building) => {
       if (building.hp >= building.max) {return;}
       if (building.name === 'Castle' && building.hp <= 0) {return;}
-      const distance = Phaser.Math.Distance.Between(
-        building.iso.x,
-        building.iso.y,
-        this.player.iso.x,
-        this.player.iso.y,
-      );
+      const distance = this.getRepairDistanceToBuilding(building);
       if (distance <= range && distance < nearestDistance) {
         nearest = building;
         nearestDistance = distance;
@@ -1780,15 +4259,130 @@ class FairyGuildScene extends Phaser.Scene {
     return nearest;
   }
 
+  getRepairModeTarget(range = REPAIR_RANGE) {
+    let nearestDamaged = null;
+    let nearestPerfect = null;
+    this.buildings.forEach((building) => {
+      if (building.name === 'Castle' && building.hp <= 0) {return;}
+      const distance = this.getRepairDistanceToBuilding(building);
+      if (distance > range) {return;}
+      if (building.hp < building.max) {
+        if (!nearestDamaged || distance < nearestDamaged.distance) {
+          nearestDamaged = { building, distance };
+        }
+        return;
+      }
+      if (!nearestPerfect || distance < nearestPerfect.distance) {
+        nearestPerfect = { building, distance };
+      }
+    });
+    return nearestDamaged?.building ?? nearestPerfect?.building ?? null;
+  }
+
+  getRepairModeTargetState(building): RepairModeTargetState {
+    if (building.hp >= building.max) {
+      return 'perfect';
+    }
+    return this.state.gold >= REPAIR_COST ? 'repairable' : 'unaffordable';
+  }
+
+  clearRepairModeOutline() {
+    if (!this.repairModeOutline) {
+      return;
+    }
+    this.repairModeOutline.clear();
+    this.repairModeOutline.setVisible(false);
+  }
+
+  drawRepairModeFootprintFill(graphics, footprintCells, color, halfW, halfH) {
+    graphics.fillStyle(color, REPAIR_OUTLINE_FILL_ALPHA);
+    footprintCells.forEach((cell) => {
+      const center = this.isoToScreen(cell.x, cell.y);
+      graphics.beginPath();
+      graphics.moveTo(center.x, center.y - halfH);
+      graphics.lineTo(center.x + halfW, center.y);
+      graphics.lineTo(center.x, center.y + halfH);
+      graphics.lineTo(center.x - halfW, center.y);
+      graphics.closePath();
+      graphics.fillPath();
+    });
+  }
+
+  drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH) {
+    const cellKeys = new Set(footprintCells.map((cell) => `${cell.x},${cell.y}`));
+    footprintCells.forEach((cell) => {
+      const center = this.isoToScreen(cell.x, cell.y);
+      const top = { x: center.x, y: center.y - halfH };
+      const right = { x: center.x + halfW, y: center.y };
+      const bottom = { x: center.x, y: center.y + halfH };
+      const left = { x: center.x - halfW, y: center.y };
+      const edges = [
+        { neighbor: `${cell.x},${cell.y - 1}`, from: top, to: right },
+        { neighbor: `${cell.x + 1},${cell.y}`, from: right, to: bottom },
+        { neighbor: `${cell.x},${cell.y + 1}`, from: bottom, to: left },
+        { neighbor: `${cell.x - 1},${cell.y}`, from: left, to: top },
+      ];
+      edges.forEach((edge) => {
+        if (cellKeys.has(edge.neighbor)) {return;}
+        graphics.beginPath();
+        graphics.moveTo(edge.from.x, edge.from.y);
+        graphics.lineTo(edge.to.x, edge.to.y);
+        graphics.strokePath();
+      });
+    });
+  }
+
+  drawRepairModeFootprintOutline(graphics, building, color) {
+    const { tileW, tileH } = this.getIsoMetrics();
+    const halfW = tileW / 2;
+    const halfH = tileH / 2;
+    const footprintCells = this.getBuildingFootprintCells(building);
+    this.drawRepairModeFootprintFill(graphics, footprintCells, color, halfW, halfH);
+    graphics.lineStyle(REPAIR_OUTLINE_BACKING_WIDTH, REPAIR_OUTLINE_BACKING_COLOR, 0.82);
+    this.drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH);
+    graphics.lineStyle(REPAIR_OUTLINE_STROKE_WIDTH, color, 0.98);
+    this.drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH);
+  }
+
+  updateRepairModeOutline() {
+    if (!this.state.repairMode || this.state.phase !== 'playing' || !this.player) {
+      this.clearRepairModeOutline();
+      return;
+    }
+    const building = this.getRepairModeTarget();
+    if (!building) {
+      this.clearRepairModeOutline();
+      return;
+    }
+    if (!this.repairModeOutline) {
+      this.repairModeOutline = this.add.graphics().setDepth(building.sprite.depth + 22);
+      this.effectsLayer.add(this.repairModeOutline);
+    }
+    const graphics = this.repairModeOutline;
+    const targetState = this.getRepairModeTargetState(building);
+    const color = REPAIR_OUTLINE_COLORS[targetState];
+    graphics.clear();
+    graphics.setVisible(true);
+    graphics.setDepth(building.sprite.depth + 22);
+    this.drawRepairModeFootprintOutline(graphics, building, color);
+  }
+
   tryRepairBuilding() {
     if (this.state.phase !== 'playing') {return;}
     this.ensureAudio();
     if (this.time.now - this.lastRepairAt < REPAIR_COOLDOWN) {return;}
-    const building = this.getNearestDamagedBuilding();
+    const building = this.getRepairModeTarget();
     if (!building) {
-      this.addGuildNote('No damaged building close enough yet.');
+      this.addGuildNote('No building close enough yet.');
       this.pulseRepairModeIndicator();
       this.playTone('hit');
+      return;
+    }
+    const targetState = this.getRepairModeTargetState(building);
+    if (targetState === 'perfect') {
+      this.addGuildNote(`${building.name} is already in perfect condition.`);
+      this.pulseRepairModeIndicator();
+      this.playTone('sparkle');
       return;
     }
     if (this.state.gold < REPAIR_COST) {
@@ -1807,6 +4401,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.spawnSparkleBurst(building.sprite.x, building.sprite.y - 22, 0xb8ffd5, 14, 0.82);
     this.playTone('repair');
     this.addGuildNote(`${building.name} repaired +${repaired} HP!`);
+    this.setRepairMode(false, false);
   }
 
   spawnRepairToolEffect(building, amount) {
@@ -1886,14 +4481,25 @@ class FairyGuildScene extends Phaser.Scene {
     this.inventoryPanel?.setVisible(false);
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
+    this.levelRequiredDefeats = 0;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
     this.levelClearQueued = false;
+    this.levelSpawnedCount = 0;
+    this.generatedValidSpawnPoints = [];
     this.splashOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
     this.gameOverOverlay?.setVisible(false);
     this.countdownOverlay?.setVisible(true);
-    this.addGuildNote(`Level ${this.state.level} begins soon!`);
+    this.addGuildNote(`${this.getCurrentRoundTitle()} begins soon!`);
 
-    const sequence = [`Level ${this.state.level}`, '3', '2', '1', 'Go!'];
+    if (this.shouldSkipCountdownFromParams()) {
+      this.countdownOverlay?.setVisible(false);
+      this.startLevelRound();
+      return;
+    }
+
+    const sequence = [this.getCurrentRoundTitle(), '3', '2', '1', 'Go!'];
     sequence.forEach((label, index) => {
       this.addLevelTimer(index * 780, () => {
         this.showCountdownLabel(label);
@@ -1905,8 +4511,9 @@ class FairyGuildScene extends Phaser.Scene {
 
   showCountdownLabel(label) {
     if (!this.countdownOverlay) {return;}
-    this.countdownLevelText.setText(label.startsWith('Level') ? label : `Level ${this.state.level}`);
-    this.countdownNumberText.setText(label.startsWith('Level') ? '' : label);
+    const roundTitle = this.getCurrentRoundTitle();
+    this.countdownLevelText.setText(label === roundTitle ? roundTitle : roundTitle);
+    this.countdownNumberText.setText(label === roundTitle ? '' : label);
     this.countdownNumberText.setScale(label === 'Go!' ? 0.82 : 1);
     this.countdownOverlay.setAlpha(0.98);
     this.tweens.add({
@@ -1925,11 +4532,29 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelClearQueued = false;
 
     const level = this.state.level;
-    const count = Math.min(LEVEL_SPAWN_BASE + level * LEVEL_SPAWN_PER_LEVEL, LEVEL_SPAWN_MAX);
+    const isBossRound = this.state.bossRound;
+    const count = isBossRound
+      ? 1
+      : Math.min(LEVEL_SPAWN_BASE + level * LEVEL_SPAWN_PER_LEVEL, LEVEL_SPAWN_MAX);
     this.levelSpawnsPending = count;
     this.levelEnemiesRemaining = count;
-    this.addGuildNote(`Level ${level}: forest friends are on the move!`);
-    if (level === 1) {
+    this.levelRequiredDefeats = count;
+    this.levelDefeatsThisRound = 0;
+    this.levelSpawnFailures = 0;
+    this.levelSpawnedCount = 0;
+    if (this.generatedLevelActive) {
+      this.buildGeneratedSpawnCache();
+      if (!this.generatedValidSpawnPoints.length) {
+        this.addGuildNote('Scouts could not find a safe forest path yet. Retrying the perimeter...');
+        this.buildGeneratedSpawnCache();
+      }
+    }
+    if (isBossRound) {
+      this.addGuildNote(this.getCurrentWorldTheme().bossIntro);
+    } else {
+      this.addGuildNote(`Level ${level}: forest friends are on the move!`);
+    }
+    if (level === 1 && !isBossRound) {
       this.addGuildNote('Tip: T readies repairs when buildings flash.');
     }
 
@@ -1941,9 +4566,19 @@ class FairyGuildScene extends Phaser.Scene {
       this.addLevelTimer(LEVEL_FIRST_SPAWN_DELAY + i * spawnInterval, () => {
         if (this.state.phase !== 'playing') {return;}
         this.levelSpawnsPending = Math.max(0, this.levelSpawnsPending - 1);
-        const spawned = this.spawnEnemy(level);
+        const spawned = this.spawnRoundEnemy(level);
         if (!spawned) {
-          this.levelEnemiesRemaining = Math.max(0, this.levelEnemiesRemaining - 1);
+          this.levelSpawnFailures += 1;
+          if (!isBossRound) {
+            this.levelRequiredDefeats = Math.max(0, this.levelRequiredDefeats - 1);
+            this.levelEnemiesRemaining = Math.max(0, this.levelRequiredDefeats - this.levelDefeatsThisRound);
+          }
+          if (this.generatedLevelActive) {
+            console.warn('Generated spawn skipped because no protected target route was available.');
+            if (this.levelSpawnedCount === 0 && this.levelSpawnsPending === 0) {
+              this.addGuildNote('The scouts lost the route. The wave is waiting for a clear path.');
+            }
+          }
         }
         this.checkLevelClear();
       });
@@ -1952,7 +4587,10 @@ class FairyGuildScene extends Phaser.Scene {
 
   checkLevelClear() {
     if (this.state.phase !== 'playing' || this.levelClearQueued) {return;}
-    if (this.levelSpawnsPending <= 0 && this.levelEnemiesRemaining <= 0) {
+    const requiredDefeatsMet = this.levelDefeatsThisRound >= this.levelRequiredDefeats;
+    const hadRealSpawns = this.levelSpawnedCount > 0 || this.state.bossRound;
+    const pendingEnemyDropChests = this.chests.some((chest) => !chest.opened && chest.source === 'enemyDrop');
+    if (this.levelSpawnsPending <= 0 && requiredDefeatsMet && hadRealSpawns && !pendingEnemyDropChests) {
       this.levelClearQueued = true;
       this.addLevelTimer(720, () => this.completeLevel());
     }
@@ -1966,11 +4604,18 @@ class FairyGuildScene extends Phaser.Scene {
     this.inventoryPanel?.setVisible(false);
     this.clearProjectiles();
     this.clearRetreatingEnemies();
-    const reward = 20 + this.state.level * 8;
+    const bossConfig = BOSS_CONFIGS[this.state.worldKey as SeasonPreset];
+    const reward = this.state.bossRound
+      ? bossConfig.clearGold + this.state.worldCycle * 10 + this.state.level * 4
+      : 20 + this.state.level * 8;
     this.state.gold += reward;
-    this.gainXp(28 + this.state.level * 10);
-    this.addGuildNote(`Level ${this.state.level} clear! +${reward} gold`);
-    this.showLevelUpScreen();
+    this.gainXp(this.state.bossRound ? bossConfig.clearXp + this.state.worldCycle * 12 : 28 + this.state.level * 10);
+    this.addGuildNote(
+      this.state.bossRound
+        ? `${bossConfig.name} defeated! +${reward} gold`
+        : `Level ${this.state.level} clear! +${reward} gold`,
+    );
+    this.showLevelUpScreen('roundClear');
   }
 
   getEnemyTarget(): any {
@@ -1980,8 +4625,163 @@ class FairyGuildScene extends Phaser.Scene {
       this.enterGameOver('The castle needs a rescue rest!');
       return null;
     }
+    if (this.generatedLevelActive) {
+      return aliveBuildings.reduce((best, building) => (
+        (building.importance ?? 1) > (best.importance ?? 1) ? building : best
+      ), aliveBuildings[0] ?? castle);
+    }
     const villageTargets = aliveBuildings.filter((building) => building.name !== 'Castle');
     return Phaser.Math.RND.pick(villageTargets.length > 0 ? villageTargets : [castle]);
+  }
+
+  isoToGridCell(iso) {
+    const x = Phaser.Math.Clamp(Math.round(iso.x), 0, (this.generatedLevel?.width ?? MAP_W) - 1);
+    const y = Phaser.Math.Clamp(Math.round(iso.y), 0, (this.generatedLevel?.height ?? MAP_H) - 1);
+    return { x, y };
+  }
+
+  getGeneratedEdgeSpawnPoints() {
+    if (!this.generatedLevel?.spawnPoints.length) {
+      return [];
+    }
+    const bounds = this.generatedLevel.playableBounds ?? DEFAULT_PLAYABLE_BOUNDS;
+    return this.generatedLevel.spawnPoints.filter((spawn) => (
+      spawn.x === bounds.minX
+      || spawn.y === bounds.minY
+      || spawn.x === bounds.maxX
+      || spawn.y === bounds.maxY
+    ));
+  }
+
+  getGeneratedFallbackSpawnAnchors() {
+    if (!this.generatedLevel) {
+      return [];
+    }
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const midX = Math.floor((minX + maxX) / 2);
+    const midY = Math.floor((minY + maxY) / 2);
+    return [
+      { x: minX, y: midY },
+      { x: midX, y: minY },
+      { x: maxX, y: midY },
+      { x: midX, y: maxY },
+    ];
+  }
+
+  getGeneratedPlayableEdgeCells() {
+    if (!this.generatedLevel) {
+      return [];
+    }
+    const cells = [];
+    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const seen = new Set();
+    for (let x = minX; x <= maxX; x += 1) {
+      cells.push({ x, y: minY });
+      cells.push({ x, y: maxY });
+    }
+    for (let y = minY + 1; y < maxY; y += 1) {
+      cells.push({ x: minX, y });
+      cells.push({ x: maxX, y });
+    }
+    return cells.filter((cell) => {
+      const key = `${cell.x},${cell.y}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return this.generatedLevel?.walkableGrid[cell.y]?.[cell.x];
+    });
+  }
+
+  buildGeneratedSpawnCache() {
+    if (!this.generatedLevel) {
+      this.generatedValidSpawnPoints = [];
+      return [];
+    }
+    const candidateGroups = [
+      this.getGeneratedEdgeSpawnPoints(),
+      this.getGeneratedFallbackSpawnAnchors(),
+      this.getGeneratedPlayableEdgeCells(),
+    ];
+    const valid = [];
+    const seen = new Set();
+    for (const group of candidateGroups) {
+      for (const spawn of group) {
+        const key = `${spawn.x},${spawn.y}`;
+        if (seen.has(key) || !this.generatedLevel.walkableGrid[spawn.y]?.[spawn.x]) {
+          continue;
+        }
+        seen.add(key);
+        const route = this.selectGeneratedEnemyRoute(spawn);
+        if (route) {
+          valid.push(spawn);
+        }
+      }
+      if (valid.length > 0) {
+        break;
+      }
+    }
+    this.generatedValidSpawnPoints = valid;
+    return valid;
+  }
+
+  getGeneratedSpawnIso() {
+    const edgeSpawns = this.generatedValidSpawnPoints?.length
+      ? this.generatedValidSpawnPoints
+      : this.buildGeneratedSpawnCache();
+    if (!edgeSpawns.length) {
+      console.warn('Generated level has no valid playable-edge spawn points.');
+      return null;
+    }
+    const spawn = edgeSpawns[Phaser.Math.Between(0, edgeSpawns.length - 1)];
+    return this.jitterGeneratedSpawnPoint(spawn);
+  }
+
+  jitterGeneratedSpawnPoint(spawn) {
+    return {
+      x: spawn.x + Phaser.Math.FloatBetween(-0.18, 0.18),
+      y: spawn.y + Phaser.Math.FloatBetween(-0.18, 0.18),
+    };
+  }
+
+  getGeneratedRouteScores(startIso) {
+    if (!this.generatedLevel) {
+      return [];
+    }
+    const start = this.isoToGridCell(startIso);
+    const levelPressure = Math.max(0, this.state.level - 1);
+    const distanceWeight = 2.2 + this.generatedLevel.config.difficulty * 0.16 + levelPressure * 0.04;
+    return this.generatedLevel.protectedTargets
+      .map((target) => {
+        const building = this.buildings.find((candidate) => candidate.levelPlacementId === target.id && candidate.hp > 0);
+        if (!building) {
+          return null;
+        }
+        const path = findGridPath(this.generatedLevel.walkableGrid, start, target.attackCells);
+        if (!path) {
+          return null;
+        }
+        const healthFactor = Phaser.Math.Clamp(building.hp / building.max, 0.25, 1);
+        const cost = pathCost(path);
+        const score = (building.importance ?? target.importance) * healthFactor - cost * distanceWeight;
+        return { building, path, score, cost, healthFactor, distanceWeight };
+      })
+      .filter(Boolean);
+  }
+
+  selectGeneratedEnemyRoute(startIso) {
+    const choices = this.getGeneratedRouteScores(startIso);
+    if (!choices.length) {
+      return null;
+    }
+    const best = choices.reduce((winner, choice) => (choice.score > winner.score ? choice : winner), choices[0]);
+    return {
+      target: best.building,
+      pathIso: best.path.map((cell) => ({ x: cell.x, y: cell.y })),
+      score: best.score,
+      cost: best.cost,
+      healthFactor: best.healthFactor,
+    };
   }
 
   pickWeighted(items) {
@@ -1996,8 +4796,14 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getEnemyArchetype(level) {
-    return this.pickWeighted(ENEMY_ARCHETYPES.filter((archetype) => archetype.unlockLevel <= level))
-      || ENEMY_ARCHETYPES[0];
+    const theme = this.getCurrentWorldTheme();
+    const weighted = ENEMY_ARCHETYPES
+      .filter((archetype) => archetype.unlockLevel <= level)
+      .map((archetype) => ({
+        ...archetype,
+        weight: archetype.weight + (theme.preferredArchetypes.includes(archetype.key) ? 2.5 : 0),
+      }));
+    return this.pickWeighted(weighted) || ENEMY_ARCHETYPES[0];
   }
 
   getEnemyVariant(level) {
@@ -2009,18 +4815,89 @@ class FairyGuildScene extends Phaser.Scene {
     return [enemy.variant.label, enemy.archetype.label].filter(Boolean).join(' ');
   }
 
+  getEnemyFrameKey(enemy, column) {
+    const prefix = enemy.framePrefix ?? 'monster';
+    const row = enemy.frameRow ?? enemy.archetype?.row ?? 0;
+    return `${prefix}-${row}-${column}`;
+  }
+
+  getWorldEliteVisual(level, variant) {
+    const theme = this.getCurrentWorldTheme();
+    const shouldUseElite = level >= 2 && (variant.key !== 'normal' || Phaser.Math.FloatBetween(0, 1) < theme.eliteSpawnChance);
+    if (!shouldUseElite || !this.textures.exists(theme.eliteAssetKey)) {
+      return { frameSheetKey: 'monsterSheet', framePrefix: 'monster', frameRow: null, tint: variant.tint };
+    }
+    return {
+      frameSheetKey: theme.eliteAssetKey,
+      framePrefix: theme.eliteFramePrefix,
+      frameRow: 0,
+      tint: theme.ambientTint ?? variant.tint,
+    };
+  }
+
+  getBossVisual() {
+    const theme = this.getCurrentWorldTheme();
+    if (!this.textures.exists(theme.bossAssetKey)) {
+      return { frameSheetKey: 'monsterSheet', framePrefix: 'monster', frameRow: 0, tint: BOSS_CONFIGS[this.state.worldKey as SeasonPreset].tint };
+    }
+    return {
+      frameSheetKey: theme.bossAssetKey,
+      framePrefix: theme.bossFramePrefix,
+      frameRow: 0,
+      tint: BOSS_CONFIGS[this.state.worldKey as SeasonPreset].tint,
+    };
+  }
+
+  spawnRoundEnemy(level) {
+    return this.state.bossRound ? this.spawnBossEnemy(level) : this.spawnEnemy(level);
+  }
+
   spawnEnemy(level) {
     if (this.state.phase !== 'playing') {return false;}
-    const target = this.getEnemyTarget();
+    const theme = this.getCurrentWorldTheme();
+    let route = null;
+    let target = this.getEnemyTarget();
     if (!target) {return false;}
-    const side = Phaser.Math.Between(0, 3);
     let iso;
-    if (side === 0) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 1.1 };}
-    else if (side === 1) {iso = { x: 13.7, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
-    else if (side === 2) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 13.7 };}
-    else {iso = { x: 1.1, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
+    if (this.generatedLevelActive) {
+      const spawnCandidates = [...(this.generatedValidSpawnPoints?.length ? this.generatedValidSpawnPoints : this.buildGeneratedSpawnCache())];
+      for (let i = spawnCandidates.length - 1; i > 0; i -= 1) {
+        const j = Phaser.Math.Between(0, i);
+        [spawnCandidates[i], spawnCandidates[j]] = [spawnCandidates[j], spawnCandidates[i]];
+      }
+      for (const spawn of spawnCandidates) {
+        iso = this.jitterGeneratedSpawnPoint(spawn);
+        route = this.selectGeneratedEnemyRoute(iso);
+        if (route) {
+          break;
+        }
+      }
+      if (!route) {
+        const refreshedCandidates = this.buildGeneratedSpawnCache();
+        for (const spawn of refreshedCandidates) {
+          iso = this.jitterGeneratedSpawnPoint(spawn);
+          route = this.selectGeneratedEnemyRoute(iso);
+          if (route) {
+            break;
+          }
+        }
+        if (!route) {
+          console.warn('Generated enemy spawn skipped: no route to a protected target.', iso);
+          return false;
+        }
+      }
+      target = route.target;
+    }
+    if (!iso) {
+      const side = Phaser.Math.Between(0, 3);
+      if (side === 0) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 1.1 };}
+      else if (side === 1) {iso = { x: 13.7, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
+      else if (side === 2) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 13.7 };}
+      else {iso = { x: 1.1, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
+    }
     const archetype = this.getEnemyArchetype(level);
     const variant = this.getEnemyVariant(level);
+    const visual = this.getWorldEliteVisual(level, variant);
     const p = this.isoToScreen(iso.x, iso.y, 16);
     const levelBonus = Math.max(0, level - 1);
     const size = (archetype.size + Math.min(levelBonus, 6) * 1.4) * variant.scale;
@@ -2028,17 +4905,27 @@ class FairyGuildScene extends Phaser.Scene {
     const speed = Math.min(1.72, (archetype.speed + levelBonus * 0.035) * variant.speed);
     const buildingDamage = Math.max(1, Math.round((archetype.buildingDamage + Math.floor(levelBonus / 3)) * variant.buildingDamage));
     const contactDamage = Math.max(1, Math.round(archetype.contactDamage * variant.contactDamage));
-    const shadow = this.add.ellipse(p.x, p.y + 13, size * 0.58, size * 0.22, 0x315133, 0.2);
-    const sprite = this.add.sprite(p.x, p.y, 'monsterSheet', `monster-${archetype.row}-${Phaser.Math.Between(0, 3)}`)
+    const displayScaleX = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDisplayScaleX : 1;
+    const displayScaleY = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDisplayScaleY : 1;
+    const shadow = this.add.ellipse(p.x, p.y + 13, size * displayScaleX * 0.42, size * displayScaleY * 0.22, 0x315133, 0.2);
+    const frameRow = visual.frameRow ?? archetype.row;
+    const framePrefix = visual.framePrefix ?? 'monster';
+    const idleFrames = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteIdleFrames : [0, 1, 2, 3];
+    const initialFrame = Phaser.Utils.Array.GetRandom(idleFrames);
+    const defeatFrame = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDefeatFrame : 7;
+    const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${framePrefix}-${frameRow}-${initialFrame}`)
       .setOrigin(0.5, 0.76)
-      .setDisplaySize(size, size)
+      .setDisplaySize(size * displayScaleX, size * displayScaleY)
       .setDepth(p.y + 50);
-    if (variant.tint) {sprite.setTint(variant.tint);}
+    if (visual.tint) {sprite.setTint(visual.tint);}
     const enemy = {
       type: archetype.row,
       archetype,
       variant,
-      variantTint: variant.tint,
+      variantTint: visual.tint,
+      frameSheetKey: visual.frameSheetKey,
+      framePrefix,
+      frameRow,
       iso,
       sprite,
       shadow,
@@ -2052,12 +4939,20 @@ class FairyGuildScene extends Phaser.Scene {
       rewardXp: Math.round((archetype.rewardXp + levelBonus * 2) * variant.reward),
       touchCooldown: 0,
       heroTouchCooldown: 0,
+      defeatFrame,
       dazedUntil: 0,
       wobble: Math.random() * Math.PI * 2,
+      path: route?.pathIso ?? null,
+      pathIndex: route?.pathIso?.length > 1 ? 1 : 0,
+      routeScore: route?.score ?? null,
+      routeCost: route?.cost ?? null,
+      routeHealthFactor: route?.healthFactor ?? null,
       retreating: false,
       defeated: false,
+      countedDefeat: false,
     };
     this.enemies.push(enemy);
+    this.levelSpawnedCount += 1;
     this.entityLayer.add([shadow, sprite]);
     if (target.name === 'Bakery' && archetype.key === 'mushroom' && Phaser.Math.Between(0, 2) === 0) {
       this.addGuildNote('Mushroom sprites are heading toward the bakery!');
@@ -2067,16 +4962,144 @@ class FairyGuildScene extends Phaser.Scene {
     return true;
   }
 
+  spawnBossEnemy(level) {
+    if (this.state.phase !== 'playing') {return false;}
+    let target = this.getEnemyTarget();
+    if (!target) {return false;}
+    let route = null;
+    let iso = null;
+    if (this.generatedLevelActive) {
+      const spawnCandidates = [...(this.generatedValidSpawnPoints?.length ? this.generatedValidSpawnPoints : this.buildGeneratedSpawnCache())];
+      for (let i = spawnCandidates.length - 1; i > 0; i -= 1) {
+        const j = Phaser.Math.Between(0, i);
+        [spawnCandidates[i], spawnCandidates[j]] = [spawnCandidates[j], spawnCandidates[i]];
+      }
+      for (const spawn of spawnCandidates) {
+        iso = this.jitterGeneratedSpawnPoint(spawn);
+        route = this.selectGeneratedEnemyRoute(iso);
+        if (route) {
+          break;
+        }
+      }
+      if (!route || !iso) {
+        const refreshedCandidates = this.buildGeneratedSpawnCache();
+        for (const spawn of refreshedCandidates) {
+          iso = this.jitterGeneratedSpawnPoint(spawn);
+          route = this.selectGeneratedEnemyRoute(iso);
+          if (route) {
+            break;
+          }
+        }
+        if (!route || !iso) {
+          console.warn('Boss spawn skipped: no route to a protected target.');
+          return false;
+        }
+      }
+      target = route.target;
+    } else {
+      iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 1.1 };
+    }
+
+    const theme = this.getCurrentWorldTheme();
+    const bossConfig = BOSS_CONFIGS[this.state.worldKey as SeasonPreset];
+    const visual = this.getBossVisual();
+    const p = this.isoToScreen(iso.x, iso.y, 18);
+    const levelBonus = Math.max(0, level - 1);
+    const cycleBonus = this.state.worldCycle * 0.18;
+    const maxHp = Math.round(bossConfig.hp + levelBonus * 3 + this.state.worldIndex * 3 + this.state.worldCycle * 8);
+    const size = bossConfig.size + this.state.worldIndex * 3 + this.state.worldCycle * 4;
+    const displayScaleX = theme.bossDisplayScaleX;
+    const displayScaleY = theme.bossDisplayScaleY;
+    const shadow = this.add.ellipse(p.x, p.y + 14, size * displayScaleX * 0.42, size * displayScaleY * 0.24, 0x243829, 0.24);
+    const initialFrame = Phaser.Utils.Array.GetRandom(theme.bossIdleFrames);
+    const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${visual.framePrefix}-${visual.frameRow}-${initialFrame}`)
+      .setOrigin(0.5, 0.76)
+      .setDisplaySize(size * displayScaleX, size * displayScaleY)
+      .setDepth(p.y + 54);
+    if (visual.tint) {
+      sprite.setTint(visual.tint);
+    }
+    const enemy = {
+      type: 0,
+      isBoss: true,
+      archetype: { key: 'boss', label: bossConfig.name, row: 0 },
+      variant: { key: 'boss', label: theme.label, tint: visual.tint },
+      variantTint: visual.tint,
+      frameSheetKey: visual.frameSheetKey,
+      framePrefix: visual.framePrefix,
+      frameRow: visual.frameRow,
+      iso,
+      sprite,
+      shadow,
+      target,
+      hp: maxHp,
+      maxHp,
+      speed: bossConfig.speed + levelBonus * 0.018 + cycleBonus,
+      buildingDamage: bossConfig.buildingDamage + Math.floor(levelBonus / 2) + this.state.worldCycle,
+      contactDamage: bossConfig.contactDamage,
+      rewardGold: [
+        bossConfig.rewardGold[0] + this.state.worldCycle * 4 + this.state.worldIndex * 2,
+        bossConfig.rewardGold[1] + this.state.worldCycle * 6 + this.state.worldIndex * 3,
+      ],
+      rewardXp: bossConfig.rewardXp + this.state.worldCycle * 12 + this.state.worldIndex * 6,
+      touchCooldown: 0,
+      heroTouchCooldown: 0,
+      defeatFrame: theme.bossDefeatFrame,
+      dazedUntil: 0,
+      wobble: Math.random() * Math.PI * 2,
+      path: route?.pathIso ?? null,
+      pathIndex: route?.pathIso?.length > 1 ? 1 : 0,
+      routeScore: route?.score ?? null,
+      routeCost: route?.cost ?? null,
+      routeHealthFactor: route?.healthFactor ?? null,
+      retreating: false,
+      defeated: false,
+      countedDefeat: false,
+    };
+    this.enemies.push(enemy);
+    this.levelSpawnedCount += 1;
+    this.entityLayer.add([shadow, sprite]);
+    this.addGuildNote(theme.bossIntro);
+    return true;
+  }
+
   updateEnemies(dt, time) {
     this.enemies.slice().forEach((enemy) => {
       if (!enemy.retreating && enemy.target.hp <= 0) {
-        const nextTarget = this.getEnemyTarget();
-        if (!nextTarget) {return;}
-        enemy.target = nextTarget;
+        if (this.generatedLevelActive) {
+          const route = this.selectGeneratedEnemyRoute(enemy.iso);
+          if (!route) {
+            enemy.retreating = true;
+            enemy.path = null;
+            enemy.pathIndex = 0;
+            this.addGuildNote(`${this.getEnemyDisplayName(enemy)} heads back to the forest.`);
+            return;
+          }
+          enemy.target = route.target;
+          enemy.path = route.pathIso;
+          enemy.pathIndex = route.pathIso.length > 1 ? 1 : 0;
+          enemy.routeScore = route.score;
+          enemy.routeCost = route.cost;
+          enemy.routeHealthFactor = route.healthFactor;
+        } else {
+          const nextTarget = this.getEnemyTarget();
+          if (!nextTarget) {return;}
+          enemy.target = nextTarget;
+        }
       }
-      const targetIso = enemy.retreating
-        ? this.getNearestForestExit(enemy.iso)
-        : enemy.target.iso;
+      let targetIso = enemy.retreating ? this.getNearestForestExit(enemy.iso) : enemy.target.iso;
+      if (!enemy.retreating && enemy.path?.length) {
+        const waypointArrivalRadius = 0.38;
+        let currentWaypoint = enemy.path[Math.min(enemy.pathIndex, enemy.path.length - 1)];
+        while (
+          enemy.pathIndex < enemy.path.length - 1
+          && Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, currentWaypoint.x, currentWaypoint.y) <= waypointArrivalRadius
+        ) {
+          enemy.pathIndex += 1;
+          currentWaypoint = enemy.path[Math.min(enemy.pathIndex, enemy.path.length - 1)];
+        }
+        targetIso = currentWaypoint;
+      }
       const dist = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, targetIso.x, targetIso.y);
       if (time > enemy.dazedUntil && dist > 0.35) {
         const vx = (targetIso.x - enemy.iso.x) / dist;
@@ -2085,7 +5108,8 @@ class FairyGuildScene extends Phaser.Scene {
         enemy.iso.y += vy * enemy.speed * dt * (enemy.retreating ? 1.8 : 1);
         enemy.sprite.setFlipX(vx < -0.02);
       }
-      if (!enemy.retreating && dist <= 0.45 && time > enemy.touchCooldown) {
+      const reachedAttackZone = !enemy.path?.length || enemy.pathIndex >= enemy.path.length - 1;
+      if (!enemy.retreating && reachedAttackZone && dist <= 0.45 && time > enemy.touchCooldown) {
         enemy.touchCooldown = time + 1250;
         this.bumpBuilding(enemy.target, enemy.buildingDamage);
         this.playTone('hit');
@@ -2106,10 +5130,12 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getNearestForestExit(iso) {
+    const maxX = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.width - 0.8 : 14.2;
+    const maxY = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.height - 0.8 : 14.2;
     const exits = [
       { x: iso.x, y: 0.8 },
-      { x: 14.2, y: iso.y },
-      { x: iso.x, y: 14.2 },
+      { x: maxX, y: iso.y },
+      { x: iso.x, y: maxY },
       { x: 0.8, y: iso.y },
     ];
     return exits.reduce((best, exit) => (
@@ -2132,21 +5158,43 @@ class FairyGuildScene extends Phaser.Scene {
     this.playTone('hit');
     if (enemy.hp <= 0) {
       enemy.defeated = true;
-      this.levelEnemiesRemaining = Math.max(0, this.levelEnemiesRemaining - 1);
+      if (!enemy.countedDefeat) {
+        enemy.countedDefeat = true;
+        this.levelDefeatsThisRound += 1;
+      }
+      this.levelEnemiesRemaining = Math.max(0, this.levelRequiredDefeats - this.levelDefeatsThisRound);
       enemy.retreating = true;
-      enemy.sprite.setFrame(`monster-${enemy.archetype.row}-${Phaser.Math.Between(4, 7)}`);
+      enemy.sprite.setFrame(this.getEnemyFrameKey(enemy, enemy.defeatFrame ?? 7));
       enemy.sprite.setTint(0xffffff);
       enemy.speed += 0.55;
       this.gainXp(enemy.rewardXp);
       this.dropReward(enemy.iso.x, enemy.iso.y, enemy);
+      this.maybeSpawnChestDrop(enemy);
       this.playTone('daze');
-      this.addGuildNote(Phaser.Math.RND.pick([
-        'A forest critter scampered home dazed.',
-        'Sparkles solved that little mix-up.',
-        'The village cheers your gentle defense!',
-      ]));
+      if (enemy.isBoss) {
+        this.addGuildNote(this.getCurrentWorldTheme().bossDefeat);
+      } else {
+        this.addGuildNote(Phaser.Math.RND.pick([
+          'A forest critter scampered home dazed.',
+          'Sparkles solved that little mix-up.',
+          'The village cheers your gentle defense!',
+        ]));
+      }
       this.checkLevelClear();
     }
+  }
+
+  maybeSpawnChestDrop(enemy) {
+    const baseChance = enemy.isBoss ? 0.78 : enemy.variant?.key === 'elder' ? 0.34 : enemy.variant?.key === 'bright' ? 0.22 : 0.12;
+    if (Phaser.Math.FloatBetween(0, 1) >= baseChance) {
+      return;
+    }
+    const chestIso = {
+      x: enemy.iso.x + Phaser.Math.FloatBetween(-0.22, 0.22),
+      y: enemy.iso.y + Phaser.Math.FloatBetween(-0.22, 0.22),
+    };
+    this.spawnChest(chestIso.x, chestIso.y, 'bonus-upgrade', { source: 'enemyDrop', lifetimeMs: 5000 });
+    this.addGuildNote(enemy.isBoss ? 'A guardian chest lands beside the battle!' : 'A chest tumbles free from the skirmish!');
   }
 
   removeEnemy(enemy, animate = true) {
@@ -2269,12 +5317,43 @@ class FairyGuildScene extends Phaser.Scene {
     this.projectiles.splice(0).forEach((projectile) => projectile.sprite.destroy());
   }
 
+  createBuildingHealthBar(x, y, width = 58, height = 10, depth = 0) {
+    const container = this.add.container(x, y).setDepth(depth);
+    const shadow = this.add.rectangle(0, 1, width + 4, height + 4, 0x102238, 0.36)
+      .setOrigin(0.5);
+    const backing = this.add.rectangle(0, 0, width, height, 0x3d2f26, 0.58)
+      .setOrigin(0.5)
+      .setStrokeStyle(1, 0xfff2c4, 0.75);
+    const fill = this.add.rectangle(-width / 2 + 2, 0, width - 4, height - 4, 0x59c96b, 0.96)
+      .setOrigin(0, 0.5);
+    const shine = this.add.rectangle(-width / 2 + 3, -2, width - 6, 2, 0xffffff, 0.26)
+      .setOrigin(0, 0.5);
+    container.add([shadow, backing, fill, shine]);
+    return { container, fill, shine, width: width - 4, shineWidth: width - 6 };
+  }
+
+  getBuildingHealthColor(ratio) {
+    if (ratio > 0.6) {return 0x59c96b;}
+    if (ratio > 0.3) {return 0xf2c94c;}
+    return 0xe65a45;
+  }
+
+  updateBuildingHealthBar(building) {
+    if (!building.healthBar) {return;}
+    const ratio = Phaser.Math.Clamp(building.hp / building.max, 0, 1);
+    const color = this.getBuildingHealthColor(ratio);
+    building.healthBar.container.setVisible(true);
+    building.healthBar.fill.width = Math.max(1, building.healthBar.width * ratio);
+    building.healthBar.fill.setFillStyle(color, 0.96);
+    building.healthBar.shine.width = Math.max(0, building.healthBar.shineWidth * ratio);
+  }
+
   bumpBuilding(building, amount) {
     if (this.state.phase !== 'playing' || building.hp <= 0) {return;}
     building.hp = Math.max(0, building.hp - amount);
     building.underAttackUntil = this.time.now + 650;
     building.sprite.setTint(0xfff0a0);
-    building.repairIcon.setVisible(true);
+    this.updateBuildingHealthBar(building);
     this.tweens.add({
       targets: building.sprite,
       x: building.sprite.x + 5,
@@ -2303,23 +5382,24 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updateBuildingRepairState(building) {
+    this.updateBuildingHealthBar(building);
     if (building.hp <= 0) {
-      building.repairIcon.setVisible(true);
       building.sprite.setTint(0xffc98c);
       return;
     }
     if (building.hp < building.max) {
-      building.repairIcon.setVisible(true);
       if (this.time.now > building.underAttackUntil) {building.sprite.clearTint();}
       return;
     }
-    building.repairIcon.setVisible(false);
     building.sprite.clearTint();
   }
 
   updateVillageSafety() {
-    const total = this.buildings.reduce((sum, building) => sum + building.hp / building.max, 0) / this.buildings.length;
-    const target = Math.round(total * 100);
+    const totalImportance = this.buildings.reduce((sum, building) => sum + (building.importance ?? 1), 0);
+    const weightedHealth = this.buildings.reduce((sum, building) => (
+      sum + (building.hp / building.max) * (building.importance ?? 1)
+    ), 0);
+    const target = totalImportance > 0 ? Math.round((weightedHealth / totalImportance) * 100) : 100;
     this.state.villageSafety = Phaser.Math.Clamp(Math.round((this.state.villageSafety * 3 + target) / 4), 0, 100);
     if (this.state.villageSafety < 30 && this.state.health > 0) {
       this.addGuildNote('Village safety is low. Protect the buildings!');
@@ -2456,6 +5536,31 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.player) {return;}
     this.player.sprite.setDepth(this.player.sprite.y + 80);
     this.player.shadow.setDepth(this.player.sprite.y + 10);
+    this.buildings.forEach((building) => {
+      const footprintBounds = this.getFootprintScreenBounds(
+        building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint),
+      );
+      const spriteBounds = building.sprite.getBounds();
+      const playerX = this.player.sprite.x;
+      const playerY = this.player.sprite.y - Math.min(
+        BUILDING_OCCLUSION_PLAYER_Y_OFFSET_MAX,
+        this.player.sprite.displayHeight * BUILDING_OCCLUSION_PLAYER_Y_OFFSET_RATIO,
+      );
+      const hiddenBehind = playerY < building.sprite.y - BUILDING_OCCLUSION_VERTICAL_CLEARANCE
+        && playerY >= spriteBounds.top + building.sprite.displayHeight * BUILDING_OCCLUSION_SPRITE_TOP_PADDING_RATIO
+        && playerX >= footprintBounds.left - BUILDING_OCCLUSION_HORIZONTAL_PADDING
+        && playerX <= footprintBounds.right + BUILDING_OCCLUSION_HORIZONTAL_PADDING;
+      building.sprite.setAlpha(
+        hiddenBehind
+          ? Math.min(building.spriteAlpha ?? GENERATED_BUILDING_SPRITE_ALPHA, OCCLUDED_BUILDING_SPRITE_ALPHA)
+          : (building.spriteAlpha ?? GENERATED_BUILDING_SPRITE_ALPHA),
+      );
+      building.base?.setAlpha(
+        hiddenBehind
+          ? Math.min(building.baseAlpha ?? STATIC_BUILDING_BASE_ALPHA, OCCLUDED_STATIC_BUILDING_BASE_ALPHA)
+          : (building.baseAlpha ?? STATIC_BUILDING_BASE_ALPHA),
+      );
+    });
     this.enemies.forEach((enemy) => {
       enemy.shadow.setDepth(enemy.sprite.y + 5);
       enemy.sprite.setDepth(enemy.sprite.y + 70);
@@ -2475,38 +5580,372 @@ class FairyGuildScene extends Phaser.Scene {
     this.createGameOverOverlay();
   }
 
-  createSplashOverlay() {
-    this.splashOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7900).setVisible(false);
-    const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.36);
-    const panel = this.add.image(0, 0, 'gameOverUI')
-      .setDisplaySize(760, 428)
-      .setAlpha(0.99);
-    const title = this.add.text(0, -94, 'The Village Must Stand', {
-      ...this.uiTextStyle(43, '#714617'),
+  isCompactOverlayLayout() {
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const aspect = viewportWidth / Math.max(1, viewportHeight);
+    return this.touchControlsEnabled || viewportWidth < 980 || viewportHeight < 680 || aspect > 2.05 || aspect < 1.45;
+  }
+
+  getOverlayContentOffset(panelHeight) {
+    const minCenterY = 78 + panelHeight / 2;
+    const maxCenterY = HEIGHT - 28 - panelHeight / 2;
+    const targetCenterY = Phaser.Math.Clamp(HEIGHT / 2 + 8, minCenterY, maxCenterY);
+    return targetCenterY - HEIGHT / 2;
+  }
+
+  getSplashOverlayLayout() {
+    const compact = this.isCompactOverlayLayout();
+    const panelHeight = compact ? 430 : 462;
+    return {
+      compact,
+      panelWidth: compact ? 730 : 780,
+      panelHeight,
+      offsetY: this.getOverlayContentOffset(panelHeight),
+      decorScale: compact ? 0.48 : 0.54,
+      titleY: compact ? -152 : -166,
+      titleWidth: compact ? 470 : 520,
+      titleTextWidth: compact ? 392 : 440,
+      titleHeight: compact ? 54 : 58,
+      titleSize: compact ? 26 : 28,
+      titleMinSize: compact ? 20 : 22,
+      creditY: compact ? -108 : -118,
+      promptY: compact ? -70 : -80,
+      choiceY: compact ? -38 : -48,
+      cardY: compact ? 76 : 82,
+      cardX: compact ? 204 : 220,
+      cardWidth: compact ? 170 : 184,
+      cardHeight: compact ? 154 : 166,
+      heroY: compact ? 4 : 8,
+      heroSize: compact ? 66 : 72,
+      badgeY: compact ? -58 : -62,
+      captionY: compact ? 54 : 60,
+      startY: compact ? 184 : 200,
+      startWidth: compact ? 230 : 242,
+      startHeight: compact ? 50 : 52,
+    };
+  }
+
+  getLevelUpOverlayLayout() {
+    const compact = this.isCompactOverlayLayout();
+    const panelHeight = compact ? 390 : 430;
+    return {
+      compact,
+      panelWidth: compact ? 720 : 780,
+      panelHeight,
+      offsetY: this.getOverlayContentOffset(panelHeight),
+      decorScale: compact ? 0.48 : 0.54,
+      titleY: compact ? -140 : -154,
+      titleWidth: compact ? 360 : 390,
+      titleTextWidth: compact ? 292 : 318,
+      titleHeight: compact ? 66 : 72,
+      titleSize: compact ? 30 : 32,
+      titleMinSize: compact ? 21 : 23,
+      rewardY: compact ? -94 : -104,
+      helperY: compact ? -70 : -76,
+      cardY: compact ? 44 : 48,
+      cardXScale: compact ? 0.88 : 0.94,
+      cardWidth: compact ? 176 : 188,
+      cardHeight: compact ? 176 : 188,
+      iconY: compact ? -38 : -42,
+      pipsY: compact ? 20 : 24,
+      labelY: compact ? 48 : 52,
+      detailY: compact ? 66 : 72,
+    };
+  }
+
+  getGameOverOverlayLayout() {
+    const compact = this.isCompactOverlayLayout();
+    const panelHeight = compact ? 340 : 360;
+    return {
+      compact,
+      panelWidth: compact ? 600 : 640,
+      panelHeight,
+      offsetY: this.getOverlayContentOffset(panelHeight),
+      decorScale: compact ? 0.46 : 0.5,
+      titleY: compact ? -116 : -126,
+      titleWidth: compact ? 300 : 320,
+      titleHeight: compact ? 54 : 58,
+      titleSize: compact ? 29 : 31,
+      reasonY: compact ? -50 : -56,
+      statsY: compact ? 28 : 34,
+      buttonY: compact ? 116 : 126,
+    };
+  }
+
+  createUiPanelFrame(width, height, options: { decorScale?: number; fillAlpha?: number } = {}) {
+    const decorScale = options.decorScale ?? 0.72;
+    const container = this.add.container(0, 0);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x132130, 0.34);
+    shadow.fillRoundedRect(-width / 2 + 8, -height / 2 + 12, width - 16, height - 14, 14);
+    const fill = this.add.tileSprite(0, 0, width - 72, height - 64, 'gameUiAtlas', 'panel_fill')
+      .setAlpha(options.fillAlpha ?? 0.98);
+    const rim = this.add.graphics();
+    rim.lineStyle(4, 0xd79a38, 0.82);
+    rim.strokeRoundedRect(-width / 2 + 32, -height / 2 + 28, width - 64, height - 56, 12);
+    rim.lineStyle(2, 0xffedb6, 0.7);
+    rim.strokeRoundedRect(-width / 2 + 44, -height / 2 + 40, width - 88, height - 80, 10);
+
+    const cornerInset = 76 * decorScale;
+    const verticalInset = 26 * decorScale;
+    const topY = -height / 2 + 34 * decorScale;
+    const bottomY = height / 2 - 34 * decorScale;
+    const leftX = -width / 2 + 38 * decorScale;
+    const rightX = width / 2 - 38 * decorScale;
+    const topSize = this.getGameUiFrameSize('panel_edge_top');
+    const bottomSize = this.getGameUiFrameSize('panel_edge_bottom');
+    const leftSize = this.getGameUiFrameSize('panel_edge_left');
+    const rightSize = this.getGameUiFrameSize('panel_edge_right');
+    const horizontalEdgeMargin = 168 * decorScale;
+    const verticalEdgeMargin = 166 * decorScale;
+    const topEdge = this.createTiledGameUiFrame(
+      0,
+      topY,
+      Math.max(topSize.width * decorScale, width - horizontalEdgeMargin * 2),
+      topSize.height * decorScale,
+      'panel_edge_top',
+      decorScale,
+    );
+    const bottomEdge = this.createTiledGameUiFrame(
+      0,
+      bottomY,
+      Math.max(bottomSize.width * decorScale, width - horizontalEdgeMargin * 2),
+      bottomSize.height * decorScale,
+      'panel_edge_bottom',
+      decorScale,
+    );
+    const leftEdge = this.createTiledGameUiFrame(
+      leftX,
+      0,
+      leftSize.width * decorScale,
+      Math.max(leftSize.height * decorScale, height - verticalEdgeMargin * 2),
+      'panel_edge_left',
+      decorScale,
+    );
+    const rightEdge = this.createTiledGameUiFrame(
+      rightX,
+      0,
+      rightSize.width * decorScale,
+      Math.max(rightSize.height * decorScale, height - verticalEdgeMargin * 2),
+      'panel_edge_right',
+      decorScale,
+    );
+    const topLeft = this.add.image(-width / 2 + cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tl').setScale(decorScale);
+    const topRight = this.add.image(width / 2 - cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tr').setScale(decorScale);
+    const bottomLeft = this.add.image(-width / 2 + cornerInset + verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_bl').setScale(decorScale);
+    const bottomRight = this.add.image(width / 2 - cornerInset - verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_br').setScale(decorScale);
+    container.add([shadow, fill, rim, topEdge, bottomEdge, leftEdge, rightEdge, topLeft, topRight, bottomLeft, bottomRight]);
+    return container;
+  }
+
+  createTiledGameUiFrame(x, y, displayWidth, displayHeight, frameName, scale = 1) {
+    return this.add.tileSprite(
+      x,
+      y,
+      Math.max(1, displayWidth / scale),
+      Math.max(1, displayHeight / scale),
+      'gameUiAtlas',
+      frameName,
+    ).setScale(scale);
+  }
+
+  getGameUiFrameSize(frameName) {
+    const frame = this.textures.getFrame('gameUiAtlas', frameName) as any;
+    return {
+      width: frame?.width ?? frame?.cutWidth ?? 1,
+      height: frame?.height ?? frame?.cutHeight ?? 1,
+    };
+  }
+
+  createHorizontalSlicedFrame(
+    x,
+    y,
+    width,
+    height,
+    frameNames,
+    options: { leftWidth?: number; rightWidth?: number; alpha?: number } = {},
+  ) {
+    const leftSize = this.getGameUiFrameSize(frameNames.left);
+    const middleSize = this.getGameUiFrameSize(frameNames.middle);
+    const rightSize = this.getGameUiFrameSize(frameNames.right);
+    const baseHeight = Math.max(1, leftSize.height, middleSize.height, rightSize.height);
+    const scale = height / baseHeight;
+    const leftWidth = options.leftWidth ?? leftSize.width * scale;
+    const rightWidth = options.rightWidth ?? rightSize.width * scale;
+    const middleWidth = Math.max(1, width - leftWidth - rightWidth);
+    const container = this.add.container(x, y);
+    const left = this.add.image(-width / 2 + leftWidth / 2, 0, 'gameUiAtlas', frameNames.left)
+      .setScale(scale);
+    const middle = this.add.tileSprite(0, 0, middleWidth / scale, middleSize.height, 'gameUiAtlas', frameNames.middle)
+      .setScale(scale);
+    const right = this.add.image(width / 2 - rightWidth / 2, 0, 'gameUiAtlas', frameNames.right)
+      .setScale(scale);
+    container.add([left, middle, right]);
+    if (options.alpha !== undefined) {
+      container.setAlpha(options.alpha);
+    }
+    return { container, pieces: [left, middle, right], leftWidth, rightWidth, middleWidth };
+  }
+
+  createUiTitleBanner(x, y, width = 360, height = 70) {
+    return this.createHorizontalSlicedFrame(x, y, width, height, {
+      left: 'title_left',
+      middle: 'title_mid',
+      right: 'title_right',
+    }).container;
+  }
+
+  fitUiTextToWidth(text, maxWidth, maxSize, minSize = 16) {
+    text.setScale(1);
+    text.setFontSize(maxSize);
+    let size = maxSize;
+    while (text.width > maxWidth && size > minSize) {
+      size -= 1;
+      text.setFontSize(size);
+    }
+    return text;
+  }
+
+  createFittedTitleText(x, y, label, maxWidth, maxSize, minSize) {
+    const text = this.add.text(x, y, label, {
+      ...this.uiTextStyle(maxSize, '#714617'),
       align: 'center',
-      strokeThickness: 5,
-      wordWrap: { width: 610 },
-    }).setOrigin(0.5);
-    const credit = this.add.text(0, -30, 'A minigame by Javier Algaba', {
-      ...this.uiTextStyle(20, '#31503b'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    const prompt = this.add.text(0, 30, 'Defend the fairy-tale village from forest mischief.', {
-      ...this.uiTextStyle(17, COLORS.uiInk),
-      align: 'center',
-      wordWrap: { width: 520 },
-    }).setOrigin(0.5);
-    const startButton = this.add.rectangle(0, 144, 250, 62, 0xfff1b8, 0.08)
-      .setInteractive({ useHandCursor: true });
-    const startText = this.add.text(0, 136, 'START', {
-      ...this.uiTextStyle(28, '#684315'),
       strokeThickness: 4,
     }).setOrigin(0.5);
-    startButton.on('pointerover', () => startButton.setFillStyle(0xfff1b8, 0.2));
-    startButton.on('pointerout', () => startButton.setFillStyle(0xfff1b8, 0.08));
-    startButton.on('pointerup', () => this.startGameFromSplash());
-    this.splashOverlay.add([shade, panel, title, credit, prompt, startButton, startText]);
+    return this.fitUiTextToWidth(text, maxWidth, maxSize, minSize);
+  }
+
+  createHudChip(x, y, width, height) {
+    return this.createHorizontalSlicedFrame(x, y, width, height, {
+      left: 'hud_chip_left',
+      middle: 'hud_chip_mid',
+      right: 'hud_chip_right',
+    }, { alpha: 0.92 }).container;
+  }
+
+  createUiCardFrame(x, y, width, height) {
+    const slice = Math.max(12, Math.min(42, Math.floor(width / 3), Math.floor(height / 3)));
+    return this.add.nineslice(x, y, 'gameUiAtlas', 'content_slot', width, height, slice, slice, slice, slice);
+  }
+
+  createUiButton(x, y, width, height, label, onPress) {
+    const container = this.add.container(x, y);
+    const frame = this.createHorizontalSlicedFrame(0, 0, width, height, {
+      left: 'button_left',
+      middle: 'button_mid',
+      right: 'button_right',
+    });
+    const hit = this.add.rectangle(0, 0, width, height, 0xfff1b8, 0.001)
+      .setInteractive({ useHandCursor: true });
+    const text = this.add.text(0, -2, label, {
+      ...this.uiTextStyle(Math.max(16, Math.round(height * 0.42)), '#684315'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    const pieces = frame.pieces;
+    hit.on('pointerover', () => {
+      pieces.forEach((piece) => piece.setTint(0xfff4bf));
+      hit.setFillStyle(0xfff1b8, 0.12);
+    });
+    hit.on('pointerout', () => {
+      pieces.forEach((piece) => piece.clearTint());
+      hit.setFillStyle(0xfff1b8, 0.001);
+    });
+    hit.on('pointerup', onPress);
+    container.add([frame.container, hit, text]);
+    return { container, hit, text, pieces };
+  }
+
+  createManaMeter(x, y, width, height) {
+    const frame = this.createHorizontalSlicedFrame(x, y, width, height, {
+      left: 'mana_left',
+      middle: 'mana_mid',
+      right: 'mana_right',
+    });
+    const insetX = Math.max(10, Math.round(height * 0.54));
+    const insetY = Math.max(6, Math.round(height * 0.32));
+    const fillWidth = Math.max(1, width - insetX * 2);
+    const fillHeight = Math.max(3, height - insetY * 2);
+    const fill = this.add.rectangle(x - width / 2 + insetX, y - fillHeight / 2, fillWidth, fillHeight, 0x5bd5ff, 1)
+      .setOrigin(0, 0);
+    const shine = this.add.rectangle(x - width / 2 + insetX + 2, y - fillHeight / 2 + 2, fillWidth - 4, 2, 0xffffff, 0.44)
+      .setOrigin(0, 0);
+    return { fill, shine, frame: frame.container, width: fillWidth, parts: [fill, shine, frame.container] };
+  }
+
+  createSplashOverlay() {
+    const layout = this.getSplashOverlayLayout();
+    this.splashOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7900).setVisible(false);
+    const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.36);
+    const content = this.add.container(0, layout.offsetY);
+    const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
+    const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
+    const title = this.createFittedTitleText(
+      0,
+      layout.titleY - 3,
+      'The Village Must Stand',
+      layout.titleTextWidth,
+      layout.titleSize,
+      layout.titleMinSize,
+    );
+    const credit = this.add.text(0, layout.creditY, 'A minigame by Javier Algaba', {
+      ...this.uiTextStyle(layout.compact ? 16 : 17, '#31503b'),
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    const prompt = this.add.text(0, layout.promptY, 'Defend the fairy-tale village from forest mischief.', {
+      ...this.uiTextStyle(layout.compact ? 15 : 16, COLORS.uiInk),
+      align: 'center',
+      wordWrap: { width: layout.panelWidth - 180 },
+    }).setOrigin(0.5);
+    this.splashHeroChoiceText = this.add.text(0, layout.choiceY, 'Choose your hero before you begin.', {
+      ...this.uiTextStyle(layout.compact ? 14 : 15, '#31503b'),
+      align: 'center',
+    }).setOrigin(0.5);
+    const makeHeroCard = (choice: HeroChoice, x: number, label: string) => {
+      const previewProfile = this.getHeroProfile(choice);
+      this.ensureHeroAnimations(previewProfile);
+      const card = this.add.container(x, layout.cardY);
+      const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
+      const selection = this.add.rectangle(0, 0, layout.cardWidth - 4, layout.cardHeight - 4, 0xfff1b8, 0.001)
+        .setStrokeStyle(3, 0xffd26d, 0)
+        .setOrigin(0.5);
+      const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
+        .setInteractive({ useHandCursor: true });
+      const preview = this.add.sprite(0, layout.heroY, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
+        .setDisplaySize(layout.heroSize, layout.heroSize)
+        .setOrigin(0.5, 0.76)
+        .play(`${previewProfile.animPrefix}-idle`);
+      const caption = this.add.text(0, layout.captionY, label, this.uiTextStyle(layout.compact ? 15 : 16, '#7d6039')).setOrigin(0.5);
+      const badge = this.add.text(0, layout.badgeY, 'Selected', this.uiTextStyle(layout.compact ? 11 : 12, '#5c7d3e'))
+        .setOrigin(0.5)
+        .setVisible(false);
+      hit.on('pointerup', () => this.selectHeroChoice(choice));
+      card.add([frame, selection, hit, preview, caption, badge]);
+      return { card, frame, selection, hit, preview, label: caption, badge };
+    };
+    const maleCard = makeHeroCard('male', -layout.cardX, 'Village Hero');
+    const princessCard = makeHeroCard('princess', layout.cardX, 'Princess Hero');
+    const startButton = this.createUiButton(0, layout.startY, layout.startWidth, layout.startHeight, 'START', () => this.startGameFromSplash());
+    this.splashStartButton = startButton.hit;
+    this.splashStartText = startButton.text;
+    this.splashHeroCards = {
+      male: maleCard,
+      princess: princessCard,
+    };
+    content.add([
+      panel,
+      titlePlaque,
+      title,
+      credit,
+      prompt,
+      this.splashHeroChoiceText,
+      maleCard.card,
+      princessCard.card,
+      startButton.container,
+    ]);
+    this.splashOverlay.add([shade, content]);
     this.uiLayer.add(this.splashOverlay);
+    this.updateSplashHeroChoiceUi();
   }
 
   createCountdownOverlay() {
@@ -2532,7 +5971,7 @@ class FairyGuildScene extends Phaser.Scene {
         key: 'melee',
         label: 'Melee Damage',
         detail: '+1 sword power',
-        icon: { texture: 'worldSheet', frame: 'level-sword-icon' },
+        icon: { texture: 'uiAtlas', frame: 'sword_icon_01' },
         stat: 'swordPower',
         color: 0xf4bc3f,
         stageColor: 0xb94136,
@@ -2546,13 +5985,25 @@ class FairyGuildScene extends Phaser.Scene {
         key: 'range',
         label: 'Range Damage',
         detail: '+1 bow power',
-        icon: { texture: 'worldSheet', frame: 'level-bow-icon' },
+        icon: { texture: 'uiAtlas', frame: 'bow_icon_01' },
         stat: 'bowPower',
         color: 0x72c96d,
         stageColor: 0x397f4a,
         stageAccent: 0xbde679,
         apply: () => {
+          if (this.isBowEvolutionReady()) {
+            this.playerStats.bowEvolved = true;
+            this.playerStats.bowPower += BOW_EVOLUTION_POWER_BONUS;
+            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 90);
+            this.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
+            return;
+          }
           this.playerStats.bowPower += 1;
+          if (this.playerStats.bowEvolved) {
+            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 30);
+            this.addGuildNote('Evolved bow training complete! Master shots improved.');
+            return;
+          }
           this.addGuildNote('Range training complete! Bow damage increased.');
         },
       },
@@ -2560,7 +6011,7 @@ class FairyGuildScene extends Phaser.Scene {
         key: 'magic',
         label: 'Magic Damage',
         detail: '+1 spell power',
-        icon: { texture: 'worldSheet', frame: 'level-spell-icon' },
+        icon: { texture: 'uiAtlas', frame: 'spell_icon_01' },
         stat: 'spellPower',
         color: 0x6cc5ff,
         stageColor: 0x3267c9,
@@ -2572,40 +6023,71 @@ class FairyGuildScene extends Phaser.Scene {
       },
     ];
 
+    const layout = this.getLevelUpOverlayLayout();
     this.levelUpOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7300).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.42);
-    const art = this.add.image(0, 0, 'levelUpUI').setDisplaySize(780, 438).setAlpha(0.98);
-    this.levelUpTitleText = this.add.text(0, -148, 'Level Up!', {
-      ...this.uiTextStyle(42, '#714617'),
-      strokeThickness: 4,
-    }).setOrigin(0.5);
-    this.levelUpRewardText = this.add.text(0, -102, 'Heart +1', this.uiTextStyle(22, '#bd415c')).setOrigin(0.5);
-    const helper = this.add.text(0, -70, 'Choose your guild training', this.uiTextStyle(18, '#31503b')).setOrigin(0.5);
-    this.levelUpOverlay.add([shade, art, this.levelUpTitleText, this.levelUpRewardText, helper]);
+    const content = this.add.container(0, layout.offsetY);
+    const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
+    const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
+    this.levelUpTitleFit = {
+      maxWidth: layout.titleTextWidth,
+      maxSize: layout.titleSize,
+      minSize: layout.titleMinSize,
+    };
+    this.levelUpTitleText = this.createFittedTitleText(
+      0,
+      layout.titleY,
+      'Level Up!',
+      this.levelUpTitleFit.maxWidth,
+      this.levelUpTitleFit.maxSize,
+      this.levelUpTitleFit.minSize,
+    );
+    this.levelUpRewardText = this.add.text(0, layout.rewardY, 'Heart +1', this.uiTextStyle(layout.compact ? 19 : 21, '#bd415c')).setOrigin(0.5);
+    this.levelUpHelperText = this.add.text(0, layout.helperY, 'Choose your guild training', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
+    content.add([panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
     this.levelUpProgressBars = [];
+    this.levelUpChoiceCards = [];
     this.levelUpChoices.forEach((choice, index) => {
-      const card = this.add.container(LEVEL_UP_CARD_XS[index], 76);
-      const hit = this.add.rectangle(0, 0, 196, 220, 0xfff1b8, 0.001)
+      const card = this.add.container(LEVEL_UP_CARD_XS[index] * layout.cardXScale, layout.cardY);
+      const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
+      const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
         .setInteractive({ useHandCursor: true });
       const stage = this.createLevelUpIconStage(choice);
-      const icon = this.add.image(0, -24, choice.icon.texture, choice.icon.frame).setDisplaySize(76, 76);
-      const number = this.add.text(-76, -70, `${index + 1}`, this.uiTextStyle(18, '#8a5a20')).setOrigin(0.5);
-      const label = this.add.text(0, 82, choice.label, this.uiTextStyle(19, COLORS.uiInk)).setOrigin(0.5);
-      const detail = this.add.text(0, 110, choice.detail, this.uiTextStyle(14, '#5e7b4a')).setOrigin(0.5);
-      const pips = this.createLevelUpProgressPips(choice);
+      stage.setScale(layout.compact ? 0.86 : 0.92);
+      const evolutionGlow = this.add.circle(0, layout.iconY, layout.compact ? 42 : 46, 0xffd86e, 0.18)
+        .setStrokeStyle(3, 0xfff1a7, 0.75)
+        .setVisible(false);
+      const icon = this.add.image(0, layout.iconY, choice.icon.texture, choice.icon.frame)
+        .setDisplaySize(layout.compact ? 62 : 68, layout.compact ? 62 : 68);
+      const evolutionBadge = this.add.container(layout.compact ? 38 : 42, layout.iconY - (layout.compact ? 36 : 40))
+        .setVisible(false);
+      const badgeBacking = this.add.circle(0, 0, layout.compact ? 13 : 14, 0xfff0a4, 0.96)
+        .setStrokeStyle(2, 0xb56b1f, 0.82);
+      const badgeText = this.add.text(0, -1, 'UP', this.uiTextStyle(layout.compact ? 8 : 9, '#7a4513'))
+        .setOrigin(0.5);
+      evolutionBadge.add([badgeBacking, badgeText]);
+      const label = this.add.text(0, layout.labelY, choice.label, this.uiTextStyle(layout.compact ? 15 : 17, COLORS.uiInk)).setOrigin(0.5);
+      const detailText = choice.detail.replace(' power', '');
+      const detail = this.add.text(0, layout.detailY, detailText, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
+      const pips = this.createLevelUpProgressPips(choice, layout.pipsY, layout.compact);
       hit.on('pointerover', () => {
         hit.setFillStyle(0xfff1b8, 0.16);
+        frame.setTint(0xfff6cc);
         this.updateLevelUpProgressBars(index);
       });
       hit.on('pointerout', () => {
         hit.setFillStyle(0xfff1b8, 0.001);
+        frame.clearTint();
         this.updateLevelUpProgressBars();
       });
       hit.on('pointerup', () => this.chooseLevelUpgrade(index));
-      card.add([hit, stage, icon, number, ...pips, label, detail]);
-      this.levelUpOverlay.add(card);
+      card.add([frame, hit, stage, evolutionGlow, icon, evolutionBadge, ...pips, label, detail]);
+      content.add(card);
+      this.levelUpChoiceCards.push({ choice, label, detail, icon, evolutionGlow, evolutionBadge });
     });
+    this.updateLevelUpChoicePresentation();
+    this.levelUpOverlay.add([shade, content]);
     this.uiLayer.add(this.levelUpOverlay);
   }
 
@@ -2622,36 +6104,76 @@ class FairyGuildScene extends Phaser.Scene {
     return stage;
   }
 
-  createLevelUpProgressPips(choice) {
+  createLevelUpProgressPips(choice, y = 48, compact = false) {
     const pips = [];
-    const pipW = 20;
-    const gap = 5;
+    const pipW = compact ? 17 : 19;
+    const gap = compact ? 4 : 5;
     const startX = -((LEVEL_UP_MAX_PIPS - 1) * (pipW + gap)) / 2;
     for (let i = 0; i < LEVEL_UP_MAX_PIPS; i += 1) {
-      const pip = this.add.rectangle(startX + i * (pipW + gap), 48, pipW, 9, 0xfff3c8, 0.46)
+      const pip = this.add.rectangle(startX + i * (pipW + gap), y, pipW, compact ? 8 : 9, 0xfff3c8, 0.46)
         .setStrokeStyle(1, 0x8c6023, 0.5);
       pips.push(pip);
     }
-    this.levelUpProgressBars.push({ pips, stat: choice.stat, color: choice.color });
+    this.levelUpProgressBars.push({ pips, stat: choice.stat, color: choice.color, key: choice.key });
     return pips;
   }
 
   updateLevelUpProgressBars(previewIndex = null) {
     this.levelUpProgressBars.forEach((bar, index) => {
-      const current = Phaser.Math.Clamp(this.playerStats[bar.stat] - PLAYER_BASE[bar.stat], 0, LEVEL_UP_MAX_PIPS);
+      const current = this.getLevelUpStatProgress(bar.stat);
       const preview = previewIndex === index ? Phaser.Math.Clamp(current + 1, 0, LEVEL_UP_MAX_PIPS) : current;
+      const evolvedRange = bar.key === 'range' && (this.playerStats.bowEvolved || this.isBowEvolutionReady());
+      const fillColor = evolvedRange ? 0xf2c94c : bar.color;
       bar.pips.forEach((pip, pipIndex) => {
         if (pipIndex < current) {
-          pip.setFillStyle(bar.color, 0.94);
+          pip.setFillStyle(fillColor, 0.94);
           pip.setStrokeStyle(1, 0xffffff, 0.72);
         } else if (pipIndex < preview) {
-          pip.setFillStyle(bar.color, 0.5);
+          pip.setFillStyle(fillColor, 0.5);
           pip.setStrokeStyle(1, 0xffffff, 0.64);
         } else {
           pip.setFillStyle(0xfff3c8, 0.46);
           pip.setStrokeStyle(1, 0x8c6023, 0.5);
         }
       });
+    });
+  }
+
+  getLevelUpStatProgress(stat) {
+    if (stat === 'swordPower' || stat === 'bowPower' || stat === 'spellPower') {
+      return getLevelUpProgressForStat(this.playerStats, stat);
+    }
+    return Phaser.Math.Clamp(this.playerStats[stat] - PLAYER_BASE[stat], 0, LEVEL_UP_MAX_PIPS);
+  }
+
+  isBowEvolutionReady() {
+    return isBowEvolutionReadyForStats(this.playerStats);
+  }
+
+  getRangeLevelUpPresentation() {
+    return getRangeLevelUpPresentationForStats(this.playerStats);
+  }
+
+  updateLevelUpChoicePresentation() {
+    this.levelUpChoiceCards?.forEach((card) => {
+      if (card.choice.key !== 'range') {
+        card.label.setText(card.choice.label);
+        card.detail.setText(card.choice.detail.replace(' power', ''));
+        card.icon.clearTint();
+        card.evolutionGlow?.setVisible(false);
+        card.evolutionBadge?.setVisible(false);
+        return;
+      }
+      const presentation = this.getRangeLevelUpPresentation();
+      card.label.setText(presentation.label);
+      card.detail.setText(presentation.detail);
+      card.evolutionGlow?.setVisible(presentation.evolved);
+      card.evolutionBadge?.setVisible(presentation.evolved);
+      if (presentation.evolved) {
+        card.icon.setTint(0xffdf75);
+      } else {
+        card.icon.clearTint();
+      }
     });
   }
 
@@ -2664,7 +6186,20 @@ class FairyGuildScene extends Phaser.Scene {
     this.countdownOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
     this.gameOverOverlay?.setVisible(false);
+    if (!this.forceFreshStart && this.shouldAutoStartFromParams()) {
+      this.pendingHeroChoice = this.resolveRequestedHeroChoice();
+      this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
+      this.splashOverlay?.setVisible(false).setAlpha(0);
+      this.startGameFromSplash();
+      return;
+    }
+    const explicitHeroChoice = new URLSearchParams(window.location.search).get('hero');
+    this.pendingHeroChoice = !this.forceFreshStart && explicitHeroChoice ? this.resolveRequestedHeroChoice() : null;
+    if (this.pendingHeroChoice) {
+      this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
+    }
     this.splashOverlay?.setVisible(true).setAlpha(0);
+    this.updateSplashHeroChoiceUi();
     this.tweens.add({
       targets: this.splashOverlay,
       alpha: 1,
@@ -2675,6 +6210,12 @@ class FairyGuildScene extends Phaser.Scene {
 
   startGameFromSplash() {
     if (this.state.phase !== 'splash') {return;}
+    if (!this.pendingHeroChoice) {
+      this.addGuildNote('Choose a hero first.');
+      this.playTone('hit');
+      return;
+    }
+    this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
     this.ensureAudio();
     this.playTone('level');
     this.splashOverlay?.setVisible(false);
@@ -2683,37 +6224,50 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createGameOverOverlay() {
+    const layout = this.getGameOverOverlayLayout();
     this.gameOverOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7800).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.48);
-    const panel = this.add.image(0, 0, 'gameOverUI')
-      .setDisplaySize(780, 439)
-      .setAlpha(0.99);
-    const title = this.add.text(0, -120, 'Guild Rest Time', {
-      ...this.uiTextStyle(40, '#714617'),
+    const content = this.add.container(0, layout.offsetY);
+    const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
+    const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
+    const title = this.add.text(0, layout.titleY - 3, 'Guild Rest Time', {
+      ...this.uiTextStyle(layout.titleSize, '#714617'),
       strokeThickness: 4,
     }).setOrigin(0.5);
-    this.gameOverReasonText = this.add.text(0, -52, '', {
-      ...this.uiTextStyle(21, COLORS.uiInk),
+    this.gameOverReasonText = this.add.text(0, layout.reasonY, '', {
+      ...this.uiTextStyle(layout.compact ? 18 : 20, COLORS.uiInk),
       align: 'center',
-      wordWrap: { width: 520 },
+      wordWrap: { width: layout.panelWidth - 140 },
     }).setOrigin(0.5);
-    this.gameOverStatsText = this.add.text(0, 38, '', this.uiTextStyle(19, '#31503b')).setOrigin(0.5);
-    const restartButton = this.add.rectangle(0, 158, 260, 58, 0xfff1b8, 0.04)
-      .setInteractive({ useHandCursor: true });
-    const restartText = this.add.text(0, 151, 'Restart (R)', {
-      ...this.uiTextStyle(22, '#684315'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    restartButton.on('pointerover', () => restartButton.setFillStyle(0xfff1b8, 0.18));
-    restartButton.on('pointerout', () => restartButton.setFillStyle(0xfff1b8, 0.04));
-    restartButton.on('pointerup', () => this.scene.restart());
-    this.gameOverOverlay.add([shade, panel, title, this.gameOverReasonText, this.gameOverStatsText, restartButton, restartText]);
+    this.gameOverStatsText = this.add.text(0, layout.statsY, '', this.uiTextStyle(layout.compact ? 16 : 18, '#31503b')).setOrigin(0.5);
+    const restartButton = this.createUiButton(0, layout.buttonY, 246, 52, 'Restart (R)', () => this.restartGameFromBeginning());
+    content.add([
+      panel,
+      titlePlaque,
+      title,
+      this.gameOverReasonText,
+      this.gameOverStatsText,
+      restartButton.container,
+    ]);
+    this.gameOverOverlay.add([shade, content]);
     this.uiLayer.add(this.gameOverOverlay);
   }
 
-  showLevelUpScreen() {
-    this.levelUpTitleText.setText('Level Up!');
-    this.levelUpRewardText.setText('Heart +1');
+  showLevelUpScreen(context: UpgradePauseContext = 'roundClear') {
+    this.upgradePauseContext = context;
+    const bossHeartReward = context === 'roundClear' && this.state.bossRound;
+    this.levelUpTitleText.setText(context === 'chestBonus' ? 'Cheerful Surprise!' : 'Level Up!');
+    this.fitUiTextToWidth(
+      this.levelUpTitleText,
+      this.levelUpTitleFit.maxWidth,
+      this.levelUpTitleFit.maxSize,
+      this.levelUpTitleFit.minSize,
+    );
+    this.levelUpRewardText
+      ?.setText(context === 'chestBonus' ? 'Choose a bonus strength point' : 'Boss reward: Heart +1')
+      .setVisible(context === 'chestBonus' || bossHeartReward);
+    this.levelUpHelperText?.setText(context === 'chestBonus' ? 'Pick a bonus combat lesson' : 'Choose your guild training');
+    this.updateLevelUpChoicePresentation();
     this.updateLevelUpProgressBars();
     this.levelUpOverlay.setVisible(true).setAlpha(0);
     this.tweens.add({
@@ -2730,14 +6284,36 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.state.phase !== 'levelUp') {return;}
     const choice = this.levelUpChoices[index];
     if (!choice) {return;}
-    this.playerStats.maxHealth += 1;
-    this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
+    const pauseContext = (this.upgradePauseContext ?? 'roundClear') as UpgradePauseContext;
+    const wasBossRound = this.state.bossRound;
+    if (pauseContext === 'roundClear' && wasBossRound) {
+      this.playerStats.maxHealth += 1;
+      this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
+      this.addGuildNote('Boss victory training earned a new heart!');
+    }
     choice.apply();
+    this.updateLevelUpChoicePresentation();
     this.updateLevelUpProgressBars();
     this.spawnShieldGlow();
     this.playTone('level');
+    if (pauseContext === 'chestBonus') {
+      this.resumeRoundAfterChestBonus();
+      return;
+    }
     this.state.level += 1;
+    const nextProgression = this.getNextWorldProgressionState();
+    this.state.worldIndex = nextProgression.worldIndex;
+    this.state.worldKey = nextProgression.worldKey;
+    this.state.worldRound = nextProgression.worldRound;
+    this.state.bossRound = nextProgression.bossRound;
+    this.state.worldCycle = nextProgression.worldCycle;
     this.levelUpOverlay.setVisible(false);
+    if (wasBossRound) {
+      const theme = WORLD_ENEMY_THEMES[nextProgression.worldKey as SeasonPreset];
+      const transitionNote = `${theme.label} rises over the village.`;
+      this.restartForWorldProgression(nextProgression, transitionNote);
+      return;
+    }
     this.startLevelCountdown();
   }
 
@@ -2756,70 +6332,33 @@ class FairyGuildScene extends Phaser.Scene {
   createHud() {
     this.hud = {};
     this.createTopBar();
-    this.createNotesPanel();
     this.createControlsHint();
     this.createInventoryPanel();
     this.createDebugOverlay();
   }
 
   createTopBar() {
-    const top = this.add.container(16, 10).setDepth(7600);
-    const bg = this.add.image(0, 0, 'statusPanelUI', 'panel')
-      .setOrigin(0, 0)
-      .setDisplaySize(892, 92);
-    const readability = this.add.graphics();
-    readability.fillStyle(0xfff7df, 0.96);
-    readability.fillRoundedRect(34, 18, 822, 58, 7);
-    top.add([bg, readability]);
-    this.hud.hearts = this.add.container(42, 34);
-    this.hud.manaBar = this.createMeter(174, 22, 148, 16, 0x6fc9ff, 0x1f6ea7);
-    this.hud.xpBar = this.createMeter(174, 51, 148, 14, 0xffd96c, 0xba7620);
-    this.hud.goldText = this.add.text(360, 19, '', this.uiTextStyle(20, '#56330f')).setOrigin(0, 0);
-    this.hud.levelText = this.add.text(360, 48, '', this.uiTextStyle(17, '#1e3348')).setOrigin(0, 0);
-    this.hud.weaponText = this.add.text(526, 19, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0, 0);
-    this.hud.spellText = this.add.text(526, 48, '', this.uiTextStyle(16, '#1e3348')).setOrigin(0, 0);
-    this.hud.safetyBar = this.createMeter(736, 22, 112, 17, 0x9ce889, 0x2f9b4c);
-    this.hud.waveText = this.add.text(738, 48, '', this.uiTextStyle(15, '#224b31')).setOrigin(0, 0);
+    const top = this.add.container(20, 13).setDepth(7600);
+    const goldChip = this.createHudChip(184, 28, 92, 34);
+    const levelChip = this.createHudChip(268, 28, 68, 34);
+    const roundChip = this.createHudChip(376, 28, 124, 34);
+    const coin = this.add.image(154, 28, 'gameUiAtlas', 'coin_badge_01')
+      .setDisplaySize(30, 32);
+    this.hud.hearts = this.add.container(16, 20);
+    this.hud.goldText = this.add.text(198, 28, '', this.uiTextStyle(16, '#56330f')).setOrigin(0.5);
+    this.hud.levelText = this.add.text(268, 28, '', this.uiTextStyle(15, '#1e3348')).setOrigin(0.5);
+    this.hud.waveText = this.add.text(376, 28, '', this.uiTextStyle(12, '#224b31')).setOrigin(0.5);
     top.add([
       this.hud.hearts,
-      ...this.hud.manaBar.parts,
-      ...this.hud.xpBar.parts,
+      goldChip,
+      levelChip,
+      roundChip,
+      coin,
       this.hud.goldText,
       this.hud.levelText,
-      this.hud.weaponText,
-      this.hud.spellText,
-      ...this.hud.safetyBar.parts,
       this.hud.waveText,
     ]);
     this.uiLayer.add(top);
-  }
-
-  createMeter(x, y, w, h, fillColor, strokeColor) {
-    const bg = this.add.rectangle(x, y, w, h, 0xf9fff8, 0.9).setOrigin(0, 0).setStrokeStyle(2, strokeColor, 0.8);
-    const fill = this.add.rectangle(x + 3, y + 3, w - 6, h - 6, fillColor, 1).setOrigin(0, 0);
-    const shine = this.add.rectangle(x + 5, y + 4, w - 10, 3, 0xffffff, 0.42).setOrigin(0, 0);
-    return { bg, fill, shine, width: w - 6, parts: [bg, fill, shine] };
-  }
-
-  createNotesPanel() {
-    const panel = this.add.container(WIDTH - 370, 12).setDepth(7600);
-    const bg = this.add.image(0, 0, 'guildNotesUI', 'panel')
-      .setOrigin(0, 0)
-      .setDisplaySize(354, 236);
-    const textBacking = this.add.graphics();
-    textBacking.fillStyle(0xfff8df, 0.84);
-    textBacking.fillRoundedRect(22, 60, 310, 146, 7);
-    const title = this.add.text(177, 29, 'Guild Notes', {
-      ...this.uiTextStyle(22, '#102f3e'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.hud.notesText = this.add.text(30, 68, '', {
-      ...this.uiTextStyle(15, '#162a3c'),
-      lineSpacing: 7,
-      wordWrap: { width: 292 },
-    });
-    panel.add([bg, textBacking, title, this.hud.notesText]);
-    this.uiLayer.add(panel);
   }
 
   createControlsHint() {
@@ -2831,7 +6370,7 @@ class FairyGuildScene extends Phaser.Scene {
     const text = this.add.text(
       14,
       10,
-      'WASD/Arrows move   Space sword   Click/F bow   Q/R spell   T repair kit   Space/click/E repair   I inventory',
+      'WASD/Arrows move   Space sword   Click/F bow   Q/R spell   T repair mode   Space/click/E repair nearby   I guild pack',
       this.uiTextStyle(13, '#ffffff'),
     );
     hint.add([bg, text]);
@@ -2876,6 +6415,9 @@ class FairyGuildScene extends Phaser.Scene {
 
   toggleInventory() {
     if (this.state.phase !== 'playing') {return;}
+    if (!this.state.inventoryOpen) {
+      this.setRepairMode(false, false);
+    }
     this.state.inventoryOpen = !this.state.inventoryOpen;
     this.inventoryPanel.setVisible(this.state.inventoryOpen);
     this.rebuildInventoryPanel();
@@ -2897,7 +6439,7 @@ class FairyGuildScene extends Phaser.Scene {
   createDebugOverlay() {
     this.debugOverlayVisible = this.isDebugOverlayRequested();
     const panel = this.add.container(18, 112).setDepth(8050).setVisible(this.debugOverlayVisible);
-    const bg = this.add.rectangle(0, 0, 372, 180, 0x102238, 0.78)
+    const bg = this.add.rectangle(0, 0, 404, 264, 0x102238, 0.78)
       .setOrigin(0, 0)
       .setStrokeStyle(2, 0xffdf7c, 0.72);
     const title = this.add.text(12, 10, 'Balance Debug (B)', {
@@ -2907,7 +6449,7 @@ class FairyGuildScene extends Phaser.Scene {
     const text = this.add.text(12, 34, '', {
       ...this.uiTextStyle(12, '#f7fff0'),
       lineSpacing: 3,
-      wordWrap: { width: 348 },
+      wordWrap: { width: 380 },
     });
     panel.add([bg, title, text]);
     this.uiLayer.add(panel);
@@ -2921,19 +6463,72 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateDebugOverlay();
   }
 
+  getGeneratedRouteDebugSummary() {
+    if (!this.generatedLevel) {
+      return '';
+    }
+    const source = this.generatedLevel.spawnPoints[0] ?? this.generatedLevel.playerSpawn;
+    if (!source) {
+      return 'Routes unavailable';
+    }
+    const scores = this.getGeneratedRouteScores(source)
+      .slice()
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4);
+    if (!scores.length) {
+      return 'Routes no reachable targets';
+    }
+    return scores.map((choice) => (
+      `${choice.building.name.slice(0, 3)} ${Math.round(choice.score)} d${choice.cost}`
+    )).join(' | ');
+  }
+
+  getLiveEnemyTargetSummary() {
+    const counts = this.enemies
+      .filter((enemy) => !enemy.defeated && !enemy.retreating)
+      .reduce((summary, enemy) => {
+        const name = enemy.target?.name ?? 'None';
+        summary[name] = (summary[name] ?? 0) + 1;
+        return summary;
+      }, {});
+    const entries = Object.entries(counts);
+    return entries.length
+      ? entries.map(([name, count]) => `${name.slice(0, 3)}:${count}`).join(' ')
+      : 'none';
+  }
+
   updateDebugOverlay() {
     if (!this.debugOverlay?.panel.visible) {return;}
     const buildingSummary = this.buildings.length
       ? this.buildings.map((building) => `${building.name.slice(0, 1)}:${building.hp}/${building.max}`).join(' ')
       : 'none';
     const activeEnemies = this.enemies.filter((enemy) => !enemy.defeated && !enemy.retreating).length;
+    const metrics = this.getIsoMetrics();
+    const levelStatus = this.generatedLevelValidation
+      ? `LevelGen ${this.generatedLevelValidation.valid ? 'valid' : 'errors'} | ${this.generatedLevelActive ? 'rendered' : 'standby'} | Grid ${this.levelDebugVisible ? 'G:on' : 'G:off'}`
+      : 'LevelGen unavailable';
+    const levelNotes = this.generatedLevelValidation
+      ? `Gen notes E${this.generatedLevelValidation.errors.length} W${this.generatedLevelValidation.warnings.length + this.generatedLevelSelectionWarnings.length}`
+      : '';
+    const firstIssue = this.generatedLevelValidation?.errors[0]
+      ?? this.generatedLevelSelectionWarnings[0]
+      ?? this.generatedLevelValidation?.warnings[0]
+      ?? '';
     this.debugOverlay.text.setText([
-      `Phase ${this.state.phase} | L${this.state.level} | Safe ${this.state.villageSafety}%`,
+      `Phase ${this.state.phase} | L${this.state.level} | ${this.getCurrentWorldTheme().label} R${this.state.worldRound}${this.state.bossRound ? ' Boss' : ''} | Safe ${this.state.villageSafety}%`,
       `Hero ${this.state.health}/${this.playerStats.maxHealth} HP | Mana ${this.state.mana}/${this.playerStats.maxMana}`,
       `Gold ${this.state.gold} | XP ${this.state.xp} | Mode ${this.state.repairMode ? 'repair' : 'combat'}`,
-      `Enemies active ${activeEnemies} | remain ${this.levelEnemiesRemaining} | pending ${this.levelSpawnsPending}`,
+      `Defeats ${this.levelDefeatsThisRound}/${this.levelRequiredDefeats} | pending ${this.levelSpawnsPending} | spawned ${this.levelSpawnedCount} | spawn skips ${this.levelSpawnFailures}`,
+      `Enemies active ${activeEnemies} | remaining ${this.levelEnemiesRemaining}`,
       `Buildings ${buildingSummary}`,
+      `Targets ${this.getLiveEnemyTargetSummary()}`,
       `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
+      this.generatedLevel ? `Config ${this.generatedLevelConfigId} | Seed ${this.generatedLevel.config.seed}` : '',
+      this.generatedLevel ? `Tile ${this.generatedLevel.config.tileSize}px -> ${Math.round(metrics.tileW)}x${Math.round(metrics.tileH)}` : '',
+      `${levelStatus} | Time ${this.getActiveTimeOfDay()} (N)`,
+      this.generatedLevel ? `Route score ${this.getGeneratedRouteDebugSummary()}` : '',
+      levelNotes,
+      firstIssue ? `First issue: ${this.truncateGuildNote(firstIssue, 52)}` : '',
     ].join('\n'));
   }
 
@@ -2947,25 +6542,11 @@ class FairyGuildScene extends Phaser.Scene {
     return `${note.slice(0, maxLength - 3).trimEnd()}...`;
   }
 
-  getVisibleGuildNotes() {
-    const compact = this.isCompactUi();
-    const maxVisible = compact ? COMPACT_NOTES_MAX_VISIBLE : DESKTOP_NOTES_MAX_VISIBLE;
-    return this.notes.slice(-maxVisible).map((note) => (
-      compact ? this.truncateGuildNote(note, COMPACT_NOTE_MAX_CHARS) : note
-    ));
-  }
-
   updateHud() {
     this.renderHearts();
-    this.setMeter(this.hud.manaBar, this.state.mana / this.playerStats.maxMana);
-    this.setMeter(this.hud.xpBar, (this.state.xp % 100) / 100);
-    this.setMeter(this.hud.safetyBar, this.state.villageSafety / 100);
-    this.hud.goldText.setText(`Gold ${this.state.gold}`);
-    this.hud.levelText.setText(`Level ${this.state.level}  XP ${this.state.xp}`);
-    this.hud.weaponText.setText(`Wpn: ${this.state.equipped}`);
-    this.hud.spellText.setText(`Spell: ${this.state.spell}`);
-    this.hud.waveText.setText(`Safe ${this.state.villageSafety}%  L${this.state.level}`);
-    this.hud.notesText.setText(this.getVisibleGuildNotes().map((note) => `- ${note}`).join('\n'));
+    this.hud.goldText.setText(`${this.state.gold}`);
+    this.hud.levelText.setText(`Lv ${this.state.level}`);
+    this.hud.waveText.setText(`${this.getCurrentWorldTheme().label} R${this.state.worldRound}`);
     if (this.state.inventoryOpen) {
       const inventoryKey = `${this.state.gold}|${this.upgrades.map((upgrade) => upgrade.level).join(',')}`;
       if (this.hud.inventoryKey !== inventoryKey) {
@@ -2980,14 +6561,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.hud.lastHearts = `${this.state.health}/${this.playerStats.maxHealth}`;
     this.hud.hearts.removeAll(true);
     for (let i = 0; i < this.playerStats.maxHealth; i += 1) {
-      const x = (i % 8) * 18;
-      const y = Math.floor(i / 8) * 19;
+      const x = (i % 6) * 22;
+      const y = Math.floor(i / 6) * 21;
       const full = i < this.state.health;
-      const heart = this.add.text(x, y, full ? '♥' : '♡', {
-        fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-        fontSize: '20px',
-        color: full ? '#eb5571' : '#b7a9a2',
-      });
+      const heart = this.add.image(x, y, 'gameUiAtlas', full ? 'health_full_01' : 'health_empty_01')
+        .setOrigin(0.5)
+        .setDisplaySize(24, 24);
       this.hud.hearts.add(heart);
     }
   }
@@ -3031,7 +6610,11 @@ const config = {
   scene: FairyGuildScene,
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+if (import.meta.env.DEV) {
+  (window as typeof window & { __fairyGuildGame?: Phaser.Game }).__fairyGuildGame = game;
+}
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
