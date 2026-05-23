@@ -454,67 +454,11 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
       scene.addGuildNote('Your wooden sword feels braver!');
     },
   },
-  {
-    name: 'Bow',
-    detail: 'faster shots',
-    cost: 50,
-    level: 0,
-    icon: 'bowIconTexture',
-    apply: (scene) => {
-      scene.playerStats.bowCooldown = Math.max(250, scene.playerStats.bowCooldown - 80);
-      scene.playerStats.bowPower += scene.upgrades[1].level % 2 === 0 ? 1 : 0;
-      scene.addGuildNote('Your bow twangs a little quicker.');
-    },
-  },
-  {
-    name: 'Mana',
-    detail: '+25 pool',
-    cost: 45,
-    level: 0,
-    icon: 'manaTexture',
-    apply: (scene) => {
-      scene.playerStats.maxMana += 25;
-      scene.state.mana = scene.playerStats.maxMana;
-      scene.addGuildNote('Level up feeling: more mana bubbles!');
-    },
-  },
-  {
-    name: 'Spell',
-    detail: '+spark area',
-    cost: 65,
-    level: 0,
-    icon: 'spellIconTexture',
-    apply: (scene) => {
-      scene.playerStats.spellPower += 1;
-      scene.playerStats.spellCost = Math.max(16, scene.playerStats.spellCost - 2);
-      scene.addGuildNote('Sparkle Burst learned a bigger twirl.');
-    },
-  },
-  {
-    name: 'Boots',
-    detail: '+speed',
-    cost: 60,
-    level: 0,
-    icon: 'bootIconTexture',
-    apply: (scene) => {
-      scene.playerStats.speed += 0.28;
-      scene.addGuildNote('Swift guild boots make patrols breezy.');
-    },
-  },
-  {
-    name: 'Shield',
-    detail: '+heart',
-    cost: 70,
-    level: 0,
-    icon: 'shieldIconTexture',
-    apply: (scene) => {
-      scene.playerStats.maxHealth += 1;
-      scene.state.health = Math.min(scene.playerStats.maxHealth, scene.state.health + 2);
-      scene.addGuildNote('A sunny shield charm circles you.');
-      scene.spawnShieldGlow();
-    },
-  },
 ];
+
+export const GENERATED_BUILDING_SPRITE_ALPHA = 1;
+export const STATIC_BUILDING_BASE_ALPHA = 0.14;
+export const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
 
 export interface LevelUpChoiceDef {
   key: string;

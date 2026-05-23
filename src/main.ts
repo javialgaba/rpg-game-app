@@ -15,6 +15,7 @@ import {
   COLORS,
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
+  GENERATED_BUILDING_SPRITE_ALPHA,
   getLevelUpProgressForStat,
   getRangeLevelUpPresentationForStats,
   isBowEvolutionReadyForStats,
@@ -41,8 +42,7 @@ import {
   REPAIR_OUTLINE_STROKE_WIDTH,
   REPAIR_RANGE,
   ROUNDS_PER_WORLD,
-  TILE_H,
-  TILE_W,
+  STATIC_BUILDING_BASE_ALPHA,
   WIDTH,
   WORLD_ENEMY_THEMES,
   WORLD_SEQUENCE,
@@ -73,6 +73,32 @@ import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDeb
 import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createUiCardFrame, createUiButton, createManaMeter, uiTextStyle } from './uiFactory';
 import { drawGeneratedLevelDebug, toggleGeneratedLevelDebug, updateGeneratedLevelDebug } from './levelDebugRenderer';
 import { getActiveTimeOfDay, cycleTimeOfDay, getLampGlowIsoPoints, createTimeOfDayLayer } from './timeOfDayRenderer';
+import {
+  drawMapTiles,
+  drawDiamond,
+  createPathStones,
+  createForestBorder,
+  createBuildings,
+  createProps,
+  addFireflyCluster,
+  renderGeneratedBuilding,
+  renderGeneratedProp,
+  renderGeneratedDecoration,
+} from './staticMapRenderer';
+import {
+  getSceneVariantTerrainTexture,
+  getSceneVariantPropTexture,
+  getSceneVariantDecorationTexture,
+  addSceneVariantImage,
+  registerParallaxSprite,
+  hasStaticSceneVariantFrame,
+  renderSceneVariantBackground,
+  renderSceneVariantFrame,
+  renderSceneVariantForeground,
+  renderSceneVariantOverlapDecor,
+  applySceneVariantAmbient,
+  updateCinematicParallax,
+} from './sceneVariantRenderer';
 import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
 import {
   getIsoMetrics as _getIsoMetrics,
@@ -88,9 +114,6 @@ import {
 const TOUCH_CONTROL_SCALE = 1.5;
 const scaleTouchControl = (value: number) => value * TOUCH_CONTROL_SCALE;
 
-const GENERATED_BUILDING_SPRITE_ALPHA = 1;
-const STATIC_BUILDING_BASE_ALPHA = 0.14;
-const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
 const OCCLUDED_BUILDING_SPRITE_ALPHA = 0.5;
 const OCCLUDED_STATIC_BUILDING_BASE_ALPHA = 0.06;
 const BUILDING_OCCLUSION_PLAYER_Y_OFFSET_MAX = 12;
@@ -726,22 +749,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updateCinematicParallax() {
-    if (!this.parallaxSprites?.length || !this.player || !this.generatedLevel) {
-      return;
-    }
-    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const spanX = Math.max(1, (maxX - minX) / 2);
-    const spanY = Math.max(1, (maxY - minY) / 2);
-    const nx = Phaser.Math.Clamp((this.player.iso.x - centerX) / spanX, -1, 1);
-    const ny = Phaser.Math.Clamp((this.player.iso.y - centerY) / spanY, -1, 1);
-    this.parallaxSprites.forEach((entry) => {
-      entry.sprite.setPosition(
-        entry.baseX - nx * 46 * entry.factor,
-        entry.baseY - ny * 30 * entry.factor,
-      );
-    });
+    updateCinematicParallax(this);
   }
 
   getCurrentWorldTheme() {
@@ -850,45 +858,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getSceneVariantTerrainTexture(token) {
-    const variant = this.getActiveSceneVariant();
-    if (variant.key === 'noon_winter') {
-      if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
-        return { textureKey: 'winter_path_01', frameKey: undefined };
-      }
-      return { textureKey: 'winter_grass_01', frameKey: undefined };
-    }
-    if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
-      return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.path[0] };
-    }
-    return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.grass[0] };
+    return getSceneVariantTerrainTexture(this, token);
   }
 
   getSceneVariantPropTexture(placement) {
-    const variant = this.getActiveSceneVariant();
-    if (variant.key !== 'noon_winter') {
-      return null;
-    }
-    if (placement.token === 'tree') {
-      return { textureKey: 'winter_pine_01', frameKey: undefined };
-    }
-    if (placement.type === 'terrain' && placement.token === 'decoration') {
-      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
-    }
-    return null;
+    return getSceneVariantPropTexture(this, placement);
   }
 
   getSceneVariantDecorationTexture(placement) {
-    const variant = this.getActiveSceneVariant();
-    if (variant.key !== 'noon_winter') {
-      return null;
-    }
-    if (placement.decorationKind === 'flowers' || placement.decorationKind === 'grassPatch') {
-      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
-    }
-    if (placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree' || placement.decorationKind === 'treeCluster') {
-      return { textureKey: 'winter_pine_01', frameKey: undefined };
-    }
-    return null;
+    return getSceneVariantDecorationTexture(this, placement);
   }
 
   addSceneVariantImage(
@@ -900,104 +878,35 @@ class FairyGuildScene extends Phaser.Scene {
     depth,
     options: { alpha?: number; originX?: number; originY?: number; tint?: number } = {},
   ) {
-    if (!this.textures.exists(textureKey)) {
-      return null;
-    }
-    const sprite = this.add.image(x, y, textureKey)
-      .setOrigin(options.originX ?? 0.5, options.originY ?? 0.5)
-      .setScale(uniformScale)
-      .setDepth(depth)
-      .setAlpha(options.alpha ?? 1);
-    if (options.tint) {
-      sprite.setTint(options.tint);
-    }
-    layer.add(sprite);
-    return sprite;
+    return addSceneVariantImage(this, layer, textureKey, x, y, uniformScale, depth, options);
   }
 
   registerParallaxSprite(sprite, factor, baseX, baseY) {
-    if (!sprite) {
-      return;
-    }
-    this.parallaxSprites.push({ sprite, factor, baseX, baseY });
+    registerParallaxSprite(this, sprite, factor, baseX, baseY);
   }
 
   hasStaticSceneVariantFrame(config) {
-    return Boolean(config)
-      && this.textures.exists(config.backgroundAssetKey)
-      && this.textures.exists(config.exteriorFrameAssetKey);
+    return hasStaticSceneVariantFrame(this, config);
   }
 
   renderSceneVariantBackground(config, bounds) {
-    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    const sprite = this.addSceneVariantImage(
-      this.backgroundLayer,
-      config.backgroundAssetKey,
-      bounds.centerX,
-      bounds.centerY - 24,
-      baseScale * 1.04 * (config.worldZoom ?? 1),
-      2,
-      { alpha: 1 },
-    );
-    this.registerParallaxSprite(sprite, config.backgroundParallax ?? 0, bounds.centerX, bounds.centerY - 24);
+    renderSceneVariantBackground(this, config, bounds);
   }
 
   renderSceneVariantFrame(config, bounds) {
-    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    const sprite = this.addSceneVariantImage(
-      this.edgeLayer,
-      config.exteriorFrameAssetKey,
-      bounds.centerX,
-      bounds.centerY - 20,
-      baseScale * 1.04 * (config.worldZoom ?? 1),
-      70,
-      { alpha: 1 },
-    );
-    this.registerParallaxSprite(sprite, config.frameParallax ?? 0, bounds.centerX, bounds.centerY - 20);
+    renderSceneVariantFrame(this, config, bounds);
   }
 
   renderSceneVariantForeground(config, bounds) {
-    if (!config.foregroundFogAssetKey) {
-      return;
-    }
-    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    const sprite = this.addSceneVariantImage(
-      this.lightingLayer,
-      config.foregroundFogAssetKey,
-      bounds.centerX,
-      bounds.centerY - 20,
-      baseScale * 1.04 * (config.worldZoom ?? 1),
-      4705,
-      { alpha: config.key === 'night_spring' ? 0.9 : 0.72 },
-    );
-    this.registerParallaxSprite(sprite, config.foregroundParallax ?? 0, bounds.centerX, bounds.centerY - 20);
+    renderSceneVariantForeground(this, config, bounds);
   }
 
   renderSceneVariantOverlapDecor(config, bounds, tileW, tileH) {
-    config.overlapDecorAnchors.forEach((anchor) => {
-      const x = bounds.centerX + anchor.x * tileW;
-      const y = bounds.centerY + anchor.y * tileH;
-      this.addEnvironmentUniformSprite(
-        this.edgeLayer,
-        anchor.frame,
-        x,
-        y,
-        anchor.scale,
-        bounds.centerY + anchor.depthBias,
-        { alpha: anchor.alpha, originY: 0.82 },
-      );
-    });
+    renderSceneVariantOverlapDecor(this, config, bounds, tileW, tileH);
   }
 
   applySceneVariantAmbient(config) {
-    if (config.ambientAlpha <= 0) {
-      return;
-    }
-    const ambient = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, config.ambientTint, config.ambientAlpha)
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(4701);
-    this.lightingLayer.add(ambient);
+    applySceneVariantAmbient(this, config);
   }
 
   createVillage() {
@@ -1476,112 +1385,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedBuilding(placement) {
-    const render = placement.render ?? {};
-    const textureKey = render.textureKey ?? 'cottageTexture';
-    const layout = this.getGeneratedFootprintSpriteLayout(
-      placement,
-      { ...render, textureKey },
-      [80, 70],
-    );
-    const size = layout.size;
-    const sprite = this.add.image(layout.x, layout.y, textureKey, render.frameKey)
-      .setOrigin(0.5, 1)
-      .setDisplaySize(size[0], size[1])
-      .setDepth(layout.depth)
-      .setAlpha(GENERATED_BUILDING_SPRITE_ALPHA);
-    const healthBar = this.createBuildingHealthBar(
-      layout.x,
-      layout.y - size[1] * 0.78,
-      Math.max(42, Math.min(76, size[0] * 0.7)),
-      10,
-      layout.depth + 140,
-    );
-    this.entityLayer.add([sprite, healthBar.container]);
-    const building = {
-      name: placement.label,
-      x: placement.iso.x,
-      y: placement.iso.y,
-      hp: placement.maxHealth,
-      max: placement.maxHealth,
-      importance: placement.importance,
-      levelPlacementId: placement.id,
-      texture: render.textureKey,
-      size,
-      reward: Math.round(placement.importance / 4),
-      iso: { x: placement.iso.x, y: placement.iso.y },
-      footprint: placement.footprint,
-      footprintCells: placement.cells.map((cell) => ({ ...cell })),
-      spriteAlpha: GENERATED_BUILDING_SPRITE_ALPHA,
-      sprite,
-      healthBar,
-      underAttackUntil: 0,
-    };
-    this.buildings.push(building);
-    this.updateBuildingHealthBar(building);
+    renderGeneratedBuilding(this, placement);
   }
 
   renderGeneratedProp(placement) {
-    if (this.generatedLevelActive && this.generatedLevel && placement.token === 'tree' && this.isGeneratedBoardEdgeCell(placement.grid)) {
-      return;
-    }
-    const render = placement.render ?? {};
-    const override = this.getSceneVariantPropTexture(placement);
-    const textureKey = override?.textureKey ?? render?.textureKey;
-    const frameKey = override?.frameKey ?? render?.frameKey;
-    if (!textureKey) {
-      return;
-    }
-    const layout = textureKey === 'buildingsAtlas'
-      ? this.getGeneratedFootprintSpriteLayout(placement, { ...render, textureKey, frameKey }, [42, 42])
-      : null;
-    const p = layout ?? this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
-    const size = layout?.size ?? this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
-    const sprite = this.add.image(p.x, p.y, textureKey, frameKey)
-      .setOrigin(layout ? 0.5 : render.origin?.[0] ?? 0.5, layout ? 1 : render.origin?.[1] ?? 0.82)
-      .setDisplaySize(size[0], size[1])
-      .setDepth((layout?.depth ?? p.y) + 8)
-      .setAlpha(render.alpha ?? 0.72);
-    this.entityLayer.add(sprite);
+    renderGeneratedProp(this, placement);
   }
 
   renderGeneratedDecoration(placement) {
-    const override = this.getSceneVariantDecorationTexture(placement);
-    if (placement.render?.textureKey || override?.textureKey) {
-      const render = placement.render;
-      const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
-      const size = this.scaleGeneratedSize(render.displaySize ?? [36, 36]);
-      const sprite = this.add.image(
-        p.x,
-        p.y,
-        override?.textureKey ?? render.textureKey,
-        override?.frameKey ?? render.frameKey,
-      )
-        .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
-        .setDisplaySize(size[0], size[1])
-        .setDepth(p.y + 6)
-        .setAlpha(render.alpha ?? 0.76);
-      this.entityLayer.add(sprite);
-      return;
-    }
-    const p = this.isoToScreen(placement.iso.x + 0.16, placement.iso.y - 0.12, 8);
-    const flowers = this.add.graphics();
-    if (placement.decorationKind === 'sparkles') {
-      flowers.fillStyle(0xfff3a6, 0.72);
-      flowers.fillCircle(p.x - 4, p.y, 2.2);
-      flowers.fillStyle(0x91e8ff, 0.62);
-      flowers.fillCircle(p.x + 5, p.y - 5, 2.4);
-      flowers.lineStyle(1, 0xffffff, 0.45);
-      flowers.lineBetween(p.x - 8, p.y - 2, p.x + 7, p.y + 3);
-    } else {
-      flowers.fillStyle(0xffa8d6, 0.72);
-      flowers.fillCircle(p.x - 6, p.y, 3);
-      flowers.fillStyle(0xfff49a, 0.75);
-      flowers.fillCircle(p.x, p.y - 3, 3);
-      flowers.fillStyle(0x8fe287, 0.68);
-      flowers.fillCircle(p.x + 6, p.y + 2, 3);
-    }
-    flowers.setDepth(p.y + 5);
-    this.entityLayer.add(flowers);
+    renderGeneratedDecoration(this, placement);
   }
 
   getActiveTimeOfDay() {
@@ -1613,164 +1425,31 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   drawMapTiles() {
-    for (let y = 0; y < MAP_H; y += 1) {
-      for (let x = 0; x < MAP_W; x += 1) {
-        const center = this.isoToScreen(x, y);
-        const isEdge = x < 2 || y < 2 || x > MAP_W - 3 || y > MAP_H - 3;
-        const isPath = Math.abs(x - 7) <= 1 || Math.abs(y - 7) <= 1 || (x > 4 && x < 11 && y > 4 && y < 11);
-        const isGarden = (x === 4 && y === 10) || (x === 10 && y === 4) || (x === 3 && y === 6);
-        let fill = (x + y) % 2 === 0 ? COLORS.grassA : COLORS.grassB;
-        let stroke = 0x5dbb65;
-        if (isEdge) {
-          fill = COLORS.forest;
-          stroke = 0x3e965e;
-        } else if (isPath) {
-          fill = COLORS.path;
-          stroke = COLORS.pathEdge;
-        } else if (isGarden) {
-          fill = COLORS.garden;
-          stroke = 0xdf729f;
-        }
-        this.drawDiamond(center.x, center.y, TILE_W, TILE_H, fill, stroke, 0.96);
-      }
-    }
+    drawMapTiles(this);
   }
 
   drawDiamond(x, y, w, h, fill, stroke, alpha = 1, strokeAlpha = 0.45) {
-    this.tileGraphics.fillStyle(fill, alpha);
-    this.tileGraphics.lineStyle(1, stroke, strokeAlpha);
-    this.tileGraphics.beginPath();
-    this.tileGraphics.moveTo(x, y - h / 2);
-    this.tileGraphics.lineTo(x + w / 2, y);
-    this.tileGraphics.lineTo(x, y + h / 2);
-    this.tileGraphics.lineTo(x - w / 2, y);
-    this.tileGraphics.closePath();
-    this.tileGraphics.fillPath();
-    this.tileGraphics.strokePath();
+    drawDiamond(this, x, y, w, h, fill, stroke, alpha, strokeAlpha);
   }
 
   createPathStones() {
-    const stones = this.add.graphics();
-    stones.fillStyle(0xe6d3a6, 0.55);
-    if (this.generatedLevelActive && this.generatedLevel) {
-      this.generatedLevel.roadGrid.forEach((row, y) => {
-        row.forEach((isRoad, x) => {
-          if (!isRoad || (x + y) % 2 !== 0) {
-            return;
-          }
-          const p = this.isoToScreen(x + 0.12 * Math.sin(y * 1.7), y + 0.14 * Math.cos(x * 1.3));
-          stones.fillEllipse(p.x, p.y, 8 + ((x + y) % 3) * 2, 4.5, 1);
-        });
-      });
-      stones.setAlpha(0.38);
-      if (this.generatedTerrainMask) {
-        stones.setMask(this.generatedTerrainMask);
-      }
-      this.worldLayer.add(stones);
-      return;
-    }
-    for (let y = 3; y < 12; y += 1) {
-      for (let x = 6; x <= 8; x += 1) {
-        const p = this.isoToScreen(x + 0.12 * Math.sin(y), y + 0.18 * Math.cos(x));
-        stones.fillEllipse(p.x, p.y, 10 + ((x + y) % 3) * 3, 5, 1);
-      }
-    }
-    for (let x = 3; x < 12; x += 1) {
-      for (let y = 6; y <= 8; y += 1) {
-        const p = this.isoToScreen(x + 0.15 * Math.cos(y), y + 0.1 * Math.sin(x));
-        stones.fillEllipse(p.x, p.y, 9 + ((x * y) % 3) * 2, 5, 1);
-      }
-    }
-    stones.setAlpha(0.42);
-    this.worldLayer.add(stones);
+    createPathStones(this);
   }
 
   createForestBorder() {
-    const treeSpots = [
-      [0.5, 1.2, 1.0], [2.2, 0.6, 0.8], [4.5, 0.7, 0.95], [7.3, 0.4, 1.1], [10.2, 0.7, 0.9], [13.4, 1.0, 1.0],
-      [0.4, 4.4, 0.8], [0.8, 9.7, 0.95], [2.0, 13.4, 1.0], [5.4, 14.0, 0.85], [9.2, 13.5, 1.08], [13.0, 12.3, 0.9],
-      [14.1, 4.0, 1.0], [13.7, 7.4, 0.85], [14.2, 10.5, 0.95],
-    ];
-    treeSpots.forEach(([x, y, scale], index) => {
-      const p = this.isoToScreen(x, y, 16);
-      this.addFireflyCluster(p.x, p.y - 34 * scale, index);
-    });
+    createForestBorder(this);
   }
 
   createBuildings() {
-    const buildingData = [
-      { name: 'Castle', x: 7, y: 4, hp: 110, max: 110, importance: 100, texture: 'castleTexture', size: [112, 96], reward: 24, footprint: { w: 3, h: 3 } },
-      { name: 'Bakery', x: 4, y: 7, hp: 76, max: 76, importance: 50, texture: 'bakeryTexture', size: [80, 70], reward: 16, footprint: { w: 3, h: 2 } },
-      { name: 'Cottage', x: 10, y: 7, hp: 74, max: 74, importance: 50, texture: 'cottageTexture', size: [78, 68], reward: 15, footprint: { w: 3, h: 2 } },
-      { name: 'Market', x: 7, y: 10, hp: 68, max: 68, importance: 70, texture: 'marketTexture', size: [90, 66], reward: 18, footprint: { w: 3, h: 2 } },
-    ];
-    this.buildings = buildingData.map((data) => {
-      const p = this.isoToScreen(data.x, data.y, 18);
-      const base = this.add.graphics();
-      base.fillStyle(0x8f7346, STATIC_BUILDING_BASE_ALPHA);
-      base.fillEllipse(p.x, p.y + 22, data.size[0] * 0.62, 28);
-      const sprite = this.add.image(p.x, p.y, data.texture)
-        .setOrigin(0.5, 0.84)
-        .setDisplaySize(data.size[0], data.size[1])
-        .setDepth(p.y)
-        .setAlpha(STATIC_BUILDING_SPRITE_ALPHA);
-      const healthBar = this.createBuildingHealthBar(
-        p.x,
-        p.y - data.size[1] * 0.78,
-        Math.max(42, Math.min(76, data.size[0] * 0.7)),
-        10,
-        p.y + 140,
-      );
-      const footprintCells = this.getFootprintCells(data.x, data.y, data.footprint);
-      this.entityLayer.add([base, sprite, healthBar.container]);
-      const building = {
-        ...data,
-        iso: { x: data.x, y: data.y },
-        footprintCells,
-        baseAlpha: STATIC_BUILDING_BASE_ALPHA,
-        spriteAlpha: STATIC_BUILDING_SPRITE_ALPHA,
-        sprite,
-        base,
-        healthBar,
-        underAttackUntil: 0,
-      };
-      this.updateBuildingHealthBar(building);
-      return building;
-    });
+    createBuildings(this);
   }
 
   createProps() {
-    const props: Array<[string, number, number, number, number]> = [
-      ['wellTexture', 6.1, 8.8, 44, 52], ['lampTexture', 8.8, 5.8, 26, 54], ['signTexture', 3.7, 9.7, 38, 46],
-      ['lampTexture', 10.8, 4.8, 26, 54], ['wellTexture', 12.1, 9.3, 42, 46], ['signTexture', 2.9, 3.2, 38, 46],
-    ];
-    props.forEach(([texture, x, y, w, h]) => {
-      const p = this.isoToScreen(x, y, 7);
-      const sprite = this.add.image(p.x, p.y, texture)
-        .setOrigin(0.5, 0.82)
-        .setDisplaySize(w, h)
-        .setDepth(p.y + 8)
-        .setAlpha(0.7);
-      this.entityLayer.add(sprite);
-    });
+    createProps(this);
   }
 
   addFireflyCluster(x, y, seed) {
-    for (let i = 0; i < 3; i += 1) {
-      const dot = this.add.circle(x + Math.cos(seed + i) * 18, y + Math.sin(seed * 2 + i) * 12, 2.8, 0xfff7a6, 0.85);
-      dot.setDepth(y + 30 + i);
-      this.tweens.add({
-        targets: dot,
-        x: dot.x + Math.sin(seed + i) * 12,
-        y: dot.y - 8 - i * 3,
-        alpha: 0.35,
-        yoyo: true,
-        repeat: -1,
-        duration: 1500 + i * 230,
-        ease: 'Sine.inOut',
-      });
-      this.entityLayer.add(dot);
-    }
+    addFireflyCluster(this, x, y, seed);
   }
 
   createPlayer() {
