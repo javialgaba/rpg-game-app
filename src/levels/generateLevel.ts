@@ -13,7 +13,7 @@ import type {
   ProtectedTargetPlacement,
 } from './levelTypes';
 import { findGridPath, pathCost } from './pathfinding';
-import { buildPlayerWalkableGrid } from './playerFootprint';
+import { buildPlayerReachableGrid, buildPlayerWalkableGrid, getPlayerPocketCells } from './playerFootprint';
 import { SeededRandom } from './seededRandom';
 
 const PROTECTED_EDGE_PADDING = 4;
@@ -386,7 +386,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   const terrain: LevelPlacement[] = [];
   const objects: LevelPlacement[] = [];
   const decorations: LevelPlacement[] = [];
-  const chests: LevelPlacement[] = [];
   const spawnPoints: GridPoint[] = [];
   const protectedTargets: ProtectedTargetPlacement[] = [];
   const warnings: string[] = [];
@@ -470,9 +469,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
           }
         });
         objects.push(target);
-      } else if (entry.type === 'interactable') {
-        chests.push(placement);
-        objects.push(placement);
       } else {
         objects.push(placement);
       }
@@ -567,6 +563,15 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     if (blocksMovement) {
       blockedGrid[grid.y][grid.x] = true;
       walkableGrid[grid.y][grid.x] = false;
+      const candidatePlayerGrid = buildPlayerWalkableGrid(walkableGrid, playableBounds);
+      const candidateReachableGrid = buildPlayerReachableGrid(candidatePlayerGrid, playerSpawn);
+      if (getPlayerPocketCells(candidatePlayerGrid, candidateReachableGrid).length > 0) {
+        blockedGrid[grid.y][grid.x] = false;
+        walkableGrid[grid.y][grid.x] = true;
+        decorationGrid[grid.y][grid.x] = null;
+        decorations.pop();
+        return false;
+      }
     }
     return true;
   };
@@ -586,6 +591,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 11,
+    occludesPlayer: true,
   };
   const fullTreeRender: AssetRenderMetadata = {
     textureKey: 'worldTilesAtlas',
@@ -594,6 +600,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 12,
+    occludesPlayer: true,
   };
   const oakTreeRender: AssetRenderMetadata = {
     textureKey: 'worldTilesAtlas',
@@ -602,6 +609,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 12,
+    occludesPlayer: true,
   };
   const signRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -610,6 +618,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.86],
     alpha: 1,
     z: 9,
+    occludesPlayer: true,
   };
   const flowerPatchRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -634,6 +643,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 8,
+    occludesPlayer: true,
   };
   const puddleRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -658,6 +668,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 9,
+    occludesPlayer: true,
   };
   const treeClusterRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -666,6 +677,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.86],
     alpha: 1,
     z: 11,
+    occludesPlayer: true,
   };
   const lanternRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -674,6 +686,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.86],
     alpha: 1,
     z: 9,
+    occludesPlayer: true,
   };
   const fenceSegmentRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -682,6 +695,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 8,
+    occludesPlayer: true,
   };
 
   terrain.forEach((placement) => {
@@ -797,6 +811,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   });
 
   const playerWalkableGrid = buildPlayerWalkableGrid(walkableGrid, playableBounds);
+  const playerReachableGrid = buildPlayerReachableGrid(playerWalkableGrid, playerSpawn);
+  const playerPocketCells = getPlayerPocketCells(playerWalkableGrid, playerReachableGrid);
 
   return {
     config: generatedConfig,
@@ -805,6 +821,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     playableBounds,
     walkableGrid,
     playerWalkableGrid,
+    playerReachableGrid,
+    playerPocketCells,
     blockedGrid,
     buildingGrid,
     decorationGrid,
@@ -814,7 +832,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     terrain,
     objects,
     decorations,
-    chests,
     spawnPoints,
     playerSpawn,
     protectedTargets,
@@ -934,12 +951,9 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       }
     });
 
-    level.chests.forEach((chest) => {
-      const path = findGridPath(level.playerWalkableGrid, level.playerSpawn as GridPoint, [chest.grid]);
-      if (!path) {
-        warnings.push(`Chest ${chest.grid.x},${chest.grid.y} is not reachable from player spawn.`);
-      }
-    });
+  }
+  if (level.playerPocketCells.length > 0) {
+    errors.push(`Player clearance contains ${level.playerPocketCells.length} unreachable pocket cell(s).`);
   }
 
   const blockedDecorationCells = level.decorations.filter((decoration) => (

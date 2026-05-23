@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:atlases": "node tools/build-atlases.mjs",
     "build:hero-ui-assets": "node tools/build-hero-ui-assets.mjs",
+    "build:class-assets": "node tools/build-class-assets.mjs",
     "build:game-ui": "node tools/build-game-ui-atlas.mjs",
     "build:world-enemies": "node tools/build-world-enemy-sheets.mjs",
     "build:scene-variants": "node tools/build-scene-variants.mjs",
@@ -15,11 +16,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "validate:atlases": "node tools/build-atlases.mjs --validate-only",
+    "validate:class-assets": "node tools/build-class-assets.mjs --validate-only",
+    "validate:scene-variants": "node tools/build-scene-variants.mjs --validate-only",
     "validate:game-ui": "node tools/build-game-ui-atlas.mjs --validate-only",
     "validate:world-enemies": "node tools/build-world-enemy-sheets.mjs --validate-only",
     "validate:levels": "node tools/validate-level-generation.mjs",
     "validate:level-up": "node tools/validate-level-up-progress.mjs",
-    "test": "npm run validate:levels && npm run validate:level-up && npm run validate:world-enemies && npm run validate:game-ui && npm run typecheck && npm run lint && npm run build"
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test": "npm run validate:levels && npm run validate:level-up && npm run validate:class-assets && npm run validate:world-enemies && npm run validate:game-ui && npm run validate:scene-variants && npm run test:unit && npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "phaser": "^3.90.0",
@@ -30,6 +35,7 @@
     "eslint": "^10.4.0",
     "sharp": "^0.34.5",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.3"
+    "typescript-eslint": "^8.59.3",
+    "vitest": "^4.1.7"
   }
 }

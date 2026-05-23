@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig(({ command }) => {
   const isBuild = command === 'build';
@@ -52,6 +52,9 @@ export default defineConfig(({ command }) => {
           },
         },
       },
+    },
+    test: {
+      include: ['src/**/*.test.ts'],
     },
   };
 });

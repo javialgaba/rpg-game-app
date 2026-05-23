@@ -63,11 +63,6 @@ const TONE_MOTIFS: Record<string, AudioNote[]> = {
     { freq: 740, endFreq: 1080, delay: 0, duration: 0.09, wave: 'triangle', gain: 0.038 },
     { freq: 980, endFreq: 1320, delay: 0.045, duration: 0.11, wave: 'sine', gain: 0.026 },
   ],
-  chest: [
-    { freq: 660, endFreq: 880, delay: 0, duration: 0.12, wave: 'triangle', gain: 0.045 },
-    { freq: 880, endFreq: 1175, delay: 0.09, duration: 0.14, wave: 'triangle', gain: 0.052 },
-    { freq: 1320, endFreq: 1760, delay: 0.2, duration: 0.18, wave: 'sine', gain: 0.035 },
-  ],
   hit: [
     { freq: 330, endFreq: 220, delay: 0, duration: 0.08, wave: 'square', gain: 0.022 },
     { freq: 520, endFreq: 390, delay: 0.025, duration: 0.08, wave: 'triangle', gain: 0.018 },

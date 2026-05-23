@@ -149,20 +149,6 @@ export function createGeneratedTextures(scene: Phaser.Scene) {
     gfx.strokeRoundedRect(12, 22, 46, 22, 5);
   });
 
-  make('chestTexture', 72, 58, (gfx) => {
-    gfx.fillStyle(0xffdf7a, 0.35);
-    gfx.fillEllipse(36, 44, 54, 12);
-    gfx.fillStyle(0x9a6033, 1);
-    gfx.fillRoundedRect(14, 24, 44, 22, 5);
-    gfx.fillStyle(0xd5893e, 1);
-    gfx.fillRoundedRect(14, 17, 44, 18, 8);
-    gfx.fillStyle(0xffd45b, 1);
-    gfx.fillRoundedRect(32, 27, 8, 12, 3);
-    gfx.lineStyle(3, 0x66442a, 0.7);
-    gfx.strokeRoundedRect(14, 24, 44, 22, 5);
-    gfx.strokeRoundedRect(14, 17, 44, 18, 8);
-  });
-
   make('coinTexture', 36, 36, (gfx) => {
     gfx.fillStyle(0xffcf4d, 1);
     gfx.fillCircle(18, 18, 13);
@@ -179,28 +165,6 @@ export function createGeneratedTextures(scene: Phaser.Scene) {
     gfx.fillTriangle(7, 17, 31, 17, 19, 32);
     gfx.fillStyle(0xffb5c4, 0.75);
     gfx.fillCircle(13, 12, 3);
-  });
-
-  make('manaTexture', 38, 38, (gfx) => {
-    gfx.fillStyle(0x76d9ff, 1);
-    gfx.fillCircle(19, 19, 13);
-    gfx.fillStyle(0xffffff, 0.7);
-    gfx.fillCircle(15, 14, 4);
-    gfx.lineStyle(3, 0x348fce, 0.8);
-    gfx.strokeCircle(19, 19, 13);
-  });
-
-  make('xpTexture', 42, 42, (gfx) => {
-    gfx.fillStyle(0xffec73, 1);
-    const points: Phaser.Geom.Point[] = [];
-    for (let i = 0; i < 10; i += 1) {
-      const r = i % 2 === 0 ? 17 : 7;
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      points.push(new Phaser.Geom.Point(21 + Math.cos(a) * r, 21 + Math.sin(a) * r));
-    }
-    gfx.fillPoints(points, true);
-    gfx.lineStyle(3, 0xd49a28, 0.7);
-    gfx.strokePoints(points, true);
   });
 
   make('swordIconTexture', 48, 48, (gfx) => {
@@ -247,15 +211,4 @@ export function createGeneratedTextures(scene: Phaser.Scene) {
     gfx.strokeRoundedRect(15, 13, 15, 24, 5);
   });
 
-  make('shieldIconTexture', 48, 48, (gfx) => {
-    gfx.fillStyle(0x7ee0aa, 1);
-    gfx.fillTriangle(24, 7, 39, 15, 34, 34);
-    gfx.fillTriangle(24, 7, 9, 15, 14, 34);
-    gfx.fillTriangle(14, 34, 34, 34, 24, 43);
-    gfx.fillStyle(0xffffff, 0.45);
-    gfx.fillTriangle(24, 11, 31, 17, 24, 35);
-    gfx.lineStyle(3, 0x378c63, 0.8);
-    gfx.strokeTriangle(24, 7, 39, 15, 34, 34);
-    gfx.strokeTriangle(24, 7, 9, 15, 14, 34);
-  });
 }

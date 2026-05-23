@@ -4,6 +4,7 @@ import {
   STATIC_BUILDING_BASE_ALPHA,
   STATIC_BUILDING_SPRITE_ALPHA,
 } from './gameConfig';
+import { shouldRegisterPlayerOccluder } from './playerOcclusion';
 
 export function drawDiamond(scene, x, y, w, h, fill, stroke, alpha = 1, strokeAlpha = 0.45) {
   scene.tileGraphics.fillStyle(fill, alpha);
@@ -43,25 +44,11 @@ export function drawMapTiles(scene) {
 }
 
 export function createPathStones(scene) {
-  const stones = scene.add.graphics();
-  stones.fillStyle(0xe6d3a6, 0.55);
   if (scene.generatedLevelActive && scene.generatedLevel) {
-    scene.generatedLevel.roadGrid.forEach((row, y) => {
-      row.forEach((isRoad, x) => {
-        if (!isRoad || (x + y) % 2 !== 0) {
-          return;
-        }
-        const p = scene.isoToScreen(x + 0.12 * Math.sin(y * 1.7), y + 0.14 * Math.cos(x * 1.3));
-        stones.fillEllipse(p.x, p.y, 8 + ((x + y) % 3) * 2, 4.5, 1);
-      });
-    });
-    stones.setAlpha(0.38);
-    if (scene.generatedTerrainMask) {
-      stones.setMask(scene.generatedTerrainMask);
-    }
-    scene.worldLayer.add(stones);
     return;
   }
+  const stones = scene.add.graphics();
+  stones.fillStyle(0xe6d3a6, 0.55);
   for (let y = 3; y < 12; y += 1) {
     for (let x = 6; x <= 8; x += 1) {
       const p = scene.isoToScreen(x + 0.12 * Math.sin(y), y + 0.18 * Math.cos(x));
@@ -136,6 +123,7 @@ export function createBuildings(scene) {
     scene.entityLayer.add([base, sprite, healthBar.container]);
     const building = {
       ...data,
+      baseMax: data.max,
       iso: { x: data.x, y: data.y },
       footprintCells,
       baseAlpha: STATIC_BUILDING_BASE_ALPHA,
@@ -168,14 +156,16 @@ export function createProps(scene) {
 
 export function renderGeneratedBuilding(scene, placement) {
   const render = placement.render ?? {};
-  const textureKey = render.textureKey ?? 'cottageTexture';
+  const override = scene.getSceneVariantBuildingTexture(placement);
+  const textureKey = override?.textureKey ?? render.textureKey ?? 'cottageTexture';
+  const frameKey = override?.frameKey ?? render.frameKey;
   const layout = scene.getGeneratedFootprintSpriteLayout(
     placement,
-    { ...render, textureKey },
+    { ...render, textureKey, frameKey },
     [80, 70],
   );
   const size = layout.size;
-  const sprite = scene.add.image(layout.x, layout.y, textureKey, render.frameKey)
+  const sprite = scene.add.image(layout.x, layout.y, textureKey, frameKey)
     .setOrigin(0.5, 1)
     .setDisplaySize(size[0], size[1])
     .setDepth(layout.depth)
@@ -189,14 +179,15 @@ export function renderGeneratedBuilding(scene, placement) {
   );
   scene.entityLayer.add([sprite, healthBar.container]);
   const building = {
-    name: placement.label,
+    name: override?.label ?? placement.label,
     x: placement.iso.x,
     y: placement.iso.y,
     hp: placement.maxHealth,
     max: placement.maxHealth,
+    baseMax: placement.maxHealth,
     importance: placement.importance,
     levelPlacementId: placement.id,
-    texture: render.textureKey,
+    texture: textureKey,
     size,
     reward: Math.round(placement.importance / 4),
     iso: { x: placement.iso.x, y: placement.iso.y },
@@ -222,7 +213,7 @@ export function renderGeneratedProp(scene, placement) {
   if (!textureKey) {
     return;
   }
-  const layout = textureKey === 'buildingsAtlas'
+  const layout = textureKey === 'buildingsAtlas' || textureKey === 'sceneVariantBuildingsAtlas'
     ? scene.getGeneratedFootprintSpriteLayout(placement, { ...render, textureKey, frameKey }, [42, 42])
     : null;
   const p = layout ?? scene.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
@@ -233,12 +224,22 @@ export function renderGeneratedProp(scene, placement) {
     .setDepth((layout?.depth ?? p.y) + 8)
     .setAlpha(render.alpha ?? 0.72);
   scene.entityLayer.add(sprite);
+  if (shouldRegisterPlayerOccluder(render)) {
+    scene.registerPlayerOccluder({
+      label: placement.label,
+      category: placement.token,
+      sprite,
+      baseAlpha: render.alpha ?? 0.72,
+      footprintCells: placement.cells.map((cell) => ({ ...cell })),
+      occluding: false,
+    });
+  }
 }
 
 export function renderGeneratedDecoration(scene, placement) {
   const override = scene.getSceneVariantDecorationTexture(placement);
   if (placement.render?.textureKey || override?.textureKey) {
-    const render = placement.render;
+    const render = placement.render ?? {};
     const p = scene.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
     const size = scene.scaleGeneratedSize(render.displaySize ?? [36, 36]);
     const sprite = scene.add.image(
@@ -252,6 +253,16 @@ export function renderGeneratedDecoration(scene, placement) {
       .setDepth(p.y + 6)
       .setAlpha(render.alpha ?? 0.76);
     scene.entityLayer.add(sprite);
+    if (shouldRegisterPlayerOccluder(render)) {
+      scene.registerPlayerOccluder({
+        label: placement.label,
+        category: placement.decorationKind ?? 'decoration',
+        sprite,
+        baseAlpha: render.alpha ?? 0.76,
+        footprintCells: placement.cells.map((cell) => ({ ...cell })),
+        occluding: false,
+      });
+    }
     return;
   }
   const p = scene.isoToScreen(placement.iso.x + 0.16, placement.iso.y - 0.12, 8);
