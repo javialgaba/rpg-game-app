@@ -12,7 +12,6 @@ import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS,
 import {
   BOSS_CONFIGS,
   BOSS_ROUND_INDEX,
-  BOW_EVOLUTION_POWER_BONUS,
   COLORS,
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
@@ -47,6 +46,8 @@ import {
   WIDTH,
   WORLD_ENEMY_THEMES,
   WORLD_SEQUENCE,
+  UPGRADE_DEFS,
+  LEVEL_UP_CHOICE_DEFS,
 } from './gameConfig';
 import type {
   HeroChoice,
@@ -67,6 +68,8 @@ import {
   GENERATED_SURROUND_PIECES,
 } from './generatedSurroundConfig';
 import { createGeneratedTextures } from './generatedTextures';
+import { getWorldFogPieces, getWorldBackdropPieces, getWorldEdgeClusters } from './generatedWorldRenderData';
+import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDebugAutomationHost, toDebugSlug, getDebugBuildingSummary, setDebugCommandResult, findDebugBuilding, teleportPlayerToDebugTarget, triggerDebugSeasonTransition } from './devCommands';
 import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
 import {
   getIsoMetrics as _getIsoMetrics,
@@ -1329,57 +1332,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderGeneratedWorldFog(bounds, tileW, tileH, texture) {
     const fogDepth = 8;
-    const fogPieces = [
-      {
-        frame: 'edge_fog_n_01',
-        x: bounds.centerX,
-        y: bounds.top.y - tileH * 3.3,
-        width: bounds.boardWidth * 2.42,
-        height: tileH * 22.4,
-        alpha: 0.42,
-      },
-      {
-        frame: 'edge_fog_n_01',
-        x: bounds.centerX - bounds.boardWidth * 0.38,
-        y: bounds.top.y - tileH * 1.3,
-        width: bounds.boardWidth * 1.24,
-        height: tileH * 16.6,
-        alpha: 0.32,
-      },
-      {
-        frame: 'edge_fog_n_01',
-        x: bounds.centerX + bounds.boardWidth * 0.38,
-        y: bounds.top.y - tileH * 1.3,
-        width: bounds.boardWidth * 1.24,
-        height: tileH * 16.6,
-        alpha: 0.32,
-      },
-      {
-        frame: 'edge_fog_e_01',
-        x: bounds.right.x + tileW * 4.9,
-        y: bounds.centerY + tileH * 0.12,
-        width: tileW * 18.4,
-        height: bounds.boardHeight * 1.62,
-        alpha: 0.28,
-      },
-      {
-        frame: 'edge_fog_s_01',
-        x: bounds.centerX,
-        y: bounds.bottom.y + tileH * 3.85,
-        width: bounds.boardWidth * 1.88,
-        height: tileH * 15.6,
-        alpha: 0.3,
-      },
-      {
-        frame: 'edge_fog_w_01',
-        x: bounds.left.x - tileW * 4.9,
-        y: bounds.centerY + tileH * 0.12,
-        width: tileW * 18.4,
-        height: bounds.boardHeight * 1.62,
-        alpha: 0.28,
-      },
-    ];
-    fogPieces.forEach((piece) => {
+    getWorldFogPieces(bounds, tileW, tileH).forEach((piece) => {
       if (!texture.has(piece.frame)) {
         return;
       }
@@ -1394,114 +1347,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderGeneratedWorldBackdrop(bounds, tileW, tileH, texture) {
     const backdropDepth = 6;
-    const backdrops = [
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX,
-        y: bounds.top.y - tileH * 1.62,
-        width: bounds.boardWidth * 2.38,
-        height: tileH * 29.4,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX - bounds.boardWidth * 0.44,
-        y: bounds.top.y - tileH * 0.58,
-        width: bounds.boardWidth * 1.28,
-        height: tileH * 20.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX + bounds.boardWidth * 0.44,
-        y: bounds.top.y - tileH * 0.58,
-        width: bounds.boardWidth * 1.28,
-        height: tileH * 20.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX - bounds.boardWidth * 0.16,
-        y: bounds.top.y - tileH * 0.02,
-        width: bounds.boardWidth * 0.96,
-        height: tileH * 15.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX + bounds.boardWidth * 0.16,
-        y: bounds.top.y - tileH * 0.02,
-        width: bounds.boardWidth * 0.96,
-        height: tileH * 15.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX,
-        y: bounds.top.y + tileH * 0.58,
-        width: bounds.boardWidth * 1.14,
-        height: tileH * 13.2,
-      },
-      {
-        frame: 'edge_backdrop_w_01',
-        x: bounds.left.x - tileW * 6.4,
-        y: bounds.centerY - tileH * 1.45,
-        width: tileW * 17.2,
-        height: bounds.boardHeight * 1.26,
-      },
-      {
-        frame: 'edge_backdrop_w_01',
-        x: bounds.left.x - tileW * 6.3,
-        y: bounds.centerY + tileH * 2.35,
-        width: tileW * 17.4,
-        height: bounds.boardHeight * 1.18,
-      },
-      {
-        frame: 'edge_backdrop_e_01',
-        x: bounds.right.x + tileW * 6.4,
-        y: bounds.centerY - tileH * 1.45,
-        width: tileW * 17.2,
-        height: bounds.boardHeight * 1.26,
-      },
-      {
-        frame: 'edge_backdrop_e_01',
-        x: bounds.right.x + tileW * 6.3,
-        y: bounds.centerY + tileH * 2.35,
-        width: tileW * 17.4,
-        height: bounds.boardHeight * 1.18,
-      },
-      {
-        frame: 'edge_backdrop_s_01',
-        x: bounds.centerX,
-        y: bounds.bottom.y + tileH * 5.1,
-        width: bounds.boardWidth * 1.96,
-        height: tileH * 18.4,
-      },
-      {
-        frame: 'edge_backdrop_nw_01',
-        x: bounds.left.x - tileW * 4.7,
-        y: bounds.top.y - tileH * 0.66,
-        width: tileW * 21.4,
-        height: tileH * 25.2,
-      },
-      {
-        frame: 'edge_backdrop_ne_01',
-        x: bounds.right.x + tileW * 4.7,
-        y: bounds.top.y - tileH * 0.66,
-        width: tileW * 21.4,
-        height: tileH * 25.2,
-      },
-      {
-        frame: 'edge_backdrop_sw_01',
-        x: bounds.left.x - tileW * 5.8,
-        y: bounds.bottom.y + tileH * 4.35,
-        width: tileW * 15.8,
-        height: tileH * 18.4,
-      },
-      {
-        frame: 'edge_backdrop_se_01',
-        x: bounds.right.x + tileW * 5.8,
-        y: bounds.bottom.y + tileH * 4.35,
-        width: tileW * 15.8,
-        height: tileH * 18.4,
-      },
-    ];
-    backdrops.forEach((piece) => {
+    getWorldBackdropPieces(bounds, tileW, tileH).forEach((piece) => {
       if (!texture.has(piece.frame)) {
         return;
       }
@@ -1542,93 +1388,7 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     const size = this.scaleGeneratedSize([524, 454]);
-    const clusters = [
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.left.x - tileW * 2.9,
-        y: bounds.top.y + tileH * 1.15,
-        depth: bounds.top.y + tileH * 0.34,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.right.x + tileW * 2.9,
-        y: bounds.top.y + tileH * 1.15,
-        depth: bounds.top.y + tileH * 0.34,
-      },
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.centerX - bounds.boardWidth * 0.3,
-        y: bounds.top.y - tileH * 0.08,
-        depth: bounds.top.y + tileH * 0.18,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.centerX + bounds.boardWidth * 0.3,
-        y: bounds.top.y - tileH * 0.08,
-        depth: bounds.top.y + tileH * 0.18,
-      },
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.centerX - tileW * 1.9,
-        y: bounds.top.y - tileH * 0.42,
-        depth: bounds.top.y + tileH * 0.08,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.centerX + tileW * 1.9,
-        y: bounds.top.y - tileH * 0.42,
-        depth: bounds.top.y + tileH * 0.08,
-      },
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.left.x - tileW * 4.25,
-        y: bounds.centerY - tileH * 2.75,
-        depth: bounds.centerY - tileH * 2.15,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.right.x + tileW * 4.25,
-        y: bounds.centerY - tileH * 2.75,
-        depth: bounds.centerY - tileH * 2.15,
-      },
-      {
-        frame: 'edge_cluster_sw_01',
-        x: bounds.left.x - tileW * 4.25,
-        y: bounds.centerY + tileH * 3.05,
-        depth: bounds.centerY + tileH * 2.2,
-      },
-      {
-        frame: 'edge_cluster_se_01',
-        x: bounds.right.x + tileW * 4.25,
-        y: bounds.centerY + tileH * 3.05,
-        depth: bounds.centerY + tileH * 2.2,
-      },
-      {
-        frame: 'edge_cluster_sw_01',
-        x: bounds.left.x - tileW * 2.9,
-        y: bounds.bottom.y + tileH * 3.15,
-        depth: bounds.bottom.y + tileH * 1.72,
-      },
-      {
-        frame: 'edge_cluster_se_01',
-        x: bounds.right.x + tileW * 2.9,
-        y: bounds.bottom.y + tileH * 3.15,
-        depth: bounds.bottom.y + tileH * 1.72,
-      },
-      {
-        frame: 'edge_cluster_sw_01',
-        x: bounds.centerX - bounds.boardWidth * 0.2,
-        y: bounds.bottom.y + tileH * 3.55,
-        depth: bounds.bottom.y + tileH * 1.84,
-      },
-      {
-        frame: 'edge_cluster_se_01',
-        x: bounds.centerX + bounds.boardWidth * 0.2,
-        y: bounds.bottom.y + tileH * 3.55,
-        depth: bounds.bottom.y + tileH * 1.84,
-      },
-    ];
-    clusters.forEach((cluster) => {
+    getWorldEdgeClusters(bounds, tileW, tileH).forEach((cluster) => {
       if (!texture.has(cluster.frame)) {
         return;
       }
@@ -2361,251 +2121,43 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   isDebugAutomationEnabled() {
-    return new URLSearchParams(window.location.search).has('debugAutomation');
+    return isDebugAutomationEnabled();
   }
 
   getDebugAutomationHost() {
-    return document.querySelector('#game');
+    return getDebugAutomationHost();
   }
 
   toDebugSlug(value) {
-    return String(value ?? '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+    return toDebugSlug(value);
   }
 
   getDebugBuildingSummary() {
-    return this.buildings
-      .map((building) => `${this.toDebugSlug(building.levelPlacementId ?? building.name)}:${building.hp}/${building.max}`)
-      .join('|');
+    return getDebugBuildingSummary(this);
   }
 
   setDebugCommandResult(command, result) {
-    const host = this.getDebugAutomationHost();
-    if (!host) {
-      return;
-    }
-    host.setAttribute('data-debug-last-command', String(command));
-    host.setAttribute('data-debug-last-result', String(result));
+    setDebugCommandResult(command, result);
   }
 
   findDebugBuilding(query) {
-    const normalized = this.toDebugSlug(query);
-    if (!normalized) {
-      return null;
-    }
-    return this.buildings.find((building) => {
-      const candidates = [
-        building.levelPlacementId,
-        building.name,
-      ].map((value) => this.toDebugSlug(value));
-      if (normalized === 'house') {
-        return candidates.includes('cottage') || candidates.includes('bakery') || candidates.includes('house-1') || candidates.includes('house-2');
-      }
-      return candidates.includes(normalized);
-    }) ?? null;
-  }
-
-  resolveDebugTeleportPoint(query) {
-    const normalized = this.toDebugSlug(query);
-    if (!this.player) {
-      return null;
-    }
-    if (!normalized || normalized === 'player') {
-      return { x: this.player.iso.x, y: this.player.iso.y };
-    }
-    if (normalized === 'spawn' || normalized === 'player-spawn') {
-      return this.generatedLevel?.playerSpawn
-        ? { x: this.generatedLevel.playerSpawn.x, y: this.generatedLevel.playerSpawn.y }
-        : { x: this.player.iso.x, y: this.player.iso.y };
-    }
-    if (normalized === 'center' && this.generatedLevel) {
-      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
-      return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-    }
-    const building = this.findDebugBuilding(normalized);
-    if (!building) {
-      return null;
-    }
-    const footprintCells = building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
-    const minX = Math.min(...footprintCells.map((cell) => cell.x));
-    const maxX = Math.max(...footprintCells.map((cell) => cell.x));
-    const minY = Math.min(...footprintCells.map((cell) => cell.y));
-    const maxY = Math.max(...footprintCells.map((cell) => cell.y));
-    const candidates = [
-      { x: (minX + maxX) / 2, y: maxY + 1 },
-      { x: maxX + 1, y: (minY + maxY) / 2 },
-      { x: (minX + maxX) / 2, y: minY - 1 },
-      { x: minX - 1, y: (minY + maxY) / 2 },
-    ];
-    return candidates.find((point) => !this.generatedLevelActive || this.isGeneratedIsoWalkable(point)) ?? candidates[0];
+    return findDebugBuilding(this, query);
   }
 
   teleportPlayerToDebugTarget(query) {
-    const point = this.resolveDebugTeleportPoint(query);
-    if (!point || !this.player) {
-      return false;
-    }
-    this.player.iso.x = point.x;
-    this.player.iso.y = point.y;
-    this.clampIso(this.player.iso, 1.2);
-    this.lastPointerIso = { x: this.player.iso.x, y: this.player.iso.y };
-    const position = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
-    this.player.sprite.setPosition(position.x, position.y);
-    this.player.shadow.setPosition(position.x, position.y + 15);
-    return true;
+    return teleportPlayerToDebugTarget(this, query);
   }
 
   triggerDebugSeasonTransition() {
-    const nextIndex = (this.state.worldIndex + 1) % WORLD_SEQUENCE.length;
-    const looped = nextIndex === 0;
-    const nextProgression = {
-      worldIndex: nextIndex,
-      worldKey: WORLD_SEQUENCE[nextIndex],
-      worldRound: 1,
-      bossRound: false,
-      worldCycle: this.state.worldCycle + (looped ? 1 : 0),
-    };
-    const theme = WORLD_ENEMY_THEMES[nextProgression.worldKey as SeasonPreset];
-    const transitionNote = `${theme.label} debug transition.`;
-    return this.restartForWorldProgression(nextProgression, transitionNote);
+    return triggerDebugSeasonTransition(this);
   }
 
   syncDevDiagnostics() {
-    if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
-      return;
-    }
-    const host = this.getDebugAutomationHost();
-    if (!host) {
-      return;
-    }
-    const repairTarget = this.state.repairMode && this.state.phase === 'playing'
-      ? this.getRepairModeTarget()
-      : null;
-    const repairTargetState = repairTarget ? this.getRepairModeTargetState(repairTarget) : '';
-    const repairTargetDamaged = repairTarget && repairTarget.hp < repairTarget.max;
-    host.setAttribute('data-phase', String(this.state.phase ?? ''));
-    host.setAttribute('data-map-mode', this.generatedLevelActive ? 'generated' : 'static');
-    host.setAttribute('data-level', String(this.state.level ?? 0));
-    host.setAttribute('data-gold', String(this.state.gold ?? 0));
-    host.setAttribute('data-xp', String(this.state.xp ?? 0));
-    host.setAttribute('data-world-key', String(this.state.worldKey ?? ''));
-    host.setAttribute('data-world-round', String(this.state.worldRound ?? 0));
-    host.setAttribute('data-world-cycle', String(this.state.worldCycle ?? 0));
-    host.setAttribute('data-boss-round', this.state.bossRound ? '1' : '0');
-    host.setAttribute('data-game-over-reason', String(this.state.gameOverReason ?? ''));
-    host.setAttribute('data-hero-choice', String(this.heroChoice ?? ''));
-    host.setAttribute('data-pending-hero-choice', String(this.pendingHeroChoice ?? ''));
-    host.setAttribute('data-splash-ready', this.pendingHeroChoice ? '1' : '0');
-    host.setAttribute('data-repair-mode', this.state.repairMode ? '1' : '0');
-    host.setAttribute('data-repair-target', repairTarget ? this.toDebugSlug(repairTarget.name) : '');
-    host.setAttribute('data-repair-affordable', repairTargetDamaged ? (this.state.gold >= REPAIR_COST ? '1' : '0') : '');
-    host.setAttribute('data-repair-outline-state', repairTargetState);
-    host.setAttribute('data-upgrade-context', String(this.upgradePauseContext ?? ''));
-    host.setAttribute('data-enemies', String(this.enemies.length));
-    host.setAttribute('data-chests', String(this.chests.filter((chest) => !chest.opened).length));
-    host.setAttribute('data-enemy-drop-chests', String(this.chests.filter((chest) => !chest.opened && chest.source === 'enemyDrop').length));
-    host.setAttribute('data-level-spawns-pending', String(this.levelSpawnsPending));
-    host.setAttribute('data-level-required-defeats', String(this.levelRequiredDefeats));
-    host.setAttribute('data-level-defeats', String(this.levelDefeatsThisRound));
-    host.setAttribute('data-level-spawned-count', String(this.levelSpawnedCount));
-    host.setAttribute('data-valid-spawn-points', String(this.generatedValidSpawnPoints?.length ?? 0));
-    host.setAttribute('data-board-seed', String(this.generatedLevel?.config.seed ?? ''));
-    host.setAttribute('data-building-summary', this.getDebugBuildingSummary());
+    syncDevDiagnostics(this);
   }
 
   consumeDevCommand() {
-    if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
-      return;
-    }
-    const host = this.getDebugAutomationHost();
-    const command = host?.getAttribute('data-debug-command');
-    if (!host || !command) {
-      return;
-    }
-    host.removeAttribute('data-debug-command');
-    let result = 'unknown-command';
-    if (command === 'clearRound') {
-      this.enemies.slice().forEach((enemy) => this.damageEnemy(enemy, enemy.hp + 999, 'debug'));
-      result = 'ok';
-    } else if (command.startsWith('chooseUpgrade:')) {
-      const index = Number(command.split(':')[1]);
-      if (this.state.phase === 'levelUp' && Number.isInteger(index)) {
-        this.chooseLevelUpgrade(Phaser.Math.Clamp(index, 0, 2));
-        result = `upgrade:${Phaser.Math.Clamp(index, 0, 2)}`;
-      } else {
-        result = 'ignored-levelup-inactive';
-      }
-    } else if (command.startsWith('chooseHero:')) {
-      const choice = command.split(':')[1];
-      if (choice === 'male' || choice === 'princess') {
-        this.selectHeroChoice(choice);
-        result = `hero:${choice}`;
-      } else {
-        result = 'invalid-hero';
-      }
-    } else if (command === 'startGame') {
-      this.startGameFromSplash();
-      result = this.state.phase === 'splash' ? 'awaiting-hero' : 'ok';
-    } else if (command === 'startRound') {
-      if (this.state.phase === 'countdown') {
-        this.startLevelRound();
-        result = 'ok';
-      } else {
-        result = 'ignored-countdown-inactive';
-      }
-    } else if (command.startsWith('setGold:')) {
-      const value = Number(command.split(':')[1]);
-      if (Number.isFinite(value)) {
-        this.state.gold = Math.max(0, Math.round(value));
-        this.rebuildInventoryPanel();
-        result = `gold:${this.state.gold}`;
-      } else {
-        result = 'invalid-gold';
-      }
-    } else if (command.startsWith('teleport:')) {
-      const target = command.split(':')[1];
-      result = this.teleportPlayerToDebugTarget(target) ? `teleport:${this.toDebugSlug(target)}` : 'missing-teleport-target';
-    } else if (command === 'spawnChest' || command === 'spawnChestAtPlayer') {
-      if (this.player) {
-        this.spawnChest(this.player.iso.x, this.player.iso.y, 'bonus-upgrade', { source: 'enemyDrop', lifetimeMs: 5000 });
-        result = 'chest:spawned';
-      } else {
-        result = 'missing-player';
-      }
-    } else if (command.startsWith('damageBuilding:')) {
-      const [, rawTarget, rawAmount] = command.split(':');
-      const building = this.findDebugBuilding(rawTarget);
-      if (!building) {
-        result = 'missing-building';
-      } else {
-        const requestedAmount = Number(rawAmount ?? '18');
-        const amount = Number.isFinite(requestedAmount) ? Math.max(1, Math.round(requestedAmount)) : 18;
-        const minHp = building.name === 'Castle' ? 1 : 0;
-        building.hp = Math.max(minHp, building.hp - amount);
-        building.underAttackUntil = this.time.now + 650;
-        this.updateBuildingRepairState(building);
-        this.updateVillageSafety();
-        result = `building:${this.toDebugSlug(building.name)}:${building.hp}`;
-      }
-    } else if (command === 'repairMode:on') {
-      this.setRepairMode(true, false);
-      result = 'repair:on';
-    } else if (command === 'repairMode:off') {
-      this.setRepairMode(false, false);
-      result = 'repair:off';
-    } else if (command === 'repairNearest') {
-      this.tryRepairBuilding();
-      result = 'repair:attempted';
-    } else if (command === 'advanceSeason') {
-      result = this.triggerDebugSeasonTransition();
-    }
-    this.setDebugCommandResult(command, result);
-    if (command === 'advanceSeason') {
-      return;
-    }
+    consumeDevCommand(this);
   }
 
   createTouchControls() {
@@ -3171,79 +2723,10 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createUpgrades() {
-    this.upgrades = [
-      {
-        name: 'Sword',
-        detail: '+1 soft bonk',
-        cost: 55,
-        level: 0,
-        icon: 'swordIconTexture',
-        apply: () => {
-          this.playerStats.swordPower += 1;
-          this.addGuildNote('Your wooden sword feels braver!');
-        },
-      },
-      {
-        name: 'Bow',
-        detail: 'faster shots',
-        cost: 50,
-        level: 0,
-        icon: 'bowIconTexture',
-        apply: () => {
-          this.playerStats.bowCooldown = Math.max(250, this.playerStats.bowCooldown - 80);
-          this.playerStats.bowPower += this.upgrades[1].level % 2 === 0 ? 1 : 0;
-          this.addGuildNote('Your bow twangs a little quicker.');
-        },
-      },
-      {
-        name: 'Mana',
-        detail: '+25 pool',
-        cost: 45,
-        level: 0,
-        icon: 'manaTexture',
-        apply: () => {
-          this.playerStats.maxMana += 25;
-          this.state.mana = this.playerStats.maxMana;
-          this.addGuildNote('Level up feeling: more mana bubbles!');
-        },
-      },
-      {
-        name: 'Spell',
-        detail: '+spark area',
-        cost: 65,
-        level: 0,
-        icon: 'spellIconTexture',
-        apply: () => {
-          this.playerStats.spellPower += 1;
-          this.playerStats.spellCost = Math.max(16, this.playerStats.spellCost - 2);
-          this.addGuildNote('Sparkle Burst learned a bigger twirl.');
-        },
-      },
-      {
-        name: 'Boots',
-        detail: '+speed',
-        cost: 60,
-        level: 0,
-        icon: 'bootIconTexture',
-        apply: () => {
-          this.playerStats.speed += 0.28;
-          this.addGuildNote('Swift guild boots make patrols breezy.');
-        },
-      },
-      {
-        name: 'Shield',
-        detail: '+heart',
-        cost: 70,
-        level: 0,
-        icon: 'shieldIconTexture',
-        apply: () => {
-          this.playerStats.maxHealth += 1;
-          this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 2);
-          this.addGuildNote('A sunny shield charm circles you.');
-          this.spawnShieldGlow();
-        },
-      },
-    ];
+    this.upgrades = UPGRADE_DEFS.map((def) => ({
+      ...def,
+      apply: () => def.apply(this),
+    }));
   }
 
   buyUpgrade(index) {
@@ -5232,62 +4715,10 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createLevelUpOverlay() {
-    this.levelUpChoices = [
-      {
-        key: 'melee',
-        label: 'Melee Damage',
-        detail: '+1 sword power',
-        icon: { texture: 'uiAtlas', frame: 'sword_icon_01' },
-        stat: 'swordPower',
-        color: 0xf4bc3f,
-        stageColor: 0xb94136,
-        stageAccent: 0xffd45c,
-        apply: () => {
-          this.playerStats.swordPower += 1;
-          this.addGuildNote('Melee training complete! Sword damage increased.');
-        },
-      },
-      {
-        key: 'range',
-        label: 'Range Damage',
-        detail: '+1 bow power',
-        icon: { texture: 'uiAtlas', frame: 'bow_icon_01' },
-        stat: 'bowPower',
-        color: 0x72c96d,
-        stageColor: 0x397f4a,
-        stageAccent: 0xbde679,
-        apply: () => {
-          if (this.isBowEvolutionReady()) {
-            this.playerStats.bowEvolved = true;
-            this.playerStats.bowPower += BOW_EVOLUTION_POWER_BONUS;
-            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 90);
-            this.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
-            return;
-          }
-          this.playerStats.bowPower += 1;
-          if (this.playerStats.bowEvolved) {
-            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 30);
-            this.addGuildNote('Evolved bow training complete! Master shots improved.');
-            return;
-          }
-          this.addGuildNote('Range training complete! Bow damage increased.');
-        },
-      },
-      {
-        key: 'magic',
-        label: 'Magic Damage',
-        detail: '+1 spell power',
-        icon: { texture: 'uiAtlas', frame: 'spell_icon_01' },
-        stat: 'spellPower',
-        color: 0x6cc5ff,
-        stageColor: 0x3267c9,
-        stageAccent: 0xa8f3ff,
-        apply: () => {
-          this.playerStats.spellPower += 1;
-          this.addGuildNote('Magic training complete! Spell damage increased.');
-        },
-      },
-    ];
+    this.levelUpChoices = LEVEL_UP_CHOICE_DEFS.map((def) => ({
+      ...def,
+      apply: () => def.apply(this),
+    }));
 
     const layout = this.getLevelUpOverlayLayout();
     this.levelUpOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7300).setVisible(false);

@@ -432,3 +432,155 @@ export const COLORS = {
   water: 0x7fd8f6,
   uiInk: '#25324a',
 };
+
+export interface UpgradeDef {
+  name: string;
+  detail: string;
+  cost: number;
+  level: number;
+  icon: string;
+  apply: (scene: any) => void;
+}
+
+export const UPGRADE_DEFS: UpgradeDef[] = [
+  {
+    name: 'Sword',
+    detail: '+1 soft bonk',
+    cost: 55,
+    level: 0,
+    icon: 'swordIconTexture',
+    apply: (scene) => {
+      scene.playerStats.swordPower += 1;
+      scene.addGuildNote('Your wooden sword feels braver!');
+    },
+  },
+  {
+    name: 'Bow',
+    detail: 'faster shots',
+    cost: 50,
+    level: 0,
+    icon: 'bowIconTexture',
+    apply: (scene) => {
+      scene.playerStats.bowCooldown = Math.max(250, scene.playerStats.bowCooldown - 80);
+      scene.playerStats.bowPower += scene.upgrades[1].level % 2 === 0 ? 1 : 0;
+      scene.addGuildNote('Your bow twangs a little quicker.');
+    },
+  },
+  {
+    name: 'Mana',
+    detail: '+25 pool',
+    cost: 45,
+    level: 0,
+    icon: 'manaTexture',
+    apply: (scene) => {
+      scene.playerStats.maxMana += 25;
+      scene.state.mana = scene.playerStats.maxMana;
+      scene.addGuildNote('Level up feeling: more mana bubbles!');
+    },
+  },
+  {
+    name: 'Spell',
+    detail: '+spark area',
+    cost: 65,
+    level: 0,
+    icon: 'spellIconTexture',
+    apply: (scene) => {
+      scene.playerStats.spellPower += 1;
+      scene.playerStats.spellCost = Math.max(16, scene.playerStats.spellCost - 2);
+      scene.addGuildNote('Sparkle Burst learned a bigger twirl.');
+    },
+  },
+  {
+    name: 'Boots',
+    detail: '+speed',
+    cost: 60,
+    level: 0,
+    icon: 'bootIconTexture',
+    apply: (scene) => {
+      scene.playerStats.speed += 0.28;
+      scene.addGuildNote('Swift guild boots make patrols breezy.');
+    },
+  },
+  {
+    name: 'Shield',
+    detail: '+heart',
+    cost: 70,
+    level: 0,
+    icon: 'shieldIconTexture',
+    apply: (scene) => {
+      scene.playerStats.maxHealth += 1;
+      scene.state.health = Math.min(scene.playerStats.maxHealth, scene.state.health + 2);
+      scene.addGuildNote('A sunny shield charm circles you.');
+      scene.spawnShieldGlow();
+    },
+  },
+];
+
+export interface LevelUpChoiceDef {
+  key: string;
+  label: string;
+  detail: string;
+  icon: { texture: string; frame: string };
+  stat: string;
+  color: number;
+  stageColor: number;
+  stageAccent: number;
+  apply: (scene: any) => void;
+}
+
+export const LEVEL_UP_CHOICE_DEFS: LevelUpChoiceDef[] = [
+  {
+    key: 'melee',
+    label: 'Melee Damage',
+    detail: '+1 sword power',
+    icon: { texture: 'uiAtlas', frame: 'sword_icon_01' },
+    stat: 'swordPower',
+    color: 0xf4bc3f,
+    stageColor: 0xb94136,
+    stageAccent: 0xffd45c,
+    apply: (scene) => {
+      scene.playerStats.swordPower += 1;
+      scene.addGuildNote('Melee training complete! Sword damage increased.');
+    },
+  },
+  {
+    key: 'range',
+    label: 'Range Damage',
+    detail: '+1 bow power',
+    icon: { texture: 'uiAtlas', frame: 'bow_icon_01' },
+    stat: 'bowPower',
+    color: 0x72c96d,
+    stageColor: 0x397f4a,
+    stageAccent: 0xbde679,
+    apply: (scene) => {
+      if (scene.isBowEvolutionReady()) {
+        scene.playerStats.bowEvolved = true;
+        scene.playerStats.bowPower += BOW_EVOLUTION_POWER_BONUS;
+        scene.playerStats.bowCooldown = Math.max(220, scene.playerStats.bowCooldown - 90);
+        scene.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
+        return;
+      }
+      scene.playerStats.bowPower += 1;
+      if (scene.playerStats.bowEvolved) {
+        scene.playerStats.bowCooldown = Math.max(220, scene.playerStats.bowCooldown - 30);
+        scene.addGuildNote('Evolved bow training complete! Master shots improved.');
+        return;
+      }
+      scene.addGuildNote('Range training complete! Bow damage increased.');
+    },
+  },
+  {
+    key: 'magic',
+    label: 'Magic Damage',
+    detail: '+1 spell power',
+    icon: { texture: 'uiAtlas', frame: 'spell_icon_01' },
+    stat: 'spellPower',
+    color: 0x6cc5ff,
+    stageColor: 0x3267c9,
+    stageAccent: 0xa8f3ff,
+    apply: (scene) => {
+      scene.playerStats.spellPower += 1;
+      scene.addGuildNote('Magic training complete! Spell damage increased.');
+    },
+  },
+];
