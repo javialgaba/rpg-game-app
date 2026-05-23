@@ -97,6 +97,8 @@ import {
 import { touchControlsCreate, setupMobileViewportHandlers, touchControlsUpdate } from './touchControls';
 import { spawnChest as _spawnChest, updateChests as _updateChests, tryOpenChest as _tryOpenChest, resumeRoundAfterChestBonus as _resumeRoundAfterChestBonus } from './chests';
 import { updateProjectiles as _updateProjectiles, destroyProjectile as _destroyProjectile, clearProjectiles as _clearProjectiles, dropReward as _dropReward, updatePickups as _updatePickups, collectPickup as _collectPickup } from './projectiles';
+import { spawnSparkleBurst as _spawnSparkleBurst, spawnSpellBloom as _spawnSpellBloom, spawnShieldGlow as _spawnShieldGlow, spawnRepairToolEffect as _spawnRepairToolEffect, updateEffects as _updateEffects } from './effects';
+import { swingSword as _swingSword, fireBow as _fireBow, castSpell as _castSpell, damageEnemy as _damageEnemy, removeEnemy as _removeEnemy } from './combat';
 import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
 import {
   getIsoMetrics as _getIsoMetrics,
@@ -1732,97 +1734,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   swingSword(time) {
-    if (time - this.player.lastAttack < 430) {return;}
-    this.ensureAudio();
-    this.player.lastAttack = time;
-    this.player.actionLockUntil = time + 300;
-    this.setRepairMode(false, false);
-    this.state.equipped = 'Wooden Sword';
-    this.player.sprite.play(`${this.player.animPrefix}-melee`, true);
-    this.playTone('sparkle');
-    const reach = 1.48;
-    const center = {
-      x: this.player.iso.x + this.player.facing.x * 0.85,
-      y: this.player.iso.y + this.player.facing.y * 0.85,
-    };
-    const screen = this.isoToScreen(center.x, center.y, 20);
-    this.spawnSparkleBurst(screen.x, screen.y, 0xfff0a2, 9, 0.75);
-    this.enemies.forEach((enemy) => {
-      const dist = Phaser.Math.Distance.Between(center.x, center.y, enemy.iso.x, enemy.iso.y);
-      if (dist <= reach) {
-        this.damageEnemy(enemy, this.playerStats.swordPower, 'bonk');
-        enemy.iso.x += this.player.facing.x * 0.24;
-        enemy.iso.y += this.player.facing.y * 0.24;
-      }
-    });
+    _swingSword(this as any, time);
   }
 
   fireBow(time, targetIso = this.lastPointerIso) {
-    if (time - this.player.lastBow < this.playerStats.bowCooldown) {return;}
-    this.ensureAudio();
-    this.player.lastBow = time;
-    this.player.actionLockUntil = time + 260;
-    this.setRepairMode(false, false);
-    this.state.equipped = 'Guild Bow';
-    this.player.sprite.play(`${this.player.animPrefix}-special`, true);
-    this.playTone('bow');
-    const startIso = { x: this.player.iso.x, y: this.player.iso.y };
-    const target = targetIso;
-    let vx = target.x - startIso.x;
-    let vy = target.y - startIso.y;
-    const len = Math.max(0.01, Math.hypot(vx, vy));
-    vx /= len;
-    vy /= len;
-    this.player.facing = { x: vx, y: vy };
-    const p = this.isoToScreen(startIso.x, startIso.y, 18);
-    const evolvedBow = Boolean(this.playerStats.bowEvolved);
-    const arrow = this.add.container(p.x, p.y - 24).setDepth(p.y + 120);
-    const shaft = this.add.rectangle(0, 0, evolvedBow ? 38 : 32, evolvedBow ? 6 : 5, evolvedBow ? 0xfff0a4 : 0xffe6a3, 1)
-      .setStrokeStyle(1, evolvedBow ? 0x4ca6c9 : 0x9d6d3f, 1);
-    const tip = this.add.triangle(evolvedBow ? 21 : 18, 0, 0, -6, 0, 6, 10, 0, evolvedBow ? 0xffdf75 : 0x82d5ff, 1);
-    arrow.add([shaft, tip]);
-    const screenDir = this.isoToScreen(startIso.x + vx, startIso.y + vy, 18);
-    arrow.rotation = Phaser.Math.Angle.Between(p.x, p.y, screenDir.x, screenDir.y);
-    this.projectiles.push({
-      type: 'arrow',
-      iso: { x: startIso.x + vx * 0.45, y: startIso.y + vy * 0.45 },
-      velocity: { x: vx * (evolvedBow ? 9.2 : 8.2), y: vy * (evolvedBow ? 9.2 : 8.2) },
-      power: this.playerStats.bowPower,
-      range: 6.8 + this.state.level * 0.35 + (evolvedBow ? 1.2 : 0),
-      distance: 0,
-      sprite: arrow,
-    });
-    this.fxLayer.add(arrow);
+    _fireBow(this as any, time, targetIso);
   }
 
   castSpell(time, targetIso = this.lastPointerIso) {
-    if (time - this.player.lastSpell < 780 || this.state.mana < this.playerStats.spellCost) {
-      if (this.state.mana < this.playerStats.spellCost) {
-        this.addGuildNote('Mana is refilling with sparkles.');
-      }
-      return;
-    }
-    this.ensureAudio();
-    this.player.lastSpell = time;
-    this.state.mana -= this.playerStats.spellCost;
-    this.player.actionLockUntil = time + 430;
-    this.setRepairMode(false, false);
-    this.state.equipped = 'Sparkle Spell';
-    this.player.sprite.play(`${this.player.animPrefix}-special`, true);
-    this.playTone('level');
-    const center = {
-      x: Phaser.Math.Clamp(targetIso.x, this.player.iso.x - 4.2, this.player.iso.x + 4.2),
-      y: Phaser.Math.Clamp(targetIso.y, this.player.iso.y - 4.2, this.player.iso.y + 4.2),
-    };
-    const p = this.isoToScreen(center.x, center.y, 16);
-    this.spawnSpellBloom(p.x, p.y - 8, 1 + this.playerStats.spellPower * 0.08);
-    this.enemies.forEach((enemy) => {
-      const dist = Phaser.Math.Distance.Between(center.x, center.y, enemy.iso.x, enemy.iso.y);
-      if (dist < 2.05) {
-        this.damageEnemy(enemy, this.playerStats.spellPower, 'sparkles');
-        enemy.dazedUntil = time + 750;
-      }
-    });
+    _castSpell(this as any, time, targetIso);
   }
 
   createUpgrades() {
@@ -2133,36 +2053,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   spawnRepairToolEffect(building, amount) {
-    const toolX = (this.player.sprite.x + building.sprite.x) / 2;
-    const toolY = (this.player.sprite.y + building.sprite.y) / 2 - 24;
-    const tool = this.add.image(toolX, toolY, 'repairTool')
-      .setOrigin(0.5)
-      .setDisplaySize(56, 56)
-      .setDepth(building.sprite.depth + 260)
-      .setAngle(-12);
-    const plus = this.add.text(toolX + 34, toolY - 26, `+${amount}`, {
-      ...this.uiTextStyle(15, '#28784a'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.fxLayer.add([tool, plus]);
-    this.tweens.add({
-      targets: tool,
-      y: toolY - 20,
-      angle: 18,
-      scale: 1.18,
-      alpha: 0,
-      duration: 620,
-      ease: 'Back.easeOut',
-      onComplete: () => tool.destroy(),
-    });
-    this.tweens.add({
-      targets: plus,
-      y: toolY - 52,
-      alpha: 0,
-      duration: 680,
-      ease: 'Cubic.easeOut',
-      onComplete: () => plus.destroy(),
-    });
+    _spawnRepairToolEffect(this as any, building, amount);
   }
 
   clearLevelTimers() {
@@ -2849,76 +2740,12 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   damageEnemy(enemy, amount, reason) {
-    if (!this.enemies.includes(enemy) || enemy.defeated) {return;}
-    enemy.hp -= amount;
-    enemy.dazedUntil = Math.max(enemy.dazedUntil, this.time.now + 240);
-    enemy.sprite.setTint(reason === 'sparkles' ? 0xbdf6ff : 0xfff3a0);
-    this.time.delayedCall(120, () => {
-      if (!enemy.sprite?.active || enemy.defeated) {return;}
-      if (enemy.variantTint) {enemy.sprite.setTint(enemy.variantTint);}
-      else {enemy.sprite.clearTint();}
-    });
-    this.spawnSparkleBurst(enemy.sprite.x, enemy.sprite.y - 18, reason === 'sparkles' ? 0x9be7ff : 0xffed95, 7, 0.56);
-    this.playTone('hit');
-    if (enemy.hp <= 0) {
-      enemy.defeated = true;
-      if (!enemy.countedDefeat) {
-        enemy.countedDefeat = true;
-        this.levelDefeatsThisRound += 1;
-      }
-      this.levelEnemiesRemaining = Math.max(0, this.levelRequiredDefeats - this.levelDefeatsThisRound);
-      enemy.retreating = true;
-      enemy.sprite.setFrame(this.getEnemyFrameKey(enemy, enemy.defeatFrame ?? 7));
-      enemy.sprite.setTint(0xffffff);
-      enemy.speed += 0.55;
-      this.gainXp(enemy.rewardXp);
-      this.dropReward(enemy.iso.x, enemy.iso.y, enemy);
-      this.maybeSpawnChestDrop(enemy);
-      this.playTone('daze');
-      if (enemy.isBoss) {
-        this.addGuildNote(this.getCurrentWorldTheme().bossDefeat);
-      } else {
-        this.addGuildNote(Phaser.Math.RND.pick([
-          'A forest critter scampered home dazed.',
-          'Sparkles solved that little mix-up.',
-          'The village cheers your gentle defense!',
-        ]));
-      }
-      this.checkLevelClear();
-    }
+    _damageEnemy(this as any, enemy, amount, reason);
   }
 
-  maybeSpawnChestDrop(enemy) {
-    const baseChance = enemy.isBoss ? 0.78 : enemy.variant?.key === 'elder' ? 0.34 : enemy.variant?.key === 'bright' ? 0.22 : 0.12;
-    if (Phaser.Math.FloatBetween(0, 1) >= baseChance) {
-      return;
-    }
-    const chestIso = {
-      x: enemy.iso.x + Phaser.Math.FloatBetween(-0.22, 0.22),
-      y: enemy.iso.y + Phaser.Math.FloatBetween(-0.22, 0.22),
-    };
-    this.spawnChest(chestIso.x, chestIso.y, 'bonus-upgrade', { source: 'enemyDrop', lifetimeMs: 5000 });
-    this.addGuildNote(enemy.isBoss ? 'A guardian chest lands beside the battle!' : 'A chest tumbles free from the skirmish!');
-  }
 
   removeEnemy(enemy, animate = true) {
-    this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
-    if (animate) {
-      this.tweens.add({
-        targets: [enemy.sprite, enemy.shadow],
-        alpha: 0,
-        scale: 0.4,
-        duration: 420,
-        ease: 'Back.easeIn',
-        onComplete: () => {
-          enemy.sprite.destroy();
-          enemy.shadow.destroy();
-        },
-      });
-    } else {
-      enemy.sprite.destroy();
-      enemy.shadow.destroy();
-    }
+    _removeEnemy(this as any, enemy, animate);
   }
 
   clearRetreatingEnemies() {
@@ -3098,74 +2925,19 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   spawnSparkleBurst(x, y, color = 0xfff1a7, count = 10, scale = 1) {
-    for (let i = 0; i < count; i += 1) {
-      const angle = (Math.PI * 2 * i) / count + Phaser.Math.FloatBetween(-0.2, 0.2);
-      const radius = Phaser.Math.FloatBetween(15, 44) * scale;
-      const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2.4, 5.2) * scale, color, 0.9);
-      particle.setDepth(y + 260 + i);
-      this.fxLayer.add(particle);
-      this.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * radius,
-        y: y + Math.sin(angle) * radius - Phaser.Math.Between(8, 24),
-        alpha: 0,
-        scale: 0.2,
-        duration: Phaser.Math.Between(360, 720),
-        ease: 'Cubic.easeOut',
-        onComplete: () => particle.destroy(),
-      });
-    }
+    _spawnSparkleBurst(this as any, x, y, color, count, scale);
   }
 
   spawnSpellBloom(x, y, scale = 1) {
-    const ring = this.add.circle(x, y, 18, 0x9eefff, 0.16).setStrokeStyle(3, 0xd9fbff, 0.85);
-    const burst = this.add.image(x, y, 'spellIconTexture')
-      .setOrigin(0.5)
-      .setDisplaySize(92 * scale, 92 * scale)
-      .setAlpha(0.92)
-      .setDepth(y + 300);
-    ring.setDepth(y + 299);
-    this.fxLayer.add([ring, burst]);
-    this.spawnSparkleBurst(x, y, 0xa5efff, 18, scale);
-    this.tweens.add({
-      targets: [ring, burst],
-      scale: 2.8 * scale,
-      alpha: 0,
-      rotation: Math.PI,
-      duration: 620,
-      ease: 'Cubic.easeOut',
-      onComplete: () => {
-        ring.destroy();
-        burst.destroy();
-      },
-    });
+    _spawnSpellBloom(this as any, x, y, scale);
   }
 
   spawnShieldGlow() {
-    const glow = this.add.circle(this.player.sprite.x, this.player.sprite.y - 24, 34, 0x8ef6c0, 0.16)
-      .setStrokeStyle(3, 0xd7ffe5, 0.8)
-      .setDepth(this.player.sprite.depth + 20);
-    this.fxLayer.add(glow);
-    this.tweens.add({
-      targets: glow,
-      scale: 1.8,
-      alpha: 0,
-      duration: 900,
-      ease: 'Cubic.easeOut',
-      onUpdate: () => glow.setPosition(this.player.sprite.x, this.player.sprite.y - 24),
-      onComplete: () => glow.destroy(),
-    });
+    _spawnShieldGlow(this as any);
   }
 
   updateEffects(dt) {
-    this.effects = this.effects.filter((effect) => {
-      effect.life -= dt;
-      if (effect.life <= 0) {
-        effect.sprite.destroy();
-        return false;
-      }
-      return true;
-    });
+    _updateEffects(this as any, dt);
   }
 
   updateDepths() {

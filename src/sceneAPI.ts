@@ -95,6 +95,8 @@ export interface SceneAPI {
   showLevelUpScreen(context: string): void;
   checkLevelClear(): void;
   spawnSparkleBurst(x: number, y: number, color: number, count: number, scale: number): void;
+  getEnemyFrameKey(enemy: any, frame: number): string;
+  getCurrentWorldTheme(): any;
 
   // Scene properties referenced by chests
   playerStats: any;
@@ -102,6 +104,11 @@ export interface SceneAPI {
   inventoryPanel: any;
   levelTimers: any[];
   levelUpOverlay: any;
+
+  // Combat state
+  levelDefeatsThisRound: number;
+  levelEnemiesRemaining: number;
+  levelRequiredDefeats: number;
 
   [key: string]: any;
 }
