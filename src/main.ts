@@ -6,16 +6,16 @@ import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
 import { findGridPath, pathCost } from './levels/pathfinding';
-import { isFootprintWalkable } from './levels/playerFootprint';
-import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
+
+
 import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
   BOSS_CONFIGS,
   BOSS_ROUND_INDEX,
-  BOW_EVOLUTION_POWER_BONUS,
   COLORS,
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
+  GENERATED_BUILDING_SPRITE_ALPHA,
   getLevelUpProgressForStat,
   getRangeLevelUpPresentationForStats,
   isBowEvolutionReadyForStats,
@@ -31,7 +31,6 @@ import {
   LEVEL_UP_MAX_PIPS,
   MAP_H,
   MAP_W,
-  ORIGIN,
   PLAYER_BASE,
   REPAIR_AMOUNT,
   REPAIR_COOLDOWN,
@@ -43,38 +42,78 @@ import {
   REPAIR_OUTLINE_STROKE_WIDTH,
   REPAIR_RANGE,
   ROUNDS_PER_WORLD,
-  TILE_H,
-  TILE_W,
+  STATIC_BUILDING_BASE_ALPHA,
   WIDTH,
   WORLD_ENEMY_THEMES,
   WORLD_SEQUENCE,
+  UPGRADE_DEFS,
+  LEVEL_UP_CHOICE_DEFS,
 } from './gameConfig';
-
-type HeroChoice = 'male' | 'princess';
-type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'repairConfirm' | 'repairCancel';
-type TouchButtonSlot = 'left' | 'top' | 'right' | 'bottom';
-type UpgradePauseContext = 'roundClear' | 'chestBonus';
-type TouchActionIcon = { texture: string; frame?: string } | null;
-type RepairModeTargetState = keyof typeof REPAIR_OUTLINE_COLORS;
-type GeneratedSurroundAnchor =
-  | 'topLeft'
-  | 'topCenter'
-  | 'topRight'
-  | 'leftUpper'
-  | 'leftLower'
-  | 'rightUpper'
-  | 'rightLower'
-  | 'bottomLeft'
-  | 'bottomCenter'
-  | 'bottomRight';
-type GeneratedSurroundLayer = 'background' | 'shadow' | 'edge' | 'water' | 'decor';
+import type {
+  HeroChoice,
+  TouchActionKey,
+  TouchButtonSlot,
+  UpgradePauseContext,
+  TouchActionIcon,
+  RepairModeTargetState,
+  GeneratedSurroundAnchor,
+  GeneratedSurroundLayer,
+  ScreenFootprintBounds,
+  TouchControlsState,
+  RunResumeBuildingSnapshot,
+  RunResumeStateSnapshot,
+  DroppedChest,
+} from './gameTypes';
+import {
+  GENERATED_SURROUND_PIECES,
+} from './generatedSurroundConfig';
+import { createGeneratedTextures } from './generatedTextures';
+import { getWorldFogPieces, getWorldBackdropPieces, getWorldEdgeClusters } from './generatedWorldRenderData';
+import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDebugAutomationHost, toDebugSlug, getDebugBuildingSummary, setDebugCommandResult, findDebugBuilding, teleportPlayerToDebugTarget, triggerDebugSeasonTransition } from './devCommands';
+import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createUiCardFrame, createUiButton, createManaMeter, uiTextStyle } from './uiFactory';
+import { drawGeneratedLevelDebug, toggleGeneratedLevelDebug, updateGeneratedLevelDebug } from './levelDebugRenderer';
+import { getActiveTimeOfDay, cycleTimeOfDay, getLampGlowIsoPoints, createTimeOfDayLayer } from './timeOfDayRenderer';
+import {
+  drawMapTiles,
+  drawDiamond,
+  createPathStones,
+  createForestBorder,
+  createBuildings,
+  createProps,
+  addFireflyCluster,
+  renderGeneratedBuilding,
+  renderGeneratedProp,
+  renderGeneratedDecoration,
+} from './staticMapRenderer';
+import {
+  getSceneVariantTerrainTexture,
+  getSceneVariantPropTexture,
+  getSceneVariantDecorationTexture,
+  addSceneVariantImage,
+  registerParallaxSprite,
+  hasStaticSceneVariantFrame,
+  renderSceneVariantBackground,
+  renderSceneVariantFrame,
+  renderSceneVariantForeground,
+  renderSceneVariantOverlapDecor,
+  applySceneVariantAmbient,
+  updateCinematicParallax,
+} from './sceneVariantRenderer';
+import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
+import {
+  getIsoMetrics as _getIsoMetrics,
+  scaleGeneratedSize as _scaleGeneratedSize,
+  getFootprintScreenBounds as _getFootprintScreenBounds,
+  isoToScreen as _isoToScreen,
+  isoToGroundedEntityScreen as _isoToGroundedEntityScreen,
+  screenToIso as _screenToIso,
+  clampIso as _clampIso,
+  isGeneratedIsoWalkable as _isGeneratedIsoWalkable,
+} from './isoUtils';
 
 const TOUCH_CONTROL_SCALE = 1.5;
 const scaleTouchControl = (value: number) => value * TOUCH_CONTROL_SCALE;
 
-const GENERATED_BUILDING_SPRITE_ALPHA = 1;
-const STATIC_BUILDING_BASE_ALPHA = 0.14;
-const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
 const OCCLUDED_BUILDING_SPRITE_ALPHA = 0.5;
 const OCCLUDED_STATIC_BUILDING_BASE_ALPHA = 0.06;
 const BUILDING_OCCLUSION_PLAYER_Y_OFFSET_MAX = 12;
@@ -95,296 +134,6 @@ const SPLASH_HERO_CARD_IDLE_LABEL_COLOR = '#7d6039';
 const SPLASH_START_BUTTON_READY_FILL_ALPHA = 0.1;
 const SPLASH_START_BUTTON_DISABLED_FILL_ALPHA = 0.035;
 const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
-const GENERATED_SURROUND_DEPTH_WATER = 2;
-const GENERATED_SURROUND_DEPTH_SHADOW = 3;
-const GENERATED_SURROUND_DEPTH_BACKGROUND = 4;
-const GENERATED_SURROUND_DEPTH_FOREGROUND = 5;
-const GENERATED_SURROUND_DEPTH_MIST_NEAR = 16;
-const GENERATED_SURROUND_DEPTH_MIST_FAR = 17;
-const GENERATED_SURROUND_DEPTH_GROUND_MIST = 21;
-const GENERATED_SURROUND_DEPTH_GROUND_FOG = 22;
-const GENERATED_SURROUND_ORIGIN_SHADOW = 0.5;
-const GENERATED_SURROUND_ORIGIN_WATER = 0.58;
-const GENERATED_SURROUND_ORIGIN_FOREST = 0.64;
-const GENERATED_SURROUND_ORIGIN_CLIFF = 0.66;
-const GENERATED_SURROUND_ORIGIN_CLUSTER = 0.74;
-const GENERATED_SURROUND_ORIGIN_FRAME = 0.62;
-const GENERATED_SURROUND_ORIGIN_MIST_FILL = 0.6;
-const GENERATED_SURROUND_ORIGIN_MIST_PATCH = 0.56;
-const GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER = 0.72;
-const GENERATED_SURROUND_ORIGIN_FOG_PATCH = 0.52;
-const GENERATED_SURROUND_ORIGIN_PINE = 0.84;
-const GENERATED_SURROUND_ALPHA = {
-  opaque: 1,
-  water: {
-    soft: 0.92,
-    highlight: 0.98,
-    recessed: 0.88,
-  },
-  foliage: {
-    highlight: 0.98,
-    strong: 0.96,
-    primary: 0.94,
-    secondary: 0.92,
-    tertiary: 0.9,
-    distant: 0.88,
-  },
-  frame: {
-    accent: 0.98,
-  },
-  shadow: {
-    large: 0.32,
-  },
-  mist: {
-    near: 0.62,
-    side: 0.58,
-    far: 0.38,
-    ground: 0.36,
-    soft: 0.32,
-  },
-  fog: {
-    strong: 0.44,
-    medium: 0.42,
-    soft: 0.32,
-    faint: 0.3,
-    ground: 0.28,
-  },
-  purpleMist: {
-    accent: 0.18,
-  },
-  silhouette: {
-    leftPine: 0.22,
-    rightPine: 0.2,
-  },
-} as const;
-
-type GeneratedSurroundDepth = number | { edge: 'top' | 'bottom'; tileOffset: number };
-
-interface ScreenFootprintBounds {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-  width: number;
-  height: number;
-  centerX: number;
-  centerY: number;
-  bottomCenterX: number;
-  bottomCenterY: number;
-}
-
-interface GeneratedSurroundPiece {
-  frame: string;
-  anchor: GeneratedSurroundAnchor;
-  offsetXUnits: number;
-  offsetYUnits: number;
-  uniformScale: number;
-  layer: GeneratedSurroundLayer;
-  depth: GeneratedSurroundDepth;
-  alpha?: number;
-  originX?: number;
-  originY?: number;
-}
-
-type GeneratedSurroundTransform = Readonly<Pick<GeneratedSurroundPiece, 'offsetXUnits' | 'offsetYUnits' | 'uniformScale'>>;
-
-interface TouchControlsState {
-  container: Phaser.GameObjects.Container;
-  joystickBase: Phaser.GameObjects.Arc;
-  joystickThumb: Phaser.GameObjects.Arc;
-  joystickVector: { x: number; y: number };
-  joystickPointerId: number | null;
-  joystickCenter: { x: number; y: number };
-  buttons: Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
-  repairButtons: Phaser.GameObjects.Container[];
-  portraitOverlay: Phaser.GameObjects.Container;
-}
-
-interface RunResumeBuildingSnapshot {
-  id?: string;
-  name: string;
-  hp: number;
-  max: number;
-}
-
-interface RunResumeStateSnapshot {
-  playerStats?: Partial<typeof PLAYER_BASE>;
-  state?: Partial<FairyGuildScene['state']>;
-  buildings?: RunResumeBuildingSnapshot[];
-  heroChoice?: HeroChoice;
-  upgradeLevels?: number[];
-  note?: string;
-}
-
-interface DroppedChest {
-  iso: { x: number; y: number };
-  sprite: Phaser.GameObjects.Image;
-  glow: Phaser.GameObjects.Arc;
-  reward: string;
-  opened: boolean;
-  bob: number;
-  source: 'enemyDrop';
-  spawnedAt: number;
-  despawnAt: number;
-  blinkAt: number;
-}
-
-const GENERATED_SURROUND_TOP_EDGE_DEPTH: GeneratedSurroundDepth = { edge: 'top', tileOffset: 0.18 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.62 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.98 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.02 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.04 };
-
-const GENERATED_SURROUND_LAYOUT = {
-  shadow: {
-    bottomCenterBase: { offsetXUnits: 0, offsetYUnits: 0.82, uniformScale: 2.72 },
-  },
-  water: {
-    topLeftWide: { offsetXUnits: -1.86, offsetYUnits: 2.04, uniformScale: 2.04 },
-    topLeftInset: { offsetXUnits: 1.36, offsetYUnits: 1.42, uniformScale: 1.36 },
-    topRightHighlight: { offsetXUnits: 1.86, offsetYUnits: 1.98, uniformScale: 1.8 },
-    topRightRecess: { offsetXUnits: -1.28, offsetYUnits: 1.26, uniformScale: 1.28 },
-  },
-  forest: {
-    topLeftOuter: { offsetXUnits: -3.3, offsetYUnits: 0.96, uniformScale: 1.28 },
-    topRightOuter: { offsetXUnits: 3.4, offsetYUnits: 0.18, uniformScale: 1.08 },
-    topLeftMid: { offsetXUnits: 2.28, offsetYUnits: 1.78, uniformScale: 0.9 },
-    topRightMid: { offsetXUnits: -1.92, offsetYUnits: 1.84, uniformScale: 0.84 },
-    topLeftRearRight: { offsetXUnits: 3.24, offsetYUnits: 2.46, uniformScale: 0.78 },
-    topLeftRearCenter: { offsetXUnits: 0.82, offsetYUnits: 3.22, uniformScale: 0.74 },
-    topLeftRearInner: { offsetXUnits: 1.9, offsetYUnits: 3.56, uniformScale: 0.84 },
-    topRightRearLeft: { offsetXUnits: -3.16, offsetYUnits: 2.44, uniformScale: 0.76 },
-    topRightRearCenter: { offsetXUnits: -0.92, offsetYUnits: 3.18, uniformScale: 0.74 },
-    topRightRearInner: { offsetXUnits: -1.98, offsetYUnits: 3.52, uniformScale: 0.82 },
-    rightUpperBackdrop: { offsetXUnits: 1.66, offsetYUnits: -1.16, uniformScale: 0.92 },
-    leftLowerBackdrop: { offsetXUnits: -1.28, offsetYUnits: 1.46, uniformScale: 0.88 },
-    bottomCenterFill: { offsetXUnits: 0, offsetYUnits: 0.86, uniformScale: 0.9 },
-  },
-  cliff: {
-    topLeftOuter: { offsetXUnits: -3.6, offsetYUnits: 2.44, uniformScale: 0.92 },
-    topRightOuter: { offsetXUnits: 3.32, offsetYUnits: 2.38, uniformScale: 0.9 },
-    topLeftInner: { offsetXUnits: 2.84, offsetYUnits: 2.84, uniformScale: 0.88 },
-    topRightInner: { offsetXUnits: -2.74, offsetYUnits: 2.88, uniformScale: 0.86 },
-    topLeftEdge: { offsetXUnits: 4.6, offsetYUnits: 0.38, uniformScale: 0.9 },
-    topRightEdge: { offsetXUnits: -4.6, offsetYUnits: 0.52, uniformScale: 0.96 },
-    bottomCenterFill: { offsetXUnits: -2.18, offsetYUnits: 0.76, uniformScale: 0.76 },
-  },
-  cluster: {
-    topLeftNear: { offsetXUnits: -0.38, offsetYUnits: 2.76, uniformScale: 1.36 },
-    topLeftMid: { offsetXUnits: 1.54, offsetYUnits: 3.08, uniformScale: 1.22 },
-    topLeftOuter: { offsetXUnits: -2.28, offsetYUnits: 3.12, uniformScale: 1.46 },
-    topRightNear: { offsetXUnits: 0.42, offsetYUnits: 2.92, uniformScale: 1.3 },
-    topRightMid: { offsetXUnits: -1.44, offsetYUnits: 3.04, uniformScale: 1.18 },
-    topRightOuter: { offsetXUnits: 2.22, offsetYUnits: 3.14, uniformScale: 1.38 },
-    bottomCenterAccent: { offsetXUnits: 2.08, offsetYUnits: 0.78, uniformScale: 1.08 },
-    bottomLeftBackdrop: { offsetXUnits: -2.12, offsetYUnits: 0.96, uniformScale: 1.02 },
-    bottomRightBackdrop: { offsetXUnits: 2.12, offsetYUnits: 0.96, uniformScale: 1.02 },
-  },
-  frame: {
-    topLeftCap: { offsetXUnits: -0.82, offsetYUnits: 1.12, uniformScale: 1.24 },
-    topCenterLeftAccent: { offsetXUnits: -1.6, offsetYUnits: 0.74, uniformScale: 1.2 },
-    topCenterRightAccent: { offsetXUnits: 1.6, offsetYUnits: 0.74, uniformScale: 1.2 },
-    topCenterMain: { offsetXUnits: 0, offsetYUnits: 0.94, uniformScale: 1.3 },
-    topRightCap: { offsetXUnits: 0.92, offsetYUnits: 1.06, uniformScale: 1.24 },
-    leftUpper: { offsetXUnits: -0.26, offsetYUnits: 1.52, uniformScale: 1.26 },
-    rightUpper: { offsetXUnits: 0.3, offsetYUnits: 1.66, uniformScale: 1.28 },
-    leftLower: { offsetXUnits: -0.22, offsetYUnits: 0.1, uniformScale: 1.1 },
-    rightLower: { offsetXUnits: 0.22, offsetYUnits: 0.1, uniformScale: 1.1 },
-    bottomLeft: { offsetXUnits: -0.46, offsetYUnits: 0.54, uniformScale: 0.84 },
-    bottomRight: { offsetXUnits: 0.46, offsetYUnits: 0.54, uniformScale: 0.84 },
-  },
-  mist: {
-    topLeftNear: { offsetXUnits: 0.72, offsetYUnits: 1.18, uniformScale: 1.02 },
-    topLeftFar: { offsetXUnits: -1.42, offsetYUnits: 2.72, uniformScale: 1.2 },
-    topRightNear: { offsetXUnits: -0.52, offsetYUnits: 1.16, uniformScale: 1 },
-    topRightGround: { offsetXUnits: 1.38, offsetYUnits: 2.78, uniformScale: 1.14 },
-    bottomLeftSoft: { offsetXUnits: 0.44, offsetYUnits: 0.82, uniformScale: 1.02 },
-    bottomCenterGround: { offsetXUnits: 0, offsetYUnits: 0.9, uniformScale: 1.16 },
-    bottomRightSoft: { offsetXUnits: -0.44, offsetYUnits: 0.82, uniformScale: 1.02 },
-  },
-  fog: {
-    topLeftStrong: { offsetXUnits: 1.46, offsetYUnits: 2.92, uniformScale: 1.54 },
-    topLeftSoft: { offsetXUnits: 3.16, offsetYUnits: 2.66, uniformScale: 1.06 },
-    topRightMedium: { offsetXUnits: -1.54, offsetYUnits: 2.88, uniformScale: 1.42 },
-    topRightFaint: { offsetXUnits: -3.06, offsetYUnits: 2.6, uniformScale: 1.02 },
-    bottomLeftGround: { offsetXUnits: 1.72, offsetYUnits: 1.02, uniformScale: 1.26 },
-    bottomRightGround: { offsetXUnits: -1.72, offsetYUnits: 1.02, uniformScale: 1.26 },
-  },
-  purpleMist: {
-    topLeftAccent: { offsetXUnits: -0.12, offsetYUnits: 3.26, uniformScale: 1.18 },
-    topRightAccent: { offsetXUnits: 0.12, offsetYUnits: 3.22, uniformScale: 1.14 },
-  },
-  silhouette: {
-    topLeftPine: { offsetXUnits: -2.42, offsetYUnits: 3.7, uniformScale: 1.24 },
-    topRightPine: { offsetXUnits: 2.46, offsetYUnits: 3.62, uniformScale: 1.2 },
-  },
-} as const satisfies Record<string, Record<string, GeneratedSurroundTransform>>;
-
-// Generated surround art is tuned in tile-space units so layout changes live in one place.
-const GENERATED_SURROUND_PIECES: ReadonlyArray<GeneratedSurroundPiece> = [
-  { frame: 'large_shadow', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.shadow.bottomCenterBase, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.shadow.large, originY: GENERATED_SURROUND_ORIGIN_SHADOW },
-  { frame: 'surround_water_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.water.topLeftWide, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_water_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.water.topLeftInset, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.soft, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_water_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.water.topRightHighlight, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.highlight, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_water_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.water.topRightRecess, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.recessed, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftNear, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearRight, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearCenter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightNear, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearLeft, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearCenter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_top_left_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.frame.topLeftCap, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterLeftAccent, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterRightAccent, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterMain, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_right_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.frame.topRightCap, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_left_upper_01', anchor: 'leftUpper', ...GENERATED_SURROUND_LAYOUT.frame.leftUpper, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_right_upper_01', anchor: 'rightUpper', ...GENERATED_SURROUND_LAYOUT.frame.rightUpper, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftEdge, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightEdge, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_mist_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.mist.topLeftNear, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.near, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
-  { frame: 'surround_mist_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.mist.topLeftFar, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.far, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'fog_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.fog.topLeftStrong, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.strong, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'fog_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.fog.topLeftSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'purple_mist_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.purpleMist.topLeftAccent, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_mist_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.mist.topRightNear, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.side, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
-  { frame: 'surround_mist_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.mist.topRightGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'fog_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.fog.topRightMedium, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.medium, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'fog_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.fog.topRightFaint, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.faint, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'purple_mist_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.purpleMist.topRightAccent, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_left_lower_01', anchor: 'leftLower', ...GENERATED_SURROUND_LAYOUT.frame.leftLower, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_right_lower_01', anchor: 'rightLower', ...GENERATED_SURROUND_LAYOUT.frame.rightLower, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_bottom_left_01', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.frame.bottomLeft, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_cliff_filler_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.cliff.bottomCenterFill, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_forest_mass_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.forest.bottomCenterFill, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'forest_cluster_back', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.cluster.bottomCenterAccent, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
-  { frame: 'surround_bottom_right_01', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.frame.bottomRight, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_mist_fill_01', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.mist.bottomLeftSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_mist_fill_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.mist.bottomCenterGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_mist_fill_01', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.mist.bottomRightSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'fog_patch', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.fog.bottomLeftGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
-  { frame: 'fog_patch', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.fog.bottomRightGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
-  { frame: 'surround_forest_mass_01', anchor: 'rightUpper', ...GENERATED_SURROUND_LAYOUT.forest.rightUpperBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
-  { frame: 'surround_forest_mass_01', anchor: 'leftLower', ...GENERATED_SURROUND_LAYOUT.forest.leftLowerBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
-  { frame: 'forest_cluster_back', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.cluster.bottomLeftBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.cluster.bottomRightBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
-  { frame: 'pine_silhouette_tall', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.silhouette.topLeftPine, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.leftPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
-  { frame: 'pine_silhouette_tall', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.silhouette.topRightPine, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.rightPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
-];
 
 class FairyGuildScene extends Phaser.Scene {
   [key: string]: any;
@@ -470,6 +219,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.upgradePauseContext = 'roundClear';
     this.pausedRoundTimers = [];
     this.parallaxSprites = [];
+    this.audio = createAudioState();
   }
 
   init(data) {
@@ -533,7 +283,6 @@ class FairyGuildScene extends Phaser.Scene {
     if (import.meta.env.DEV) {
       (window as typeof window & { __fairyGuildScene?: FairyGuildScene }).__fairyGuildScene = this;
     }
-    this.createAudio();
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
     if (this.textures.exists('princessHeroSheet')) {
       this.registerSheetFrames('princessHeroSheet', 8, 4, 'princess');
@@ -738,324 +487,19 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createGeneratedTextures() {
-    const g = this.make.graphics({ x: 0, y: 0, add: false } as any);
-    const make = (key, width, height, draw) => {
-      g.clear();
-      if (this.textures.exists(key)) {this.textures.remove(key);}
-      draw(g, width, height);
-      g.generateTexture(key, width, height);
-    };
-
-    make('castleTexture', 180, 156, (gfx) => {
-      gfx.fillStyle(0x4f8bd6, 0.22);
-      gfx.fillEllipse(90, 132, 128, 26);
-      gfx.fillStyle(0xf6e7c6, 1);
-      gfx.fillRoundedRect(50, 58, 80, 64, 8);
-      gfx.fillStyle(0xffd37a, 1);
-      gfx.fillTriangle(42, 62, 90, 20, 138, 62);
-      gfx.fillStyle(0xffa75e, 1);
-      gfx.fillRect(58, 66, 64, 10);
-      gfx.fillStyle(0xd9f6ff, 1);
-      gfx.fillRoundedRect(80, 85, 20, 30, 8);
-      gfx.fillStyle(0x8d70d6, 1);
-      gfx.fillRoundedRect(24, 70, 30, 48, 6);
-      gfx.fillRoundedRect(126, 70, 30, 48, 6);
-      gfx.fillStyle(0xffd37a, 1);
-      gfx.fillTriangle(18, 72, 39, 42, 60, 72);
-      gfx.fillTriangle(120, 72, 141, 42, 162, 72);
-      gfx.fillStyle(0xffffff, 1);
-      gfx.fillCircle(90, 48, 6);
-      gfx.lineStyle(4, 0x7d5a35, 0.65);
-      gfx.strokeRoundedRect(50, 58, 80, 64, 8);
-      gfx.strokeRoundedRect(24, 70, 30, 48, 6);
-      gfx.strokeRoundedRect(126, 70, 30, 48, 6);
-    });
-
-    make('cottageTexture', 142, 120, (gfx) => {
-      gfx.fillStyle(0x7f5b38, 0.22);
-      gfx.fillEllipse(71, 100, 96, 20);
-      gfx.fillStyle(0xfff0c9, 1);
-      gfx.fillRoundedRect(34, 48, 74, 48, 8);
-      gfx.fillStyle(0xf4a13f, 1);
-      gfx.fillTriangle(24, 52, 72, 18, 118, 52);
-      gfx.fillStyle(0xffc35c, 1);
-      gfx.fillRoundedRect(36, 50, 72, 10, 4);
-      gfx.fillStyle(0x6ac5ff, 1);
-      gfx.fillRoundedRect(48, 64, 16, 16, 5);
-      gfx.fillRoundedRect(78, 64, 16, 16, 5);
-      gfx.fillStyle(0xa87343, 1);
-      gfx.fillRoundedRect(63, 74, 16, 24, 8);
-      gfx.lineStyle(4, 0x74523a, 0.6);
-      gfx.strokeRoundedRect(34, 48, 74, 48, 8);
-    });
-
-    make('bakeryTexture', 142, 120, (gfx) => {
-      gfx.fillStyle(0x7f5b38, 0.22);
-      gfx.fillEllipse(71, 100, 96, 20);
-      gfx.fillStyle(0xffe4b8, 1);
-      gfx.fillRoundedRect(30, 50, 82, 46, 8);
-      gfx.fillStyle(0x8bd3ff, 1);
-      gfx.fillTriangle(22, 52, 72, 16, 122, 52);
-      gfx.fillStyle(0xffffff, 1);
-      for (let i = 0; i < 5; i += 1) {
-        gfx.fillRect(31 + i * 16, 52, 8, 22);
-      }
-      gfx.fillStyle(0xed7a62, 1);
-      for (let i = 0; i < 5; i += 1) {
-        gfx.fillRect(39 + i * 16, 52, 8, 22);
-      }
-      gfx.fillStyle(0xc68647, 1);
-      gfx.fillRoundedRect(60, 74, 22, 22, 6);
-      gfx.fillStyle(0x8b5a30, 1);
-      gfx.fillEllipse(72, 66, 36, 12);
-      gfx.lineStyle(4, 0x73553f, 0.58);
-      gfx.strokeRoundedRect(30, 50, 82, 46, 8);
-    });
-
-    make('marketTexture', 150, 110, (gfx) => {
-      gfx.fillStyle(0x7f5b38, 0.2);
-      gfx.fillEllipse(75, 92, 110, 18);
-      gfx.fillStyle(0x875b3e, 1);
-      gfx.fillRoundedRect(40, 62, 70, 24, 6);
-      gfx.fillStyle(0xf8f2d0, 1);
-      gfx.fillRoundedRect(32, 38, 86, 26, 5);
-      gfx.fillStyle(0xed6b68, 1);
-      for (let i = 0; i < 5; i += 1) {
-        gfx.fillRect(34 + i * 17, 38, 9, 27);
-      }
-      gfx.fillStyle(0x7fd56a, 1);
-      gfx.fillCircle(54, 72, 7);
-      gfx.fillStyle(0xffd15a, 1);
-      gfx.fillCircle(75, 73, 7);
-      gfx.fillStyle(0xff8f6f, 1);
-      gfx.fillCircle(96, 72, 7);
-      gfx.lineStyle(4, 0x765239, 0.55);
-      gfx.strokeRoundedRect(32, 38, 86, 26, 5);
-    });
-
-    make('treeTexture', 104, 132, (gfx) => {
-      gfx.fillStyle(0x7a5330, 1);
-      gfx.fillRoundedRect(45, 72, 16, 40, 7);
-      gfx.fillStyle(0x399b5d, 1);
-      gfx.fillCircle(52, 46, 30);
-      gfx.fillStyle(0x55ba67, 1);
-      gfx.fillCircle(34, 58, 26);
-      gfx.fillStyle(0x70cf76, 1);
-      gfx.fillCircle(70, 60, 28);
-      gfx.fillStyle(0xefffa4, 0.75);
-      gfx.fillCircle(67, 37, 4);
-      gfx.fillCircle(31, 51, 3);
-      gfx.lineStyle(4, 0x276f45, 0.35);
-      gfx.strokeCircle(52, 46, 30);
-    });
-
-    make('wellTexture', 78, 84, (gfx) => {
-      gfx.fillStyle(0x6d95bd, 1);
-      gfx.fillEllipse(39, 58, 48, 20);
-      gfx.fillStyle(0xd7edf8, 1);
-      gfx.fillEllipse(39, 50, 46, 18);
-      gfx.fillStyle(0x9a7145, 1);
-      gfx.fillRect(21, 28, 6, 34);
-      gfx.fillRect(51, 28, 6, 34);
-      gfx.fillStyle(0xf3b85e, 1);
-      gfx.fillTriangle(16, 30, 39, 8, 62, 30);
-      gfx.lineStyle(3, 0x735239, 0.6);
-      gfx.strokeEllipse(39, 50, 46, 18);
-    });
-
-    make('lampTexture', 46, 94, (gfx) => {
-      gfx.fillStyle(0x664735, 1);
-      gfx.fillRoundedRect(20, 34, 6, 46, 3);
-      gfx.fillStyle(0xffef9b, 1);
-      gfx.fillCircle(23, 26, 12);
-      gfx.fillStyle(0xffffff, 0.6);
-      gfx.fillCircle(19, 22, 4);
-      gfx.lineStyle(3, 0x74533a, 0.7);
-      gfx.strokeCircle(23, 26, 12);
-      gfx.strokeRoundedRect(14, 80, 18, 7, 3);
-    });
-
-    make('signTexture', 70, 80, (gfx) => {
-      gfx.fillStyle(0x7b5232, 1);
-      gfx.fillRoundedRect(32, 26, 6, 48, 3);
-      gfx.fillStyle(0xb9783d, 1);
-      gfx.fillRoundedRect(12, 22, 46, 22, 5);
-      gfx.fillStyle(0xffe6a3, 1);
-      gfx.fillCircle(48, 33, 3);
-      gfx.lineStyle(3, 0x704b32, 0.7);
-      gfx.strokeRoundedRect(12, 22, 46, 22, 5);
-    });
-
-    make('chestTexture', 72, 58, (gfx) => {
-      gfx.fillStyle(0xffdf7a, 0.35);
-      gfx.fillEllipse(36, 44, 54, 12);
-      gfx.fillStyle(0x9a6033, 1);
-      gfx.fillRoundedRect(14, 24, 44, 22, 5);
-      gfx.fillStyle(0xd5893e, 1);
-      gfx.fillRoundedRect(14, 17, 44, 18, 8);
-      gfx.fillStyle(0xffd45b, 1);
-      gfx.fillRoundedRect(32, 27, 8, 12, 3);
-      gfx.lineStyle(3, 0x66442a, 0.7);
-      gfx.strokeRoundedRect(14, 24, 44, 22, 5);
-      gfx.strokeRoundedRect(14, 17, 44, 18, 8);
-    });
-
-    make('coinTexture', 36, 36, (gfx) => {
-      gfx.fillStyle(0xffcf4d, 1);
-      gfx.fillCircle(18, 18, 13);
-      gfx.fillStyle(0xfff3a6, 0.9);
-      gfx.fillCircle(14, 13, 4);
-      gfx.lineStyle(3, 0xbc842d, 0.9);
-      gfx.strokeCircle(18, 18, 13);
-    });
-
-    make('heartTexture', 38, 36, (gfx) => {
-      gfx.fillStyle(0xf05c78, 1);
-      gfx.fillCircle(14, 14, 8);
-      gfx.fillCircle(24, 14, 8);
-      gfx.fillTriangle(7, 17, 31, 17, 19, 32);
-      gfx.fillStyle(0xffb5c4, 0.75);
-      gfx.fillCircle(13, 12, 3);
-    });
-
-    make('manaTexture', 38, 38, (gfx) => {
-      gfx.fillStyle(0x76d9ff, 1);
-      gfx.fillCircle(19, 19, 13);
-      gfx.fillStyle(0xffffff, 0.7);
-      gfx.fillCircle(15, 14, 4);
-      gfx.lineStyle(3, 0x348fce, 0.8);
-      gfx.strokeCircle(19, 19, 13);
-    });
-
-    make('xpTexture', 42, 42, (gfx) => {
-      gfx.fillStyle(0xffec73, 1);
-      const points = [];
-      for (let i = 0; i < 10; i += 1) {
-        const r = i % 2 === 0 ? 17 : 7;
-        const a = -Math.PI / 2 + (i * Math.PI) / 5;
-        points.push(new Phaser.Geom.Point(21 + Math.cos(a) * r, 21 + Math.sin(a) * r));
-      }
-      gfx.fillPoints(points, true);
-      gfx.lineStyle(3, 0xd49a28, 0.7);
-      gfx.strokePoints(points, true);
-    });
-
-    make('swordIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0x8fd5ff, 1);
-      gfx.fillTriangle(26, 6, 34, 27, 19, 27);
-      gfx.fillStyle(0x9b6a39, 1);
-      gfx.fillRoundedRect(20, 27, 8, 13, 3);
-      gfx.fillStyle(0xffd86b, 1);
-      gfx.fillRoundedRect(12, 26, 24, 6, 3);
-      gfx.lineStyle(2, 0x5f4a36, 0.8);
-      gfx.strokeTriangle(26, 6, 34, 27, 19, 27);
-    });
-
-    make('bowIconTexture', 48, 48, (gfx) => {
-      gfx.lineStyle(5, 0x9a6238, 1);
-      gfx.beginPath();
-      gfx.arc(24, 24, 16, -1.2, 1.2, false);
-      gfx.strokePath();
-      gfx.lineStyle(2, 0xf7efd2, 1);
-      gfx.lineBetween(31, 9, 31, 39);
-      gfx.fillStyle(0x7fd6ff, 1);
-      gfx.fillTriangle(9, 24, 23, 18, 23, 30);
-    });
-
-    make('spellIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0x8ae7ff, 1);
-      gfx.fillCircle(24, 24, 13);
-      gfx.fillStyle(0xfff49a, 1);
-      gfx.fillCircle(24, 8, 4);
-      gfx.fillCircle(40, 24, 4);
-      gfx.fillCircle(24, 40, 4);
-      gfx.fillCircle(8, 24, 4);
-      gfx.lineStyle(3, 0x4b9ed1, 0.8);
-      gfx.strokeCircle(24, 24, 13);
-    });
-
-    make('bootIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0xcf7b45, 1);
-      gfx.fillRoundedRect(15, 13, 15, 24, 5);
-      gfx.fillRoundedRect(23, 28, 17, 9, 4);
-      gfx.fillStyle(0xffd86b, 1);
-      gfx.fillRect(16, 20, 14, 4);
-      gfx.lineStyle(3, 0x6f4a31, 0.75);
-      gfx.strokeRoundedRect(15, 13, 15, 24, 5);
-    });
-
-    make('shieldIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0x7ee0aa, 1);
-      gfx.fillTriangle(24, 7, 39, 15, 34, 34);
-      gfx.fillTriangle(24, 7, 9, 15, 14, 34);
-      gfx.fillTriangle(14, 34, 34, 34, 24, 43);
-      gfx.fillStyle(0xffffff, 0.45);
-      gfx.fillTriangle(24, 11, 31, 17, 24, 35);
-      gfx.lineStyle(3, 0x378c63, 0.8);
-      gfx.strokeTriangle(24, 7, 39, 15, 34, 34);
-      gfx.strokeTriangle(24, 7, 9, 15, 14, 34);
-    });
+    createGeneratedTextures(this);
   }
 
   getIsoMetrics() {
-    const generated = this.generatedLevelActive && this.generatedLevel;
-    const scale = generated ? this.generatedLevel.config.tileSize / 64 : 1;
-    const tileW = TILE_W * scale;
-    const tileH = TILE_H * scale;
-    const mapW = generated ? this.generatedLevel.width : MAP_W;
-    const mapH = generated ? this.generatedLevel.height : MAP_H;
-    const defaultCenterY = ORIGIN.y + ((MAP_W - 1 + MAP_H - 1) * TILE_H) / 4;
-    const origin = generated
-      ? {
-        x: ORIGIN.x,
-        y: defaultCenterY - ((mapW - 1 + mapH - 1) * tileH) / 4,
-      }
-      : ORIGIN;
-    return { origin, tileW, tileH, scale, mapW, mapH };
+    return _getIsoMetrics(this.generatedLevelActive, this.generatedLevel);
   }
 
   scaleGeneratedSize(size) {
-    const scale = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.config.tileSize / 64 : 1;
-    return [size[0] * scale, size[1] * scale];
+    return _scaleGeneratedSize(size, this.generatedLevelActive, this.generatedLevel);
   }
 
   getFootprintScreenBounds(footprintCells: GridPoint[]): ScreenFootprintBounds {
-    const { tileW, tileH } = this.getIsoMetrics();
-    const halfW = tileW / 2;
-    const halfH = tileH / 2;
-    let left = Number.POSITIVE_INFINITY;
-    let right = Number.NEGATIVE_INFINITY;
-    let top = Number.POSITIVE_INFINITY;
-    let bottom = Number.NEGATIVE_INFINITY;
-
-    footprintCells.forEach((cell) => {
-      const center = this.isoToScreen(cell.x, cell.y);
-      left = Math.min(left, center.x - halfW);
-      right = Math.max(right, center.x + halfW);
-      top = Math.min(top, center.y - halfH);
-      bottom = Math.max(bottom, center.y + halfH);
-    });
-
-    if (!Number.isFinite(left) || !Number.isFinite(right) || !Number.isFinite(top) || !Number.isFinite(bottom)) {
-      const center = this.isoToScreen(0, 0);
-      left = center.x - halfW;
-      right = center.x + halfW;
-      top = center.y - halfH;
-      bottom = center.y + halfH;
-    }
-
-    return {
-      left,
-      right,
-      top,
-      bottom,
-      width: right - left,
-      height: bottom - top,
-      centerX: (left + right) / 2,
-      centerY: (top + bottom) / 2,
-      bottomCenterX: (left + right) / 2,
-      bottomCenterY: bottom,
-    };
+    return _getFootprintScreenBounds(footprintCells, this.generatedLevelActive, this.generatedLevel);
   }
 
   getGeneratedFootprintSpriteLayout(
@@ -1086,55 +530,23 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   isoToScreen(x, y, z = 0) {
-    const { origin, tileW, tileH, scale } = this.getIsoMetrics();
-    return {
-      x: origin.x + (x - y) * (tileW / 2),
-      y: origin.y + (x + y) * (tileH / 2) - z * scale,
-    };
+    return _isoToScreen(x, y, z, this.generatedLevelActive, this.generatedLevel);
   }
 
   isoToGroundedEntityScreen(x, y, z = 18) {
-    const point = this.isoToScreen(x, y, this.generatedLevelActive ? 0 : z);
-    if (!this.generatedLevelActive) {
-      return point;
-    }
-    const { tileH } = this.getIsoMetrics();
-    return { x: point.x, y: point.y + tileH / 2 };
+    return _isoToGroundedEntityScreen(x, y, z, this.generatedLevelActive, this.generatedLevel);
   }
 
   screenToIso(x, y) {
-    const { origin, tileW, tileH } = this.getIsoMetrics();
-    const sx = x - origin.x;
-    const sy = y - origin.y;
-    return {
-      x: sy / tileH + sx / tileW,
-      y: sy / tileH - sx / tileW,
-    };
+    return _screenToIso(x, y, this.generatedLevelActive, this.generatedLevel);
   }
 
   clampIso(point, padding = 0.5) {
-    if (this.generatedLevelActive && this.generatedLevel) {
-      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
-      point.x = Phaser.Math.Clamp(point.x, minX, maxX);
-      point.y = Phaser.Math.Clamp(point.y, minY, maxY);
-      return point;
-    }
-    const maxX = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.width : MAP_W) - 1 - padding;
-    const maxY = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.height : MAP_H) - 1 - padding;
-    point.x = Phaser.Math.Clamp(point.x, padding, maxX);
-    point.y = Phaser.Math.Clamp(point.y, padding, maxY);
-    return point;
+    return _clampIso(point, padding, this.generatedLevelActive, this.generatedLevel);
   }
 
   isGeneratedIsoWalkable(iso) {
-    if (!this.generatedLevelActive || !this.generatedLevel) {
-      return true;
-    }
-    return isFootprintWalkable(
-      this.generatedLevel.walkableGrid,
-      iso,
-      this.generatedLevel.playableBounds,
-    );
+    return _isGeneratedIsoWalkable(iso, this.generatedLevelActive, this.generatedLevel);
   }
 
   createBackground() {
@@ -1337,22 +749,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updateCinematicParallax() {
-    if (!this.parallaxSprites?.length || !this.player || !this.generatedLevel) {
-      return;
-    }
-    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const spanX = Math.max(1, (maxX - minX) / 2);
-    const spanY = Math.max(1, (maxY - minY) / 2);
-    const nx = Phaser.Math.Clamp((this.player.iso.x - centerX) / spanX, -1, 1);
-    const ny = Phaser.Math.Clamp((this.player.iso.y - centerY) / spanY, -1, 1);
-    this.parallaxSprites.forEach((entry) => {
-      entry.sprite.setPosition(
-        entry.baseX - nx * 46 * entry.factor,
-        entry.baseY - ny * 30 * entry.factor,
-      );
-    });
+    updateCinematicParallax(this);
   }
 
   getCurrentWorldTheme() {
@@ -1461,45 +858,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getSceneVariantTerrainTexture(token) {
-    const variant = this.getActiveSceneVariant();
-    if (variant.key === 'noon_winter') {
-      if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
-        return { textureKey: 'winter_path_01', frameKey: undefined };
-      }
-      return { textureKey: 'winter_grass_01', frameKey: undefined };
-    }
-    if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
-      return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.path[0] };
-    }
-    return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.grass[0] };
+    return getSceneVariantTerrainTexture(this, token);
   }
 
   getSceneVariantPropTexture(placement) {
-    const variant = this.getActiveSceneVariant();
-    if (variant.key !== 'noon_winter') {
-      return null;
-    }
-    if (placement.token === 'tree') {
-      return { textureKey: 'winter_pine_01', frameKey: undefined };
-    }
-    if (placement.type === 'terrain' && placement.token === 'decoration') {
-      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
-    }
-    return null;
+    return getSceneVariantPropTexture(this, placement);
   }
 
   getSceneVariantDecorationTexture(placement) {
-    const variant = this.getActiveSceneVariant();
-    if (variant.key !== 'noon_winter') {
-      return null;
-    }
-    if (placement.decorationKind === 'flowers' || placement.decorationKind === 'grassPatch') {
-      return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
-    }
-    if (placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree' || placement.decorationKind === 'treeCluster') {
-      return { textureKey: 'winter_pine_01', frameKey: undefined };
-    }
-    return null;
+    return getSceneVariantDecorationTexture(this, placement);
   }
 
   addSceneVariantImage(
@@ -1511,104 +878,35 @@ class FairyGuildScene extends Phaser.Scene {
     depth,
     options: { alpha?: number; originX?: number; originY?: number; tint?: number } = {},
   ) {
-    if (!this.textures.exists(textureKey)) {
-      return null;
-    }
-    const sprite = this.add.image(x, y, textureKey)
-      .setOrigin(options.originX ?? 0.5, options.originY ?? 0.5)
-      .setScale(uniformScale)
-      .setDepth(depth)
-      .setAlpha(options.alpha ?? 1);
-    if (options.tint) {
-      sprite.setTint(options.tint);
-    }
-    layer.add(sprite);
-    return sprite;
+    return addSceneVariantImage(this, layer, textureKey, x, y, uniformScale, depth, options);
   }
 
   registerParallaxSprite(sprite, factor, baseX, baseY) {
-    if (!sprite) {
-      return;
-    }
-    this.parallaxSprites.push({ sprite, factor, baseX, baseY });
+    registerParallaxSprite(this, sprite, factor, baseX, baseY);
   }
 
   hasStaticSceneVariantFrame(config) {
-    return Boolean(config)
-      && this.textures.exists(config.backgroundAssetKey)
-      && this.textures.exists(config.exteriorFrameAssetKey);
+    return hasStaticSceneVariantFrame(this, config);
   }
 
   renderSceneVariantBackground(config, bounds) {
-    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    const sprite = this.addSceneVariantImage(
-      this.backgroundLayer,
-      config.backgroundAssetKey,
-      bounds.centerX,
-      bounds.centerY - 24,
-      baseScale * 1.04 * (config.worldZoom ?? 1),
-      2,
-      { alpha: 1 },
-    );
-    this.registerParallaxSprite(sprite, config.backgroundParallax ?? 0, bounds.centerX, bounds.centerY - 24);
+    renderSceneVariantBackground(this, config, bounds);
   }
 
   renderSceneVariantFrame(config, bounds) {
-    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    const sprite = this.addSceneVariantImage(
-      this.edgeLayer,
-      config.exteriorFrameAssetKey,
-      bounds.centerX,
-      bounds.centerY - 20,
-      baseScale * 1.04 * (config.worldZoom ?? 1),
-      70,
-      { alpha: 1 },
-    );
-    this.registerParallaxSprite(sprite, config.frameParallax ?? 0, bounds.centerX, bounds.centerY - 20);
+    renderSceneVariantFrame(this, config, bounds);
   }
 
   renderSceneVariantForeground(config, bounds) {
-    if (!config.foregroundFogAssetKey) {
-      return;
-    }
-    const baseScale = Math.max(WIDTH / 2048, HEIGHT / 1152);
-    const sprite = this.addSceneVariantImage(
-      this.lightingLayer,
-      config.foregroundFogAssetKey,
-      bounds.centerX,
-      bounds.centerY - 20,
-      baseScale * 1.04 * (config.worldZoom ?? 1),
-      4705,
-      { alpha: config.key === 'night_spring' ? 0.9 : 0.72 },
-    );
-    this.registerParallaxSprite(sprite, config.foregroundParallax ?? 0, bounds.centerX, bounds.centerY - 20);
+    renderSceneVariantForeground(this, config, bounds);
   }
 
   renderSceneVariantOverlapDecor(config, bounds, tileW, tileH) {
-    config.overlapDecorAnchors.forEach((anchor) => {
-      const x = bounds.centerX + anchor.x * tileW;
-      const y = bounds.centerY + anchor.y * tileH;
-      this.addEnvironmentUniformSprite(
-        this.edgeLayer,
-        anchor.frame,
-        x,
-        y,
-        anchor.scale,
-        bounds.centerY + anchor.depthBias,
-        { alpha: anchor.alpha, originY: 0.82 },
-      );
-    });
+    renderSceneVariantOverlapDecor(this, config, bounds, tileW, tileH);
   }
 
   applySceneVariantAmbient(config) {
-    if (config.ambientAlpha <= 0) {
-      return;
-    }
-    const ambient = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, config.ambientTint, config.ambientAlpha)
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(4701);
-    this.lightingLayer.add(ambient);
+    applySceneVariantAmbient(this, config);
   }
 
   createVillage() {
@@ -1946,57 +1244,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderGeneratedWorldFog(bounds, tileW, tileH, texture) {
     const fogDepth = 8;
-    const fogPieces = [
-      {
-        frame: 'edge_fog_n_01',
-        x: bounds.centerX,
-        y: bounds.top.y - tileH * 3.3,
-        width: bounds.boardWidth * 2.42,
-        height: tileH * 22.4,
-        alpha: 0.42,
-      },
-      {
-        frame: 'edge_fog_n_01',
-        x: bounds.centerX - bounds.boardWidth * 0.38,
-        y: bounds.top.y - tileH * 1.3,
-        width: bounds.boardWidth * 1.24,
-        height: tileH * 16.6,
-        alpha: 0.32,
-      },
-      {
-        frame: 'edge_fog_n_01',
-        x: bounds.centerX + bounds.boardWidth * 0.38,
-        y: bounds.top.y - tileH * 1.3,
-        width: bounds.boardWidth * 1.24,
-        height: tileH * 16.6,
-        alpha: 0.32,
-      },
-      {
-        frame: 'edge_fog_e_01',
-        x: bounds.right.x + tileW * 4.9,
-        y: bounds.centerY + tileH * 0.12,
-        width: tileW * 18.4,
-        height: bounds.boardHeight * 1.62,
-        alpha: 0.28,
-      },
-      {
-        frame: 'edge_fog_s_01',
-        x: bounds.centerX,
-        y: bounds.bottom.y + tileH * 3.85,
-        width: bounds.boardWidth * 1.88,
-        height: tileH * 15.6,
-        alpha: 0.3,
-      },
-      {
-        frame: 'edge_fog_w_01',
-        x: bounds.left.x - tileW * 4.9,
-        y: bounds.centerY + tileH * 0.12,
-        width: tileW * 18.4,
-        height: bounds.boardHeight * 1.62,
-        alpha: 0.28,
-      },
-    ];
-    fogPieces.forEach((piece) => {
+    getWorldFogPieces(bounds, tileW, tileH).forEach((piece) => {
       if (!texture.has(piece.frame)) {
         return;
       }
@@ -2011,114 +1259,7 @@ class FairyGuildScene extends Phaser.Scene {
 
   renderGeneratedWorldBackdrop(bounds, tileW, tileH, texture) {
     const backdropDepth = 6;
-    const backdrops = [
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX,
-        y: bounds.top.y - tileH * 1.62,
-        width: bounds.boardWidth * 2.38,
-        height: tileH * 29.4,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX - bounds.boardWidth * 0.44,
-        y: bounds.top.y - tileH * 0.58,
-        width: bounds.boardWidth * 1.28,
-        height: tileH * 20.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX + bounds.boardWidth * 0.44,
-        y: bounds.top.y - tileH * 0.58,
-        width: bounds.boardWidth * 1.28,
-        height: tileH * 20.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX - bounds.boardWidth * 0.16,
-        y: bounds.top.y - tileH * 0.02,
-        width: bounds.boardWidth * 0.96,
-        height: tileH * 15.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX + bounds.boardWidth * 0.16,
-        y: bounds.top.y - tileH * 0.02,
-        width: bounds.boardWidth * 0.96,
-        height: tileH * 15.8,
-      },
-      {
-        frame: 'edge_backdrop_n_01',
-        x: bounds.centerX,
-        y: bounds.top.y + tileH * 0.58,
-        width: bounds.boardWidth * 1.14,
-        height: tileH * 13.2,
-      },
-      {
-        frame: 'edge_backdrop_w_01',
-        x: bounds.left.x - tileW * 6.4,
-        y: bounds.centerY - tileH * 1.45,
-        width: tileW * 17.2,
-        height: bounds.boardHeight * 1.26,
-      },
-      {
-        frame: 'edge_backdrop_w_01',
-        x: bounds.left.x - tileW * 6.3,
-        y: bounds.centerY + tileH * 2.35,
-        width: tileW * 17.4,
-        height: bounds.boardHeight * 1.18,
-      },
-      {
-        frame: 'edge_backdrop_e_01',
-        x: bounds.right.x + tileW * 6.4,
-        y: bounds.centerY - tileH * 1.45,
-        width: tileW * 17.2,
-        height: bounds.boardHeight * 1.26,
-      },
-      {
-        frame: 'edge_backdrop_e_01',
-        x: bounds.right.x + tileW * 6.3,
-        y: bounds.centerY + tileH * 2.35,
-        width: tileW * 17.4,
-        height: bounds.boardHeight * 1.18,
-      },
-      {
-        frame: 'edge_backdrop_s_01',
-        x: bounds.centerX,
-        y: bounds.bottom.y + tileH * 5.1,
-        width: bounds.boardWidth * 1.96,
-        height: tileH * 18.4,
-      },
-      {
-        frame: 'edge_backdrop_nw_01',
-        x: bounds.left.x - tileW * 4.7,
-        y: bounds.top.y - tileH * 0.66,
-        width: tileW * 21.4,
-        height: tileH * 25.2,
-      },
-      {
-        frame: 'edge_backdrop_ne_01',
-        x: bounds.right.x + tileW * 4.7,
-        y: bounds.top.y - tileH * 0.66,
-        width: tileW * 21.4,
-        height: tileH * 25.2,
-      },
-      {
-        frame: 'edge_backdrop_sw_01',
-        x: bounds.left.x - tileW * 5.8,
-        y: bounds.bottom.y + tileH * 4.35,
-        width: tileW * 15.8,
-        height: tileH * 18.4,
-      },
-      {
-        frame: 'edge_backdrop_se_01',
-        x: bounds.right.x + tileW * 5.8,
-        y: bounds.bottom.y + tileH * 4.35,
-        width: tileW * 15.8,
-        height: tileH * 18.4,
-      },
-    ];
-    backdrops.forEach((piece) => {
+    getWorldBackdropPieces(bounds, tileW, tileH).forEach((piece) => {
       if (!texture.has(piece.frame)) {
         return;
       }
@@ -2159,93 +1300,7 @@ class FairyGuildScene extends Phaser.Scene {
       return;
     }
     const size = this.scaleGeneratedSize([524, 454]);
-    const clusters = [
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.left.x - tileW * 2.9,
-        y: bounds.top.y + tileH * 1.15,
-        depth: bounds.top.y + tileH * 0.34,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.right.x + tileW * 2.9,
-        y: bounds.top.y + tileH * 1.15,
-        depth: bounds.top.y + tileH * 0.34,
-      },
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.centerX - bounds.boardWidth * 0.3,
-        y: bounds.top.y - tileH * 0.08,
-        depth: bounds.top.y + tileH * 0.18,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.centerX + bounds.boardWidth * 0.3,
-        y: bounds.top.y - tileH * 0.08,
-        depth: bounds.top.y + tileH * 0.18,
-      },
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.centerX - tileW * 1.9,
-        y: bounds.top.y - tileH * 0.42,
-        depth: bounds.top.y + tileH * 0.08,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.centerX + tileW * 1.9,
-        y: bounds.top.y - tileH * 0.42,
-        depth: bounds.top.y + tileH * 0.08,
-      },
-      {
-        frame: 'edge_cluster_nw_01',
-        x: bounds.left.x - tileW * 4.25,
-        y: bounds.centerY - tileH * 2.75,
-        depth: bounds.centerY - tileH * 2.15,
-      },
-      {
-        frame: 'edge_cluster_ne_01',
-        x: bounds.right.x + tileW * 4.25,
-        y: bounds.centerY - tileH * 2.75,
-        depth: bounds.centerY - tileH * 2.15,
-      },
-      {
-        frame: 'edge_cluster_sw_01',
-        x: bounds.left.x - tileW * 4.25,
-        y: bounds.centerY + tileH * 3.05,
-        depth: bounds.centerY + tileH * 2.2,
-      },
-      {
-        frame: 'edge_cluster_se_01',
-        x: bounds.right.x + tileW * 4.25,
-        y: bounds.centerY + tileH * 3.05,
-        depth: bounds.centerY + tileH * 2.2,
-      },
-      {
-        frame: 'edge_cluster_sw_01',
-        x: bounds.left.x - tileW * 2.9,
-        y: bounds.bottom.y + tileH * 3.15,
-        depth: bounds.bottom.y + tileH * 1.72,
-      },
-      {
-        frame: 'edge_cluster_se_01',
-        x: bounds.right.x + tileW * 2.9,
-        y: bounds.bottom.y + tileH * 3.15,
-        depth: bounds.bottom.y + tileH * 1.72,
-      },
-      {
-        frame: 'edge_cluster_sw_01',
-        x: bounds.centerX - bounds.boardWidth * 0.2,
-        y: bounds.bottom.y + tileH * 3.55,
-        depth: bounds.bottom.y + tileH * 1.84,
-      },
-      {
-        frame: 'edge_cluster_se_01',
-        x: bounds.centerX + bounds.boardWidth * 0.2,
-        y: bounds.bottom.y + tileH * 3.55,
-        depth: bounds.bottom.y + tileH * 1.84,
-      },
-    ];
-    clusters.forEach((cluster) => {
+    getWorldEdgeClusters(bounds, tileW, tileH).forEach((cluster) => {
       if (!texture.has(cluster.frame)) {
         return;
       }
@@ -2330,521 +1385,71 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   renderGeneratedBuilding(placement) {
-    const render = placement.render ?? {};
-    const textureKey = render.textureKey ?? 'cottageTexture';
-    const layout = this.getGeneratedFootprintSpriteLayout(
-      placement,
-      { ...render, textureKey },
-      [80, 70],
-    );
-    const size = layout.size;
-    const sprite = this.add.image(layout.x, layout.y, textureKey, render.frameKey)
-      .setOrigin(0.5, 1)
-      .setDisplaySize(size[0], size[1])
-      .setDepth(layout.depth)
-      .setAlpha(GENERATED_BUILDING_SPRITE_ALPHA);
-    const healthBar = this.createBuildingHealthBar(
-      layout.x,
-      layout.y - size[1] * 0.78,
-      Math.max(42, Math.min(76, size[0] * 0.7)),
-      10,
-      layout.depth + 140,
-    );
-    this.entityLayer.add([sprite, healthBar.container]);
-    const building = {
-      name: placement.label,
-      x: placement.iso.x,
-      y: placement.iso.y,
-      hp: placement.maxHealth,
-      max: placement.maxHealth,
-      importance: placement.importance,
-      levelPlacementId: placement.id,
-      texture: render.textureKey,
-      size,
-      reward: Math.round(placement.importance / 4),
-      iso: { x: placement.iso.x, y: placement.iso.y },
-      footprint: placement.footprint,
-      footprintCells: placement.cells.map((cell) => ({ ...cell })),
-      spriteAlpha: GENERATED_BUILDING_SPRITE_ALPHA,
-      sprite,
-      healthBar,
-      underAttackUntil: 0,
-    };
-    this.buildings.push(building);
-    this.updateBuildingHealthBar(building);
+    renderGeneratedBuilding(this, placement);
   }
 
   renderGeneratedProp(placement) {
-    if (this.generatedLevelActive && this.generatedLevel && placement.token === 'tree' && this.isGeneratedBoardEdgeCell(placement.grid)) {
-      return;
-    }
-    const render = placement.render ?? {};
-    const override = this.getSceneVariantPropTexture(placement);
-    const textureKey = override?.textureKey ?? render?.textureKey;
-    const frameKey = override?.frameKey ?? render?.frameKey;
-    if (!textureKey) {
-      return;
-    }
-    const layout = textureKey === 'buildingsAtlas'
-      ? this.getGeneratedFootprintSpriteLayout(placement, { ...render, textureKey, frameKey }, [42, 42])
-      : null;
-    const p = layout ?? this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 7);
-    const size = layout?.size ?? this.scaleGeneratedSize(render.displaySize ?? [42, 42]);
-    const sprite = this.add.image(p.x, p.y, textureKey, frameKey)
-      .setOrigin(layout ? 0.5 : render.origin?.[0] ?? 0.5, layout ? 1 : render.origin?.[1] ?? 0.82)
-      .setDisplaySize(size[0], size[1])
-      .setDepth((layout?.depth ?? p.y) + 8)
-      .setAlpha(render.alpha ?? 0.72);
-    this.entityLayer.add(sprite);
+    renderGeneratedProp(this, placement);
   }
 
   renderGeneratedDecoration(placement) {
-    const override = this.getSceneVariantDecorationTexture(placement);
-    if (placement.render?.textureKey || override?.textureKey) {
-      const render = placement.render;
-      const p = this.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
-      const size = this.scaleGeneratedSize(render.displaySize ?? [36, 36]);
-      const sprite = this.add.image(
-        p.x,
-        p.y,
-        override?.textureKey ?? render.textureKey,
-        override?.frameKey ?? render.frameKey,
-      )
-        .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.82)
-        .setDisplaySize(size[0], size[1])
-        .setDepth(p.y + 6)
-        .setAlpha(render.alpha ?? 0.76);
-      this.entityLayer.add(sprite);
-      return;
-    }
-    const p = this.isoToScreen(placement.iso.x + 0.16, placement.iso.y - 0.12, 8);
-    const flowers = this.add.graphics();
-    if (placement.decorationKind === 'sparkles') {
-      flowers.fillStyle(0xfff3a6, 0.72);
-      flowers.fillCircle(p.x - 4, p.y, 2.2);
-      flowers.fillStyle(0x91e8ff, 0.62);
-      flowers.fillCircle(p.x + 5, p.y - 5, 2.4);
-      flowers.lineStyle(1, 0xffffff, 0.45);
-      flowers.lineBetween(p.x - 8, p.y - 2, p.x + 7, p.y + 3);
-    } else {
-      flowers.fillStyle(0xffa8d6, 0.72);
-      flowers.fillCircle(p.x - 6, p.y, 3);
-      flowers.fillStyle(0xfff49a, 0.75);
-      flowers.fillCircle(p.x, p.y - 3, 3);
-      flowers.fillStyle(0x8fe287, 0.68);
-      flowers.fillCircle(p.x + 6, p.y + 2, 3);
-    }
-    flowers.setDepth(p.y + 5);
-    this.entityLayer.add(flowers);
+    renderGeneratedDecoration(this, placement);
   }
 
   getActiveTimeOfDay() {
-    if (this.timeOfDayOverride) {
-      return this.timeOfDayOverride;
-    }
-    const paramValue = new URLSearchParams(window.location.search).get('timeOfDay');
-    if (isTimeOfDay(paramValue)) {
-      return paramValue;
-    }
-    return this.generatedLevel?.config.timeOfDay ?? 'morning';
+    return getActiveTimeOfDay(this);
   }
 
   cycleTimeOfDay() {
-    const order = ['morning', 'noon', 'afternoon', 'night'];
-    const current = this.getActiveTimeOfDay();
-    const next = order[(order.indexOf(current) + 1) % order.length];
-    this.timeOfDayOverride = next;
-    this.createTimeOfDayLayer();
-    this.addGuildNote(`Time preview: ${next}.`);
-    this.updateDebugOverlay();
+    cycleTimeOfDay(this);
   }
 
   getLampGlowIsoPoints() {
-    if (this.generatedLevelActive && this.generatedLevel) {
-      return [
-        ...this.generatedLevel.objects
-          .filter((placement) => placement.token === 'lamp')
-          .map((placement) => placement.iso),
-        ...this.generatedLevel.decorations
-          .filter((placement) => placement.decorationKind === 'magicPlant')
-          .map((placement) => placement.iso),
-      ];
-    }
-    return [
-      { x: 8.8, y: 5.8 },
-      { x: 10.8, y: 4.8 },
-      { x: 3.7, y: 9.7 },
-    ];
+    return getLampGlowIsoPoints(this);
   }
 
   createTimeOfDayLayer() {
-    this.timeOfDayOverlay?.destroy();
-    this.timeOfDayMist?.destroy();
-    this.lampGlowGraphics?.destroy();
-    this.timeOfDayOverlay = null;
-    this.timeOfDayMist = null;
-    this.lampGlowGraphics = null;
-    if (this.generatedLevelActive && this.sceneVariant) {
-      return;
-    }
-    const profile = TIME_OF_DAY_PROFILES[this.getActiveTimeOfDay()];
-    const layerItems = [];
-
-    if (profile.overlayAlpha > 0) {
-      this.timeOfDayOverlay = this.add.rectangle(
-        WIDTH / 2,
-        HEIGHT / 2,
-        WIDTH,
-        HEIGHT,
-        profile.overlayColor,
-        profile.overlayAlpha,
-      ).setScrollFactor(0);
-      layerItems.push(this.timeOfDayOverlay);
-    }
-
-    if (profile.mistAlpha > 0) {
-      const mist = this.add.graphics();
-      mist.fillStyle(0xffffff, profile.mistAlpha);
-      [
-        [190, 184, 210, 34],
-        [612, 156, 260, 42],
-        [1050, 196, 220, 36],
-      ].forEach(([x, y, w, h]) => mist.fillEllipse(x, y, w, h));
-      this.timeOfDayMist = mist;
-      layerItems.push(mist);
-    }
-
-    if (profile.glowAlpha > 0) {
-      const glow = this.add.graphics();
-      glow.setBlendMode(Phaser.BlendModes.ADD);
-      this.getLampGlowIsoPoints().forEach((iso) => {
-        const p = this.isoToScreen(iso.x, iso.y, 20);
-        glow.fillStyle(profile.glowColor, profile.glowAlpha);
-        glow.fillCircle(p.x, p.y, 34);
-        glow.fillStyle(profile.glowColor, profile.glowAlpha * 0.42);
-        glow.fillCircle(p.x, p.y, 58);
-      });
-      this.lampGlowGraphics = glow;
-      layerItems.push(glow);
-    }
-
-    if (layerItems.length > 0) {
-      this.lightingLayer.add(layerItems);
-    }
-  }
-
-  drawDebugDiamond(gfx, grid, color, alpha = 0.18) {
-    const { tileW, tileH } = this.getIsoMetrics();
-    const center = this.isoToScreen(grid.x, grid.y);
-    gfx.fillStyle(color, alpha);
-    gfx.lineStyle(1, color, Math.min(1, alpha + 0.22));
-    gfx.beginPath();
-    gfx.moveTo(center.x, center.y - tileH / 2);
-    gfx.lineTo(center.x + tileW / 2, center.y);
-    gfx.lineTo(center.x, center.y + tileH / 2);
-    gfx.lineTo(center.x - tileW / 2, center.y);
-    gfx.closePath();
-    gfx.fillPath();
-    gfx.strokePath();
-  }
-
-  getDecorationDebugColor(kind) {
-    if (kind === 'fullTree' || kind === 'sapling') {
-      return 0x2ed573;
-    }
-    if (kind === 'treeCluster') {
-      return 0x1fa85f;
-    }
-    if (kind === 'bush') {
-      return 0x78d66a;
-    }
-    if (kind === 'rocks') {
-      return 0xd0d5dd;
-    }
-    if (kind === 'puddle') {
-      return 0x7fd8f6;
-    }
-    if (kind === 'grassPatch') {
-      return 0x9be86b;
-    }
-    if (kind === 'mushrooms') {
-      return 0xffaa55;
-    }
-    if (kind === 'magicPlant') {
-      return 0x6af7ff;
-    }
-    if (kind === 'sparkles') {
-      return 0xffffff;
-    }
-    if (kind === 'lamp') {
-      return 0xffe36a;
-    }
-    if (kind === 'fence' || kind === 'sign') {
-      return 0xc7924e;
-    }
-    return 0xff93d8;
-  }
-
-  drawDebugPath(gfx, path, color, alpha = 0.56) {
-    if (!path?.length) {
-      return;
-    }
-    gfx.lineStyle(2, color, alpha);
-    const first = this.isoToScreen(path[0].x, path[0].y, -5);
-    gfx.beginPath();
-    gfx.moveTo(first.x, first.y);
-    path.slice(1).forEach((cell) => {
-      const p = this.isoToScreen(cell.x, cell.y, -5);
-      gfx.lineTo(p.x, p.y);
-    });
-    gfx.strokePath();
+    createTimeOfDayLayer(this);
   }
 
   drawGeneratedLevelDebug() {
-    if (!this.generatedLevel) {
-      return;
-    }
-    this.levelDebugGraphics?.destroy();
-    const gfx = this.add.graphics().setDepth(0);
-    this.levelDebugGraphics = gfx;
-    for (let y = 0; y < this.generatedLevel.height; y += 1) {
-      for (let x = 0; x < this.generatedLevel.width; x += 1) {
-        this.drawDebugDiamond(gfx, { x, y }, 0xffffff, 0.035);
-        if (this.generatedLevel.roadGrid[y]?.[x]) {
-          this.drawDebugDiamond(gfx, { x, y }, 0xe8d39c, 0.18);
-        }
-        if (this.generatedLevel.blockedGrid[y][x]) {
-          this.drawDebugDiamond(gfx, { x, y }, 0xff6b6b, 0.22);
-        }
-      }
-    }
-    const top = this.isoToScreen((this.generatedLevel.width - 1) / 2, 0, -8);
-    const right = this.isoToScreen(this.generatedLevel.width - 1, (this.generatedLevel.height - 1) / 2, -8);
-    const bottom = this.isoToScreen((this.generatedLevel.width - 1) / 2, this.generatedLevel.height - 1, -8);
-    const left = this.isoToScreen(0, (this.generatedLevel.height - 1) / 2, -8);
-    gfx.lineStyle(3, 0xffffff, 0.38);
-    gfx.strokePoints([top, right, bottom, left, top], false, true);
-    this.generatedLevel.spawnPoints.forEach((spawn) => this.drawDebugDiamond(gfx, spawn, 0xc678ff, 0.38));
-    if (this.generatedLevel.playerSpawn) {
-      this.drawDebugDiamond(gfx, this.generatedLevel.playerSpawn, 0x68d8ff, 0.42);
-    }
-    this.generatedLevel.protectedTargets.forEach((target) => {
-      target.cells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0xffdf6a, 0.34));
-      target.attackCells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x7dff9a, 0.18));
-    });
-    this.generatedLevel.chests.forEach((chest) => this.drawDebugDiamond(gfx, chest.grid, 0xffb84f, 0.42));
-    this.generatedLevel.decorations.forEach((decoration) => (
-      this.drawDebugDiamond(gfx, decoration.grid, this.getDecorationDebugColor(decoration.decorationKind), 0.20)
-    ));
-    const goals = this.generatedLevel.protectedTargets.flatMap((target) => target.attackCells);
-    this.generatedLevel.spawnPoints.forEach((spawn) => {
-      const path = findGridPath(this.generatedLevel.walkableGrid, spawn, goals);
-      path?.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x60ffb2, 0.16));
-      this.drawDebugPath(gfx, path, 0x60ffb2, 0.35);
-    });
-    this.enemies
-      .filter((enemy) => !enemy.defeated && !enemy.retreating)
-      .forEach((enemy) => {
-        this.drawDebugPath(gfx, enemy.path, 0xff5cc6, 0.82);
-        this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.iso), 0xff5cc6, 0.42);
-        if (enemy.target?.iso) {
-          this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.target.iso), 0xfff15c, 0.42);
-        }
-      });
-    this.levelDebugLayer.add(gfx);
+    drawGeneratedLevelDebug(this);
   }
 
   toggleGeneratedLevelDebug() {
-    if (!this.generatedLevel) {
-      return;
-    }
-    this.levelDebugVisible = !this.levelDebugVisible;
-    try {
-      localStorage.setItem('debugLevelOverlay', this.levelDebugVisible ? '1' : '0');
-    } catch {
-      // Debug persistence is optional.
-    }
-    if (this.levelDebugVisible) {
-      this.drawGeneratedLevelDebug();
-      this.addGuildNote('Level grid debug shown.');
-    } else {
-      this.levelDebugGraphics?.destroy();
-      this.levelDebugGraphics = null;
-      this.addGuildNote('Level grid debug hidden.');
-    }
-    this.updateDebugOverlay();
+    toggleGeneratedLevelDebug(this);
   }
 
   updateGeneratedLevelDebug(time) {
-    if (!this.levelDebugVisible || !this.generatedLevel) {
-      return;
-    }
-    if (time - this.levelDebugLastRenderAt < 260) {
-      return;
-    }
-    this.levelDebugLastRenderAt = time;
-    this.drawGeneratedLevelDebug();
+    updateGeneratedLevelDebug(this, time);
   }
 
   drawMapTiles() {
-    for (let y = 0; y < MAP_H; y += 1) {
-      for (let x = 0; x < MAP_W; x += 1) {
-        const center = this.isoToScreen(x, y);
-        const isEdge = x < 2 || y < 2 || x > MAP_W - 3 || y > MAP_H - 3;
-        const isPath = Math.abs(x - 7) <= 1 || Math.abs(y - 7) <= 1 || (x > 4 && x < 11 && y > 4 && y < 11);
-        const isGarden = (x === 4 && y === 10) || (x === 10 && y === 4) || (x === 3 && y === 6);
-        let fill = (x + y) % 2 === 0 ? COLORS.grassA : COLORS.grassB;
-        let stroke = 0x5dbb65;
-        if (isEdge) {
-          fill = COLORS.forest;
-          stroke = 0x3e965e;
-        } else if (isPath) {
-          fill = COLORS.path;
-          stroke = COLORS.pathEdge;
-        } else if (isGarden) {
-          fill = COLORS.garden;
-          stroke = 0xdf729f;
-        }
-        this.drawDiamond(center.x, center.y, TILE_W, TILE_H, fill, stroke, 0.96);
-      }
-    }
+    drawMapTiles(this);
   }
 
   drawDiamond(x, y, w, h, fill, stroke, alpha = 1, strokeAlpha = 0.45) {
-    this.tileGraphics.fillStyle(fill, alpha);
-    this.tileGraphics.lineStyle(1, stroke, strokeAlpha);
-    this.tileGraphics.beginPath();
-    this.tileGraphics.moveTo(x, y - h / 2);
-    this.tileGraphics.lineTo(x + w / 2, y);
-    this.tileGraphics.lineTo(x, y + h / 2);
-    this.tileGraphics.lineTo(x - w / 2, y);
-    this.tileGraphics.closePath();
-    this.tileGraphics.fillPath();
-    this.tileGraphics.strokePath();
+    drawDiamond(this, x, y, w, h, fill, stroke, alpha, strokeAlpha);
   }
 
   createPathStones() {
-    const stones = this.add.graphics();
-    stones.fillStyle(0xe6d3a6, 0.55);
-    if (this.generatedLevelActive && this.generatedLevel) {
-      this.generatedLevel.roadGrid.forEach((row, y) => {
-        row.forEach((isRoad, x) => {
-          if (!isRoad || (x + y) % 2 !== 0) {
-            return;
-          }
-          const p = this.isoToScreen(x + 0.12 * Math.sin(y * 1.7), y + 0.14 * Math.cos(x * 1.3));
-          stones.fillEllipse(p.x, p.y, 8 + ((x + y) % 3) * 2, 4.5, 1);
-        });
-      });
-      stones.setAlpha(0.38);
-      if (this.generatedTerrainMask) {
-        stones.setMask(this.generatedTerrainMask);
-      }
-      this.worldLayer.add(stones);
-      return;
-    }
-    for (let y = 3; y < 12; y += 1) {
-      for (let x = 6; x <= 8; x += 1) {
-        const p = this.isoToScreen(x + 0.12 * Math.sin(y), y + 0.18 * Math.cos(x));
-        stones.fillEllipse(p.x, p.y, 10 + ((x + y) % 3) * 3, 5, 1);
-      }
-    }
-    for (let x = 3; x < 12; x += 1) {
-      for (let y = 6; y <= 8; y += 1) {
-        const p = this.isoToScreen(x + 0.15 * Math.cos(y), y + 0.1 * Math.sin(x));
-        stones.fillEllipse(p.x, p.y, 9 + ((x * y) % 3) * 2, 5, 1);
-      }
-    }
-    stones.setAlpha(0.42);
-    this.worldLayer.add(stones);
+    createPathStones(this);
   }
 
   createForestBorder() {
-    const treeSpots = [
-      [0.5, 1.2, 1.0], [2.2, 0.6, 0.8], [4.5, 0.7, 0.95], [7.3, 0.4, 1.1], [10.2, 0.7, 0.9], [13.4, 1.0, 1.0],
-      [0.4, 4.4, 0.8], [0.8, 9.7, 0.95], [2.0, 13.4, 1.0], [5.4, 14.0, 0.85], [9.2, 13.5, 1.08], [13.0, 12.3, 0.9],
-      [14.1, 4.0, 1.0], [13.7, 7.4, 0.85], [14.2, 10.5, 0.95],
-    ];
-    treeSpots.forEach(([x, y, scale], index) => {
-      const p = this.isoToScreen(x, y, 16);
-      this.addFireflyCluster(p.x, p.y - 34 * scale, index);
-    });
+    createForestBorder(this);
   }
 
   createBuildings() {
-    const buildingData = [
-      { name: 'Castle', x: 7, y: 4, hp: 110, max: 110, importance: 100, texture: 'castleTexture', size: [112, 96], reward: 24, footprint: { w: 3, h: 3 } },
-      { name: 'Bakery', x: 4, y: 7, hp: 76, max: 76, importance: 50, texture: 'bakeryTexture', size: [80, 70], reward: 16, footprint: { w: 3, h: 2 } },
-      { name: 'Cottage', x: 10, y: 7, hp: 74, max: 74, importance: 50, texture: 'cottageTexture', size: [78, 68], reward: 15, footprint: { w: 3, h: 2 } },
-      { name: 'Market', x: 7, y: 10, hp: 68, max: 68, importance: 70, texture: 'marketTexture', size: [90, 66], reward: 18, footprint: { w: 3, h: 2 } },
-    ];
-    this.buildings = buildingData.map((data) => {
-      const p = this.isoToScreen(data.x, data.y, 18);
-      const base = this.add.graphics();
-      base.fillStyle(0x8f7346, STATIC_BUILDING_BASE_ALPHA);
-      base.fillEllipse(p.x, p.y + 22, data.size[0] * 0.62, 28);
-      const sprite = this.add.image(p.x, p.y, data.texture)
-        .setOrigin(0.5, 0.84)
-        .setDisplaySize(data.size[0], data.size[1])
-        .setDepth(p.y)
-        .setAlpha(STATIC_BUILDING_SPRITE_ALPHA);
-      const healthBar = this.createBuildingHealthBar(
-        p.x,
-        p.y - data.size[1] * 0.78,
-        Math.max(42, Math.min(76, data.size[0] * 0.7)),
-        10,
-        p.y + 140,
-      );
-      const footprintCells = this.getFootprintCells(data.x, data.y, data.footprint);
-      this.entityLayer.add([base, sprite, healthBar.container]);
-      const building = {
-        ...data,
-        iso: { x: data.x, y: data.y },
-        footprintCells,
-        baseAlpha: STATIC_BUILDING_BASE_ALPHA,
-        spriteAlpha: STATIC_BUILDING_SPRITE_ALPHA,
-        sprite,
-        base,
-        healthBar,
-        underAttackUntil: 0,
-      };
-      this.updateBuildingHealthBar(building);
-      return building;
-    });
+    createBuildings(this);
   }
 
   createProps() {
-    const props: Array<[string, number, number, number, number]> = [
-      ['wellTexture', 6.1, 8.8, 44, 52], ['lampTexture', 8.8, 5.8, 26, 54], ['signTexture', 3.7, 9.7, 38, 46],
-      ['lampTexture', 10.8, 4.8, 26, 54], ['wellTexture', 12.1, 9.3, 42, 46], ['signTexture', 2.9, 3.2, 38, 46],
-    ];
-    props.forEach(([texture, x, y, w, h]) => {
-      const p = this.isoToScreen(x, y, 7);
-      const sprite = this.add.image(p.x, p.y, texture)
-        .setOrigin(0.5, 0.82)
-        .setDisplaySize(w, h)
-        .setDepth(p.y + 8)
-        .setAlpha(0.7);
-      this.entityLayer.add(sprite);
-    });
+    createProps(this);
   }
 
   addFireflyCluster(x, y, seed) {
-    for (let i = 0; i < 3; i += 1) {
-      const dot = this.add.circle(x + Math.cos(seed + i) * 18, y + Math.sin(seed * 2 + i) * 12, 2.8, 0xfff7a6, 0.85);
-      dot.setDepth(y + 30 + i);
-      this.tweens.add({
-        targets: dot,
-        x: dot.x + Math.sin(seed + i) * 12,
-        y: dot.y - 8 - i * 3,
-        alpha: 0.35,
-        yoyo: true,
-        repeat: -1,
-        duration: 1500 + i * 230,
-        ease: 'Sine.inOut',
-      });
-      this.entityLayer.add(dot);
-    }
+    addFireflyCluster(this, x, y, seed);
   }
 
   createPlayer() {
@@ -2978,251 +1583,43 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   isDebugAutomationEnabled() {
-    return new URLSearchParams(window.location.search).has('debugAutomation');
+    return isDebugAutomationEnabled();
   }
 
   getDebugAutomationHost() {
-    return document.querySelector('#game');
+    return getDebugAutomationHost();
   }
 
   toDebugSlug(value) {
-    return String(value ?? '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+    return toDebugSlug(value);
   }
 
   getDebugBuildingSummary() {
-    return this.buildings
-      .map((building) => `${this.toDebugSlug(building.levelPlacementId ?? building.name)}:${building.hp}/${building.max}`)
-      .join('|');
+    return getDebugBuildingSummary(this);
   }
 
   setDebugCommandResult(command, result) {
-    const host = this.getDebugAutomationHost();
-    if (!host) {
-      return;
-    }
-    host.setAttribute('data-debug-last-command', String(command));
-    host.setAttribute('data-debug-last-result', String(result));
+    setDebugCommandResult(command, result);
   }
 
   findDebugBuilding(query) {
-    const normalized = this.toDebugSlug(query);
-    if (!normalized) {
-      return null;
-    }
-    return this.buildings.find((building) => {
-      const candidates = [
-        building.levelPlacementId,
-        building.name,
-      ].map((value) => this.toDebugSlug(value));
-      if (normalized === 'house') {
-        return candidates.includes('cottage') || candidates.includes('bakery') || candidates.includes('house-1') || candidates.includes('house-2');
-      }
-      return candidates.includes(normalized);
-    }) ?? null;
-  }
-
-  resolveDebugTeleportPoint(query) {
-    const normalized = this.toDebugSlug(query);
-    if (!this.player) {
-      return null;
-    }
-    if (!normalized || normalized === 'player') {
-      return { x: this.player.iso.x, y: this.player.iso.y };
-    }
-    if (normalized === 'spawn' || normalized === 'player-spawn') {
-      return this.generatedLevel?.playerSpawn
-        ? { x: this.generatedLevel.playerSpawn.x, y: this.generatedLevel.playerSpawn.y }
-        : { x: this.player.iso.x, y: this.player.iso.y };
-    }
-    if (normalized === 'center' && this.generatedLevel) {
-      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
-      return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-    }
-    const building = this.findDebugBuilding(normalized);
-    if (!building) {
-      return null;
-    }
-    const footprintCells = building.footprintCells ?? this.getFootprintCells(building.iso.x, building.iso.y, building.footprint);
-    const minX = Math.min(...footprintCells.map((cell) => cell.x));
-    const maxX = Math.max(...footprintCells.map((cell) => cell.x));
-    const minY = Math.min(...footprintCells.map((cell) => cell.y));
-    const maxY = Math.max(...footprintCells.map((cell) => cell.y));
-    const candidates = [
-      { x: (minX + maxX) / 2, y: maxY + 1 },
-      { x: maxX + 1, y: (minY + maxY) / 2 },
-      { x: (minX + maxX) / 2, y: minY - 1 },
-      { x: minX - 1, y: (minY + maxY) / 2 },
-    ];
-    return candidates.find((point) => !this.generatedLevelActive || this.isGeneratedIsoWalkable(point)) ?? candidates[0];
+    return findDebugBuilding(this, query);
   }
 
   teleportPlayerToDebugTarget(query) {
-    const point = this.resolveDebugTeleportPoint(query);
-    if (!point || !this.player) {
-      return false;
-    }
-    this.player.iso.x = point.x;
-    this.player.iso.y = point.y;
-    this.clampIso(this.player.iso, 1.2);
-    this.lastPointerIso = { x: this.player.iso.x, y: this.player.iso.y };
-    const position = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
-    this.player.sprite.setPosition(position.x, position.y);
-    this.player.shadow.setPosition(position.x, position.y + 15);
-    return true;
+    return teleportPlayerToDebugTarget(this, query);
   }
 
   triggerDebugSeasonTransition() {
-    const nextIndex = (this.state.worldIndex + 1) % WORLD_SEQUENCE.length;
-    const looped = nextIndex === 0;
-    const nextProgression = {
-      worldIndex: nextIndex,
-      worldKey: WORLD_SEQUENCE[nextIndex],
-      worldRound: 1,
-      bossRound: false,
-      worldCycle: this.state.worldCycle + (looped ? 1 : 0),
-    };
-    const theme = WORLD_ENEMY_THEMES[nextProgression.worldKey as SeasonPreset];
-    const transitionNote = `${theme.label} debug transition.`;
-    return this.restartForWorldProgression(nextProgression, transitionNote);
+    return triggerDebugSeasonTransition(this);
   }
 
   syncDevDiagnostics() {
-    if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
-      return;
-    }
-    const host = this.getDebugAutomationHost();
-    if (!host) {
-      return;
-    }
-    const repairTarget = this.state.repairMode && this.state.phase === 'playing'
-      ? this.getRepairModeTarget()
-      : null;
-    const repairTargetState = repairTarget ? this.getRepairModeTargetState(repairTarget) : '';
-    const repairTargetDamaged = repairTarget && repairTarget.hp < repairTarget.max;
-    host.setAttribute('data-phase', String(this.state.phase ?? ''));
-    host.setAttribute('data-map-mode', this.generatedLevelActive ? 'generated' : 'static');
-    host.setAttribute('data-level', String(this.state.level ?? 0));
-    host.setAttribute('data-gold', String(this.state.gold ?? 0));
-    host.setAttribute('data-xp', String(this.state.xp ?? 0));
-    host.setAttribute('data-world-key', String(this.state.worldKey ?? ''));
-    host.setAttribute('data-world-round', String(this.state.worldRound ?? 0));
-    host.setAttribute('data-world-cycle', String(this.state.worldCycle ?? 0));
-    host.setAttribute('data-boss-round', this.state.bossRound ? '1' : '0');
-    host.setAttribute('data-game-over-reason', String(this.state.gameOverReason ?? ''));
-    host.setAttribute('data-hero-choice', String(this.heroChoice ?? ''));
-    host.setAttribute('data-pending-hero-choice', String(this.pendingHeroChoice ?? ''));
-    host.setAttribute('data-splash-ready', this.pendingHeroChoice ? '1' : '0');
-    host.setAttribute('data-repair-mode', this.state.repairMode ? '1' : '0');
-    host.setAttribute('data-repair-target', repairTarget ? this.toDebugSlug(repairTarget.name) : '');
-    host.setAttribute('data-repair-affordable', repairTargetDamaged ? (this.state.gold >= REPAIR_COST ? '1' : '0') : '');
-    host.setAttribute('data-repair-outline-state', repairTargetState);
-    host.setAttribute('data-upgrade-context', String(this.upgradePauseContext ?? ''));
-    host.setAttribute('data-enemies', String(this.enemies.length));
-    host.setAttribute('data-chests', String(this.chests.filter((chest) => !chest.opened).length));
-    host.setAttribute('data-enemy-drop-chests', String(this.chests.filter((chest) => !chest.opened && chest.source === 'enemyDrop').length));
-    host.setAttribute('data-level-spawns-pending', String(this.levelSpawnsPending));
-    host.setAttribute('data-level-required-defeats', String(this.levelRequiredDefeats));
-    host.setAttribute('data-level-defeats', String(this.levelDefeatsThisRound));
-    host.setAttribute('data-level-spawned-count', String(this.levelSpawnedCount));
-    host.setAttribute('data-valid-spawn-points', String(this.generatedValidSpawnPoints?.length ?? 0));
-    host.setAttribute('data-board-seed', String(this.generatedLevel?.config.seed ?? ''));
-    host.setAttribute('data-building-summary', this.getDebugBuildingSummary());
+    syncDevDiagnostics(this);
   }
 
   consumeDevCommand() {
-    if (!(import.meta.env.DEV || this.isDebugAutomationEnabled())) {
-      return;
-    }
-    const host = this.getDebugAutomationHost();
-    const command = host?.getAttribute('data-debug-command');
-    if (!host || !command) {
-      return;
-    }
-    host.removeAttribute('data-debug-command');
-    let result = 'unknown-command';
-    if (command === 'clearRound') {
-      this.enemies.slice().forEach((enemy) => this.damageEnemy(enemy, enemy.hp + 999, 'debug'));
-      result = 'ok';
-    } else if (command.startsWith('chooseUpgrade:')) {
-      const index = Number(command.split(':')[1]);
-      if (this.state.phase === 'levelUp' && Number.isInteger(index)) {
-        this.chooseLevelUpgrade(Phaser.Math.Clamp(index, 0, 2));
-        result = `upgrade:${Phaser.Math.Clamp(index, 0, 2)}`;
-      } else {
-        result = 'ignored-levelup-inactive';
-      }
-    } else if (command.startsWith('chooseHero:')) {
-      const choice = command.split(':')[1];
-      if (choice === 'male' || choice === 'princess') {
-        this.selectHeroChoice(choice);
-        result = `hero:${choice}`;
-      } else {
-        result = 'invalid-hero';
-      }
-    } else if (command === 'startGame') {
-      this.startGameFromSplash();
-      result = this.state.phase === 'splash' ? 'awaiting-hero' : 'ok';
-    } else if (command === 'startRound') {
-      if (this.state.phase === 'countdown') {
-        this.startLevelRound();
-        result = 'ok';
-      } else {
-        result = 'ignored-countdown-inactive';
-      }
-    } else if (command.startsWith('setGold:')) {
-      const value = Number(command.split(':')[1]);
-      if (Number.isFinite(value)) {
-        this.state.gold = Math.max(0, Math.round(value));
-        this.rebuildInventoryPanel();
-        result = `gold:${this.state.gold}`;
-      } else {
-        result = 'invalid-gold';
-      }
-    } else if (command.startsWith('teleport:')) {
-      const target = command.split(':')[1];
-      result = this.teleportPlayerToDebugTarget(target) ? `teleport:${this.toDebugSlug(target)}` : 'missing-teleport-target';
-    } else if (command === 'spawnChest' || command === 'spawnChestAtPlayer') {
-      if (this.player) {
-        this.spawnChest(this.player.iso.x, this.player.iso.y, 'bonus-upgrade', { source: 'enemyDrop', lifetimeMs: 5000 });
-        result = 'chest:spawned';
-      } else {
-        result = 'missing-player';
-      }
-    } else if (command.startsWith('damageBuilding:')) {
-      const [, rawTarget, rawAmount] = command.split(':');
-      const building = this.findDebugBuilding(rawTarget);
-      if (!building) {
-        result = 'missing-building';
-      } else {
-        const requestedAmount = Number(rawAmount ?? '18');
-        const amount = Number.isFinite(requestedAmount) ? Math.max(1, Math.round(requestedAmount)) : 18;
-        const minHp = building.name === 'Castle' ? 1 : 0;
-        building.hp = Math.max(minHp, building.hp - amount);
-        building.underAttackUntil = this.time.now + 650;
-        this.updateBuildingRepairState(building);
-        this.updateVillageSafety();
-        result = `building:${this.toDebugSlug(building.name)}:${building.hp}`;
-      }
-    } else if (command === 'repairMode:on') {
-      this.setRepairMode(true, false);
-      result = 'repair:on';
-    } else if (command === 'repairMode:off') {
-      this.setRepairMode(false, false);
-      result = 'repair:off';
-    } else if (command === 'repairNearest') {
-      this.tryRepairBuilding();
-      result = 'repair:attempted';
-    } else if (command === 'advanceSeason') {
-      result = this.triggerDebugSeasonTransition();
-    }
-    this.setDebugCommandResult(command, result);
-    if (command === 'advanceSeason') {
-      return;
-    }
+    consumeDevCommand(this);
   }
 
   createTouchControls() {
@@ -3607,147 +2004,20 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
-  createAudio() {
-    this.audio = {
-      context: null,
-      ready: false,
-      masterGain: null,
-      sfxGain: null,
-      musicGain: null,
-      musicTimer: null,
-      musicStep: 0,
-      musicSoftened: false,
-    };
-  }
-
   ensureAudio() {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) {return;}
-    this.audio.context = this.audio.context || new AudioContext();
-    const ctx = this.audio.context;
-    if (!this.audio.masterGain) {
-      this.audio.masterGain = ctx.createGain();
-      this.audio.masterGain.gain.value = 0.82;
-      this.audio.masterGain.connect(ctx.destination);
-
-      this.audio.sfxGain = ctx.createGain();
-      this.audio.sfxGain.gain.value = 0.8;
-      this.audio.sfxGain.connect(this.audio.masterGain);
-
-      this.audio.musicGain = ctx.createGain();
-      this.audio.musicGain.gain.value = 0.028;
-      this.audio.musicGain.connect(this.audio.masterGain);
-    }
-    if (this.audio.context.state === 'suspended') {
-      this.audio.context.resume();
-    }
-    this.audio.ready = true;
-    this.startVillageTheme();
+    ensureAudio(this.audio, this);
   }
 
   playTone(type = 'sparkle') {
-    if (!this.audio.ready || !this.audio.context) {return;}
-    const ctx = this.audio.context;
-    const now = ctx.currentTime;
-    const motifs = {
-      sparkle: [
-        { freq: 740, endFreq: 1080, delay: 0, duration: 0.09, wave: 'triangle', gain: 0.038 },
-        { freq: 980, endFreq: 1320, delay: 0.045, duration: 0.11, wave: 'sine', gain: 0.026 },
-      ],
-      chest: [
-        { freq: 660, endFreq: 880, delay: 0, duration: 0.12, wave: 'triangle', gain: 0.045 },
-        { freq: 880, endFreq: 1175, delay: 0.09, duration: 0.14, wave: 'triangle', gain: 0.052 },
-        { freq: 1320, endFreq: 1760, delay: 0.2, duration: 0.18, wave: 'sine', gain: 0.035 },
-      ],
-      hit: [
-        { freq: 330, endFreq: 220, delay: 0, duration: 0.08, wave: 'square', gain: 0.022 },
-        { freq: 520, endFreq: 390, delay: 0.025, duration: 0.08, wave: 'triangle', gain: 0.018 },
-      ],
-      daze: [
-        { freq: 520, endFreq: 610, delay: 0, duration: 0.1, wave: 'sine', gain: 0.026 },
-        { freq: 430, endFreq: 510, delay: 0.1, duration: 0.12, wave: 'sine', gain: 0.023 },
-      ],
-      level: [
-        { freq: 523, endFreq: 523, delay: 0, duration: 0.1, wave: 'triangle', gain: 0.045 },
-        { freq: 659, endFreq: 659, delay: 0.1, duration: 0.12, wave: 'triangle', gain: 0.05 },
-        { freq: 784, endFreq: 988, delay: 0.22, duration: 0.22, wave: 'sine', gain: 0.055 },
-      ],
-      bow: [
-        { freq: 540, endFreq: 840, delay: 0, duration: 0.06, wave: 'triangle', gain: 0.03 },
-        { freq: 260, endFreq: 180, delay: 0.015, duration: 0.1, wave: 'sine', gain: 0.017 },
-      ],
-      repair: [
-        { freq: 440, endFreq: 587, delay: 0, duration: 0.1, wave: 'triangle', gain: 0.04 },
-        { freq: 587, endFreq: 740, delay: 0.1, duration: 0.12, wave: 'triangle', gain: 0.038 },
-        { freq: 880, endFreq: 1175, delay: 0.21, duration: 0.16, wave: 'sine', gain: 0.028 },
-      ],
-      gameOver: [
-        { freq: 392, endFreq: 330, delay: 0, duration: 0.2, wave: 'triangle', gain: 0.038 },
-        { freq: 330, endFreq: 262, delay: 0.18, duration: 0.28, wave: 'sine', gain: 0.034 },
-        { freq: 262, endFreq: 220, delay: 0.43, duration: 0.36, wave: 'sine', gain: 0.026 },
-      ],
-    };
-    (motifs[type] || motifs.sparkle).forEach((note) => this.playAudioNote(note, now, this.audio.sfxGain));
+    playTone(this.audio, type);
   }
 
   playAudioNote(note, baseTime, destination) {
-    const ctx = this.audio.context;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const start = baseTime + (note.delay || 0);
-    const duration = note.duration || 0.12;
-    osc.type = note.wave || 'sine';
-    osc.frequency.setValueAtTime(note.freq, start);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(20, note.endFreq || note.freq), start + duration);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(note.gain || 0.03, start + 0.014);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration + 0.045);
-    osc.connect(gain);
-    gain.connect(destination || this.audio.sfxGain || ctx.destination);
-    osc.start(start);
-    osc.stop(start + duration + 0.07);
-  }
-
-  startVillageTheme() {
-    if (!this.audio.ready || this.audio.musicTimer) {return;}
-    this.scheduleVillageTheme();
-    this.audio.musicTimer = this.time.addEvent({
-      delay: 3200,
-      loop: true,
-      callback: () => this.scheduleVillageTheme(),
-    });
-  }
-
-  scheduleVillageTheme() {
-    if (!this.audio.ready || !this.audio.context || !this.audio.musicGain) {return;}
-    const ctx = this.audio.context;
-    const now = ctx.currentTime;
-    const chords = [
-      [392, 523, 659],
-      [440, 554, 659],
-      [349, 523, 698],
-      [392, 494, 659],
-    ];
-    const chord = chords[this.audio.musicStep % chords.length];
-    const baseGain = this.audio.musicSoftened ? 0.008 : 0.018;
-    chord.forEach((freq, index) => {
-      this.playAudioNote({
-        freq,
-        endFreq: freq * 1.005,
-        delay: index * 0.42,
-        duration: 1.05,
-        wave: index === 0 ? 'sine' : 'triangle',
-        gain: baseGain * (index === 0 ? 0.78 : 1),
-      }, now, this.audio.musicGain);
-    });
-    this.audio.musicStep += 1;
+    playAudioNote(this.audio, note, baseTime, destination);
   }
 
   setMusicSoftened(softened) {
-    this.audio.musicSoftened = softened;
-    if (!this.audio.musicGain || !this.audio.context) {return;}
-    const target = softened ? 0.012 : 0.028;
-    this.audio.musicGain.gain.setTargetAtTime(target, this.audio.context.currentTime, 0.18);
+    setMusicSoftened(this.audio, softened);
   }
 
   updatePointerIso() {
@@ -3915,79 +2185,10 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createUpgrades() {
-    this.upgrades = [
-      {
-        name: 'Sword',
-        detail: '+1 soft bonk',
-        cost: 55,
-        level: 0,
-        icon: 'swordIconTexture',
-        apply: () => {
-          this.playerStats.swordPower += 1;
-          this.addGuildNote('Your wooden sword feels braver!');
-        },
-      },
-      {
-        name: 'Bow',
-        detail: 'faster shots',
-        cost: 50,
-        level: 0,
-        icon: 'bowIconTexture',
-        apply: () => {
-          this.playerStats.bowCooldown = Math.max(250, this.playerStats.bowCooldown - 80);
-          this.playerStats.bowPower += this.upgrades[1].level % 2 === 0 ? 1 : 0;
-          this.addGuildNote('Your bow twangs a little quicker.');
-        },
-      },
-      {
-        name: 'Mana',
-        detail: '+25 pool',
-        cost: 45,
-        level: 0,
-        icon: 'manaTexture',
-        apply: () => {
-          this.playerStats.maxMana += 25;
-          this.state.mana = this.playerStats.maxMana;
-          this.addGuildNote('Level up feeling: more mana bubbles!');
-        },
-      },
-      {
-        name: 'Spell',
-        detail: '+spark area',
-        cost: 65,
-        level: 0,
-        icon: 'spellIconTexture',
-        apply: () => {
-          this.playerStats.spellPower += 1;
-          this.playerStats.spellCost = Math.max(16, this.playerStats.spellCost - 2);
-          this.addGuildNote('Sparkle Burst learned a bigger twirl.');
-        },
-      },
-      {
-        name: 'Boots',
-        detail: '+speed',
-        cost: 60,
-        level: 0,
-        icon: 'bootIconTexture',
-        apply: () => {
-          this.playerStats.speed += 0.28;
-          this.addGuildNote('Swift guild boots make patrols breezy.');
-        },
-      },
-      {
-        name: 'Shield',
-        detail: '+heart',
-        cost: 70,
-        level: 0,
-        icon: 'shieldIconTexture',
-        apply: () => {
-          this.playerStats.maxHealth += 1;
-          this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 2);
-          this.addGuildNote('A sunny shield charm circles you.');
-          this.spawnShieldGlow();
-        },
-      },
-    ];
+    this.upgrades = UPGRADE_DEFS.map((def) => ({
+      ...def,
+      apply: () => def.apply(this),
+    }));
   }
 
   buyUpgrade(index) {
@@ -5684,88 +3885,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createUiPanelFrame(width, height, options: { decorScale?: number; fillAlpha?: number } = {}) {
-    const decorScale = options.decorScale ?? 0.72;
-    const container = this.add.container(0, 0);
-    const shadow = this.add.graphics();
-    shadow.fillStyle(0x132130, 0.34);
-    shadow.fillRoundedRect(-width / 2 + 8, -height / 2 + 12, width - 16, height - 14, 14);
-    const fill = this.add.tileSprite(0, 0, width - 72, height - 64, 'gameUiAtlas', 'panel_fill')
-      .setAlpha(options.fillAlpha ?? 0.98);
-    const rim = this.add.graphics();
-    rim.lineStyle(4, 0xd79a38, 0.82);
-    rim.strokeRoundedRect(-width / 2 + 32, -height / 2 + 28, width - 64, height - 56, 12);
-    rim.lineStyle(2, 0xffedb6, 0.7);
-    rim.strokeRoundedRect(-width / 2 + 44, -height / 2 + 40, width - 88, height - 80, 10);
-
-    const cornerInset = 76 * decorScale;
-    const verticalInset = 26 * decorScale;
-    const topY = -height / 2 + 34 * decorScale;
-    const bottomY = height / 2 - 34 * decorScale;
-    const leftX = -width / 2 + 38 * decorScale;
-    const rightX = width / 2 - 38 * decorScale;
-    const topSize = this.getGameUiFrameSize('panel_edge_top');
-    const bottomSize = this.getGameUiFrameSize('panel_edge_bottom');
-    const leftSize = this.getGameUiFrameSize('panel_edge_left');
-    const rightSize = this.getGameUiFrameSize('panel_edge_right');
-    const horizontalEdgeMargin = 168 * decorScale;
-    const verticalEdgeMargin = 166 * decorScale;
-    const topEdge = this.createTiledGameUiFrame(
-      0,
-      topY,
-      Math.max(topSize.width * decorScale, width - horizontalEdgeMargin * 2),
-      topSize.height * decorScale,
-      'panel_edge_top',
-      decorScale,
-    );
-    const bottomEdge = this.createTiledGameUiFrame(
-      0,
-      bottomY,
-      Math.max(bottomSize.width * decorScale, width - horizontalEdgeMargin * 2),
-      bottomSize.height * decorScale,
-      'panel_edge_bottom',
-      decorScale,
-    );
-    const leftEdge = this.createTiledGameUiFrame(
-      leftX,
-      0,
-      leftSize.width * decorScale,
-      Math.max(leftSize.height * decorScale, height - verticalEdgeMargin * 2),
-      'panel_edge_left',
-      decorScale,
-    );
-    const rightEdge = this.createTiledGameUiFrame(
-      rightX,
-      0,
-      rightSize.width * decorScale,
-      Math.max(rightSize.height * decorScale, height - verticalEdgeMargin * 2),
-      'panel_edge_right',
-      decorScale,
-    );
-    const topLeft = this.add.image(-width / 2 + cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tl').setScale(decorScale);
-    const topRight = this.add.image(width / 2 - cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tr').setScale(decorScale);
-    const bottomLeft = this.add.image(-width / 2 + cornerInset + verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_bl').setScale(decorScale);
-    const bottomRight = this.add.image(width / 2 - cornerInset - verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_br').setScale(decorScale);
-    container.add([shadow, fill, rim, topEdge, bottomEdge, leftEdge, rightEdge, topLeft, topRight, bottomLeft, bottomRight]);
-    return container;
+    return createUiPanelFrame(this, width, height, options);
   }
 
   createTiledGameUiFrame(x, y, displayWidth, displayHeight, frameName, scale = 1) {
-    return this.add.tileSprite(
-      x,
-      y,
-      Math.max(1, displayWidth / scale),
-      Math.max(1, displayHeight / scale),
-      'gameUiAtlas',
-      frameName,
-    ).setScale(scale);
+    return createTiledGameUiFrame(this, x, y, displayWidth, displayHeight, frameName, scale);
   }
 
   getGameUiFrameSize(frameName) {
-    const frame = this.textures.getFrame('gameUiAtlas', frameName) as any;
-    return {
-      width: frame?.width ?? frame?.cutWidth ?? 1,
-      height: frame?.height ?? frame?.cutHeight ?? 1,
-    };
+    return getGameUiFrameSize(this, frameName);
   }
 
   createHorizontalSlicedFrame(
@@ -5776,111 +3904,35 @@ class FairyGuildScene extends Phaser.Scene {
     frameNames,
     options: { leftWidth?: number; rightWidth?: number; alpha?: number } = {},
   ) {
-    const leftSize = this.getGameUiFrameSize(frameNames.left);
-    const middleSize = this.getGameUiFrameSize(frameNames.middle);
-    const rightSize = this.getGameUiFrameSize(frameNames.right);
-    const baseHeight = Math.max(1, leftSize.height, middleSize.height, rightSize.height);
-    const scale = height / baseHeight;
-    const leftWidth = options.leftWidth ?? leftSize.width * scale;
-    const rightWidth = options.rightWidth ?? rightSize.width * scale;
-    const middleWidth = Math.max(1, width - leftWidth - rightWidth);
-    const container = this.add.container(x, y);
-    const left = this.add.image(-width / 2 + leftWidth / 2, 0, 'gameUiAtlas', frameNames.left)
-      .setScale(scale);
-    const middle = this.add.tileSprite(0, 0, middleWidth / scale, middleSize.height, 'gameUiAtlas', frameNames.middle)
-      .setScale(scale);
-    const right = this.add.image(width / 2 - rightWidth / 2, 0, 'gameUiAtlas', frameNames.right)
-      .setScale(scale);
-    container.add([left, middle, right]);
-    if (options.alpha !== undefined) {
-      container.setAlpha(options.alpha);
-    }
-    return { container, pieces: [left, middle, right], leftWidth, rightWidth, middleWidth };
+    return createHorizontalSlicedFrame(this, x, y, width, height, frameNames, options);
   }
 
   createUiTitleBanner(x, y, width = 360, height = 70) {
-    return this.createHorizontalSlicedFrame(x, y, width, height, {
-      left: 'title_left',
-      middle: 'title_mid',
-      right: 'title_right',
-    }).container;
+    return createUiTitleBanner(this, x, y, width, height);
   }
 
   fitUiTextToWidth(text, maxWidth, maxSize, minSize = 16) {
-    text.setScale(1);
-    text.setFontSize(maxSize);
-    let size = maxSize;
-    while (text.width > maxWidth && size > minSize) {
-      size -= 1;
-      text.setFontSize(size);
-    }
-    return text;
+    return fitUiTextToWidth(text, maxWidth, maxSize, minSize);
   }
 
   createFittedTitleText(x, y, label, maxWidth, maxSize, minSize) {
-    const text = this.add.text(x, y, label, {
-      ...this.uiTextStyle(maxSize, '#714617'),
-      align: 'center',
-      strokeThickness: 4,
-    }).setOrigin(0.5);
-    return this.fitUiTextToWidth(text, maxWidth, maxSize, minSize);
+    return createFittedTitleText(this, x, y, label, maxWidth, maxSize, minSize);
   }
 
   createHudChip(x, y, width, height) {
-    return this.createHorizontalSlicedFrame(x, y, width, height, {
-      left: 'hud_chip_left',
-      middle: 'hud_chip_mid',
-      right: 'hud_chip_right',
-    }, { alpha: 0.92 }).container;
+    return createHudChip(this, x, y, width, height);
   }
 
   createUiCardFrame(x, y, width, height) {
-    const slice = Math.max(12, Math.min(42, Math.floor(width / 3), Math.floor(height / 3)));
-    return this.add.nineslice(x, y, 'gameUiAtlas', 'content_slot', width, height, slice, slice, slice, slice);
+    return createUiCardFrame(this, x, y, width, height);
   }
 
   createUiButton(x, y, width, height, label, onPress) {
-    const container = this.add.container(x, y);
-    const frame = this.createHorizontalSlicedFrame(0, 0, width, height, {
-      left: 'button_left',
-      middle: 'button_mid',
-      right: 'button_right',
-    });
-    const hit = this.add.rectangle(0, 0, width, height, 0xfff1b8, 0.001)
-      .setInteractive({ useHandCursor: true });
-    const text = this.add.text(0, -2, label, {
-      ...this.uiTextStyle(Math.max(16, Math.round(height * 0.42)), '#684315'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    const pieces = frame.pieces;
-    hit.on('pointerover', () => {
-      pieces.forEach((piece) => piece.setTint(0xfff4bf));
-      hit.setFillStyle(0xfff1b8, 0.12);
-    });
-    hit.on('pointerout', () => {
-      pieces.forEach((piece) => piece.clearTint());
-      hit.setFillStyle(0xfff1b8, 0.001);
-    });
-    hit.on('pointerup', onPress);
-    container.add([frame.container, hit, text]);
-    return { container, hit, text, pieces };
+    return createUiButton(this, x, y, width, height, label, onPress);
   }
 
   createManaMeter(x, y, width, height) {
-    const frame = this.createHorizontalSlicedFrame(x, y, width, height, {
-      left: 'mana_left',
-      middle: 'mana_mid',
-      right: 'mana_right',
-    });
-    const insetX = Math.max(10, Math.round(height * 0.54));
-    const insetY = Math.max(6, Math.round(height * 0.32));
-    const fillWidth = Math.max(1, width - insetX * 2);
-    const fillHeight = Math.max(3, height - insetY * 2);
-    const fill = this.add.rectangle(x - width / 2 + insetX, y - fillHeight / 2, fillWidth, fillHeight, 0x5bd5ff, 1)
-      .setOrigin(0, 0);
-    const shine = this.add.rectangle(x - width / 2 + insetX + 2, y - fillHeight / 2 + 2, fillWidth - 4, 2, 0xffffff, 0.44)
-      .setOrigin(0, 0);
-    return { fill, shine, frame: frame.container, width: fillWidth, parts: [fill, shine, frame.container] };
+    return createManaMeter(this, x, y, width, height);
   }
 
   createSplashOverlay() {
@@ -5976,62 +4028,10 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createLevelUpOverlay() {
-    this.levelUpChoices = [
-      {
-        key: 'melee',
-        label: 'Melee Damage',
-        detail: '+1 sword power',
-        icon: { texture: 'uiAtlas', frame: 'sword_icon_01' },
-        stat: 'swordPower',
-        color: 0xf4bc3f,
-        stageColor: 0xb94136,
-        stageAccent: 0xffd45c,
-        apply: () => {
-          this.playerStats.swordPower += 1;
-          this.addGuildNote('Melee training complete! Sword damage increased.');
-        },
-      },
-      {
-        key: 'range',
-        label: 'Range Damage',
-        detail: '+1 bow power',
-        icon: { texture: 'uiAtlas', frame: 'bow_icon_01' },
-        stat: 'bowPower',
-        color: 0x72c96d,
-        stageColor: 0x397f4a,
-        stageAccent: 0xbde679,
-        apply: () => {
-          if (this.isBowEvolutionReady()) {
-            this.playerStats.bowEvolved = true;
-            this.playerStats.bowPower += BOW_EVOLUTION_POWER_BONUS;
-            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 90);
-            this.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
-            return;
-          }
-          this.playerStats.bowPower += 1;
-          if (this.playerStats.bowEvolved) {
-            this.playerStats.bowCooldown = Math.max(220, this.playerStats.bowCooldown - 30);
-            this.addGuildNote('Evolved bow training complete! Master shots improved.');
-            return;
-          }
-          this.addGuildNote('Range training complete! Bow damage increased.');
-        },
-      },
-      {
-        key: 'magic',
-        label: 'Magic Damage',
-        detail: '+1 spell power',
-        icon: { texture: 'uiAtlas', frame: 'spell_icon_01' },
-        stat: 'spellPower',
-        color: 0x6cc5ff,
-        stageColor: 0x3267c9,
-        stageAccent: 0xa8f3ff,
-        apply: () => {
-          this.playerStats.spellPower += 1;
-          this.addGuildNote('Magic training complete! Spell damage increased.');
-        },
-      },
-    ];
+    this.levelUpChoices = LEVEL_UP_CHOICE_DEFS.map((def) => ({
+      ...def,
+      apply: () => def.apply(this),
+    }));
 
     const layout = this.getLevelUpOverlayLayout();
     this.levelUpOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7300).setVisible(false);
@@ -6587,13 +4587,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   uiTextStyle(size, color) {
-    return {
-      fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-      fontSize: `${size}px`,
-      color,
-      stroke: 'rgba(255,255,255,0.55)',
-      strokeThickness: 2,
-    };
+    return uiTextStyle(size, color);
   }
 
   addGuildNote(message) {

@@ -432,3 +432,99 @@ export const COLORS = {
   water: 0x7fd8f6,
   uiInk: '#25324a',
 };
+
+export interface UpgradeDef {
+  name: string;
+  detail: string;
+  cost: number;
+  level: number;
+  icon: string;
+  apply: (scene: any) => void;
+}
+
+export const UPGRADE_DEFS: UpgradeDef[] = [
+  {
+    name: 'Sword',
+    detail: '+1 soft bonk',
+    cost: 55,
+    level: 0,
+    icon: 'swordIconTexture',
+    apply: (scene) => {
+      scene.playerStats.swordPower += 1;
+      scene.addGuildNote('Your wooden sword feels braver!');
+    },
+  },
+];
+
+export const GENERATED_BUILDING_SPRITE_ALPHA = 1;
+export const STATIC_BUILDING_BASE_ALPHA = 0.14;
+export const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
+
+export interface LevelUpChoiceDef {
+  key: string;
+  label: string;
+  detail: string;
+  icon: { texture: string; frame: string };
+  stat: string;
+  color: number;
+  stageColor: number;
+  stageAccent: number;
+  apply: (scene: any) => void;
+}
+
+export const LEVEL_UP_CHOICE_DEFS: LevelUpChoiceDef[] = [
+  {
+    key: 'melee',
+    label: 'Melee Damage',
+    detail: '+1 sword power',
+    icon: { texture: 'uiAtlas', frame: 'sword_icon_01' },
+    stat: 'swordPower',
+    color: 0xf4bc3f,
+    stageColor: 0xb94136,
+    stageAccent: 0xffd45c,
+    apply: (scene) => {
+      scene.playerStats.swordPower += 1;
+      scene.addGuildNote('Melee training complete! Sword damage increased.');
+    },
+  },
+  {
+    key: 'range',
+    label: 'Range Damage',
+    detail: '+1 bow power',
+    icon: { texture: 'uiAtlas', frame: 'bow_icon_01' },
+    stat: 'bowPower',
+    color: 0x72c96d,
+    stageColor: 0x397f4a,
+    stageAccent: 0xbde679,
+    apply: (scene) => {
+      if (scene.isBowEvolutionReady()) {
+        scene.playerStats.bowEvolved = true;
+        scene.playerStats.bowPower += BOW_EVOLUTION_POWER_BONUS;
+        scene.playerStats.bowCooldown = Math.max(220, scene.playerStats.bowCooldown - 90);
+        scene.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
+        return;
+      }
+      scene.playerStats.bowPower += 1;
+      if (scene.playerStats.bowEvolved) {
+        scene.playerStats.bowCooldown = Math.max(220, scene.playerStats.bowCooldown - 30);
+        scene.addGuildNote('Evolved bow training complete! Master shots improved.');
+        return;
+      }
+      scene.addGuildNote('Range training complete! Bow damage increased.');
+    },
+  },
+  {
+    key: 'magic',
+    label: 'Magic Damage',
+    detail: '+1 spell power',
+    icon: { texture: 'uiAtlas', frame: 'spell_icon_01' },
+    stat: 'spellPower',
+    color: 0x6cc5ff,
+    stageColor: 0x3267c9,
+    stageAccent: 0xa8f3ff,
+    apply: (scene) => {
+      scene.playerStats.spellPower += 1;
+      scene.addGuildNote('Magic training complete! Spell damage increased.');
+    },
+  },
+];
