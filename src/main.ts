@@ -51,18 +51,13 @@ import {
 } from './gameConfig';
 import type {
   HeroChoice,
-  TouchActionKey,
-  TouchButtonSlot,
   UpgradePauseContext,
-  TouchActionIcon,
   RepairModeTargetState,
   GeneratedSurroundAnchor,
   GeneratedSurroundLayer,
   ScreenFootprintBounds,
-  TouchControlsState,
   RunResumeBuildingSnapshot,
   RunResumeStateSnapshot,
-  DroppedChest,
 } from './gameTypes';
 import {
   GENERATED_SURROUND_PIECES,
@@ -99,6 +94,9 @@ import {
   applySceneVariantAmbient,
   updateCinematicParallax,
 } from './sceneVariantRenderer';
+import { touchControlsCreate, setupMobileViewportHandlers, touchControlsUpdate } from './touchControls';
+import { spawnChest as _spawnChest, updateChests as _updateChests, tryOpenChest as _tryOpenChest, resumeRoundAfterChestBonus as _resumeRoundAfterChestBonus } from './chests';
+import { updateProjectiles as _updateProjectiles, destroyProjectile as _destroyProjectile, clearProjectiles as _clearProjectiles, dropReward as _dropReward, updatePickups as _updatePickups, collectPickup as _collectPickup } from './projectiles';
 import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
 import {
   getIsoMetrics as _getIsoMetrics,
@@ -110,9 +108,6 @@ import {
   clampIso as _clampIso,
   isGeneratedIsoWalkable as _isGeneratedIsoWalkable,
 } from './isoUtils';
-
-const TOUCH_CONTROL_SCALE = 1.5;
-const scaleTouchControl = (value: number) => value * TOUCH_CONTROL_SCALE;
 
 const OCCLUDED_BUILDING_SPRITE_ALPHA = 0.5;
 const OCCLUDED_STATIC_BUILDING_BASE_ALPHA = 0.06;
@@ -1549,37 +1544,16 @@ class FairyGuildScene extends Phaser.Scene {
     this.keys.timeOfDay.on('down', () => this.cycleTimeOfDay());
   }
 
-  getTouchCapabilityInfo() {
-    const params = new URLSearchParams(window.location.search);
-    const forceTouchControls = params.has('touchControls') || params.has('forceTouch');
-    const maxTouchPoints = navigator.maxTouchPoints ?? 0;
-    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-    const anyCoarsePointer = window.matchMedia?.('(any-pointer: coarse)').matches ?? false;
-    const hoverNone = window.matchMedia?.('(hover: none)').matches ?? false;
-    const hasTouchStart = 'ontouchstart' in window || 'TouchEvent' in window;
-    const phaserTouch = Boolean(this.sys.game.device.input.touch);
-
-    return {
-      enabled: forceTouchControls || phaserTouch || maxTouchPoints > 0 || coarsePointer || anyCoarsePointer || hasTouchStart,
-      forceTouchControls,
-      phaserTouch,
-      maxTouchPoints,
-      coarsePointer,
-      anyCoarsePointer,
-      hoverNone,
-      hasTouchStart,
-      userAgent: navigator.userAgent,
-    };
+  createTouchControls() {
+    touchControlsCreate(this as any);
   }
 
-  isTouchDevice() {
-    this.touchDetection = this.getTouchCapabilityInfo();
-    this.debugTouchControls('touch detection', this.touchDetection);
-    const params = new URLSearchParams(window.location.search);
-    if (params.has('forceDesktop')) {
-      return false;
-    }
-    return this.touchDetection.enabled;
+  setupMobileViewportHandlers() {
+    setupMobileViewportHandlers(this as any);
+  }
+
+  updateTouchControls() {
+    touchControlsUpdate(this as any);
   }
 
   isDebugAutomationEnabled() {
@@ -1620,302 +1594,6 @@ class FairyGuildScene extends Phaser.Scene {
 
   consumeDevCommand() {
     consumeDevCommand(this);
-  }
-
-  createTouchControls() {
-    this.touchControlsEnabled = this.isTouchDevice();
-    if (!this.touchControlsEnabled) {
-      this.debugTouchControls('touch controls skipped');
-      return;
-    }
-
-    this.controlsHint?.setVisible(false);
-    const container = this.add.container(0, 0).setDepth(7700).setScrollFactor(0);
-    const joystickCenter = {
-      x: scaleTouchControl(132),
-      y: HEIGHT - scaleTouchControl(118),
-    };
-    const joystickZoneSize = scaleTouchControl(190);
-    const joystickBaseRadius = scaleTouchControl(58);
-    const joystickThumbRadius = scaleTouchControl(25);
-    const joystickZone = this.add.zone(joystickCenter.x, joystickCenter.y, joystickZoneSize, joystickZoneSize)
-      .setOrigin(0.5)
-      .setInteractive();
-    const joystickBase = this.add.circle(joystickCenter.x, joystickCenter.y, joystickBaseRadius, 0x132a3d, 0.34)
-      .setStrokeStyle(scaleTouchControl(4), 0xf8ffe3, 0.42);
-    const joystickThumb = this.add.circle(joystickCenter.x, joystickCenter.y, joystickThumbRadius, 0xfff4c8, 0.74)
-      .setStrokeStyle(scaleTouchControl(3), 0x6abbd7, 0.78);
-    const buttons = {} as Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
-    const actionCenterX = WIDTH - scaleTouchControl(150);
-    const actionCenterY = HEIGHT - scaleTouchControl(118);
-    const actionRadiusX = scaleTouchControl(86);
-    const actionRadiusY = scaleTouchControl(54);
-    const normalLayout: Record<TouchButtonSlot, [TouchActionKey, string, TouchActionIcon, number]> = {
-      left: ['melee', 'Sword', { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }, 0xf2bf52],
-      top: ['bow', 'Bow', { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }, 0x8fd56c],
-      right: ['spell', 'Spell', { texture: 'touchControlsAtlas', frame: 'touch_spell_01' }, 0x75d8ff],
-      bottom: ['repair', 'Repair', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
-    };
-    const slotPositions: Record<TouchButtonSlot, { x: number; y: number }> = {
-      left: { x: actionCenterX - actionRadiusX, y: actionCenterY },
-      top: { x: actionCenterX, y: actionCenterY - actionRadiusY },
-      right: { x: actionCenterX + actionRadiusX, y: actionCenterY },
-      bottom: { x: actionCenterX, y: actionCenterY + actionRadiusY },
-    };
-    Object.entries(normalLayout).forEach(([slot, [action, label, icon, color]]) => {
-      const point = slotPositions[slot as TouchButtonSlot];
-      buttons[action] = this.createTouchActionButton(action, point.x, point.y, label, icon, color);
-    });
-    const repairLayout: Array<[TouchActionKey, TouchButtonSlot, string, TouchActionIcon, number]> = [
-      ['repairConfirm', 'left', '', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
-      ['repairCancel', 'right', '', { texture: 'repairModeCancelIcon' }, 0xff9ca0],
-    ];
-    const repairButtons = repairLayout.map(([action, slot, label, icon, color]) => {
-      const point = slotPositions[slot];
-      return this.createTouchActionButton(action, point.x, point.y, label, icon, color).setVisible(false);
-    });
-
-    const portraitOverlay = this.createPortraitOverlay();
-    container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons), ...repairButtons]);
-    this.touchLayer.add([container, portraitOverlay]);
-    this.touchControls = {
-      container,
-      joystickBase,
-      joystickThumb,
-      joystickVector: { x: 0, y: 0 },
-      joystickPointerId: null,
-      joystickCenter,
-      buttons,
-      repairButtons,
-      portraitOverlay,
-    } as TouchControlsState;
-
-    joystickZone.on('pointerdown', (pointer) => {
-      if (this.state.phase !== 'playing') {
-        return;
-      }
-      this.ensureAudio();
-      this.touchControls.joystickPointerId = pointer.id;
-      this.updateJoystickFromPointer(pointer);
-    });
-    this.input.on('pointermove', (pointer) => this.updateJoystickFromPointer(pointer));
-    this.input.on('pointerup', (pointer) => this.releaseJoystick(pointer));
-    this.input.on('pointerupoutside', (pointer) => this.releaseJoystick(pointer));
-    this.updateTouchControls();
-    this.debugTouchControls('touch controls created');
-  }
-
-  setupMobileViewportHandlers() {
-    const refreshScale = () => {
-      this.scale.refresh();
-      this.updateTouchControls();
-      this.debugTouchControls('viewport refreshed');
-    };
-    const delayedRefresh = () => {
-      refreshScale();
-      window.setTimeout(refreshScale, 180);
-    };
-
-    window.addEventListener('resize', delayedRefresh, { passive: true });
-    window.addEventListener('orientationchange', delayedRefresh, { passive: true });
-    window.visualViewport?.addEventListener('resize', delayedRefresh, { passive: true });
-    window.visualViewport?.addEventListener('scroll', delayedRefresh, { passive: true });
-
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      window.removeEventListener('resize', delayedRefresh);
-      window.removeEventListener('orientationchange', delayedRefresh);
-      window.visualViewport?.removeEventListener('resize', delayedRefresh);
-      window.visualViewport?.removeEventListener('scroll', delayedRefresh);
-    });
-  }
-
-  createTouchActionButton(
-    action: TouchActionKey,
-    x: number,
-    y: number,
-    label: string,
-    icon: TouchActionIcon,
-    color: number,
-  ) {
-    const button = this.add.container(x, y).setScrollFactor(0);
-    const hit = this.add.zone(0, 0, scaleTouchControl(78), scaleTouchControl(82))
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-    const labelText = label ? this.add.text(0, scaleTouchControl(34), label, {
-      ...this.uiTextStyle(scaleTouchControl(10), '#ffffff'),
-      strokeThickness: scaleTouchControl(3),
-    }).setOrigin(0.5) : null;
-    const glyph = icon
-      ? this.add.image(0, -scaleTouchControl(3), icon.texture, icon.frame).setDisplaySize(scaleTouchControl(70), scaleTouchControl(70))
-      : this.add.text(0, -scaleTouchControl(5), 'I', {
-        ...this.uiTextStyle(scaleTouchControl(24), '#fff0b8'),
-        strokeThickness: scaleTouchControl(4),
-      }).setOrigin(0.5);
-    const focusRing = this.add.circle(0, -scaleTouchControl(3), scaleTouchControl(34), 0xffffff, 0)
-      .setStrokeStyle(scaleTouchControl(2), color, 0.28);
-    hit.on('pointerdown', () => {
-      this.ensureAudio();
-      this.pulseTouchButton(button);
-      this.handleTouchAction(action);
-    });
-    button.add(labelText ? [hit, focusRing, glyph, labelText] : [hit, focusRing, glyph]);
-    return button;
-  }
-
-  createPortraitOverlay() {
-    const overlay = this.add.container(0, 0).setDepth(7950).setVisible(false).setScrollFactor(0);
-    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x17344f, 0.76);
-    const panel = this.add.graphics();
-    panel.fillStyle(0xfff7df, 0.96);
-    panel.lineStyle(4, 0xffd36d, 0.86);
-    panel.fillRoundedRect(WIDTH / 2 - 270, HEIGHT / 2 - 92, 540, 184, 10);
-    panel.strokeRoundedRect(WIDTH / 2 - 270, HEIGHT / 2 - 92, 540, 184, 10);
-    const title = this.add.text(WIDTH / 2, HEIGHT / 2 - 28, 'Turn your device sideways', {
-      ...this.uiTextStyle(30, '#714617'),
-      strokeThickness: 4,
-    }).setOrigin(0.5);
-    const helper = this.add.text(WIDTH / 2, HEIGHT / 2 + 32, 'Fairy Guild Defense plays best in landscape.', this.uiTextStyle(17, '#31503b'))
-      .setOrigin(0.5);
-    overlay.add([shade, panel, title, helper]);
-    return overlay;
-  }
-
-  updateJoystickFromPointer(pointer) {
-    if (!this.touchControls || pointer.id !== this.touchControls.joystickPointerId) {
-      return;
-    }
-    const radius = scaleTouchControl(58);
-    const center = this.touchControls.joystickCenter;
-    const dx = pointer.x - center.x;
-    const dy = pointer.y - center.y;
-    const distance = Math.min(radius, Math.hypot(dx, dy));
-    const angle = Math.atan2(dy, dx);
-    const thumbX = distance > 0 ? Math.cos(angle) * distance : 0;
-    const thumbY = distance > 0 ? Math.sin(angle) * distance : 0;
-    this.touchControls.joystickThumb.setPosition(center.x + thumbX, center.y + thumbY);
-    this.touchControls.joystickVector = {
-      x: thumbX / radius,
-      y: thumbY / radius,
-    };
-  }
-
-  releaseJoystick(pointer) {
-    if (!this.touchControls || pointer.id !== this.touchControls.joystickPointerId) {
-      return;
-    }
-    this.touchControls.joystickPointerId = null;
-    this.touchControls.joystickVector = { x: 0, y: 0 };
-    this.touchControls.joystickThumb.setPosition(
-      this.touchControls.joystickCenter.x,
-      this.touchControls.joystickCenter.y,
-    );
-  }
-
-  updateTouchControls() {
-    if (!this.touchControls) {
-      return;
-    }
-    this.updatePortraitHint();
-    this.touchControls.container.setAlpha(this.state.phase === 'countdown' ? 0.72 : 1);
-    const repairModeActive = this.state.repairMode && this.state.phase === 'playing';
-    ['melee', 'bow', 'spell', 'repair'].forEach((action) => {
-      this.touchControls?.buttons[action]?.setVisible(!repairModeActive);
-    });
-    this.touchControls.repairButtons?.forEach((button) => button.setVisible(repairModeActive));
-    this.setTouchControlsVisible(
-      (this.state.phase === 'countdown' || this.state.phase === 'playing') && !this.isPortraitLayout(),
-    );
-  }
-
-  setTouchControlsVisible(visible: boolean) {
-    if (!this.touchControls) {
-      return;
-    }
-    const nextVisible = this.touchControlsEnabled && visible;
-    this.touchControls.container.setVisible(nextVisible);
-    if (!nextVisible) {
-      this.touchControls.joystickPointerId = null;
-      this.touchControls.joystickVector = { x: 0, y: 0 };
-      this.touchControls.joystickThumb.setPosition(
-        this.touchControls.joystickCenter.x,
-        this.touchControls.joystickCenter.y,
-      );
-    }
-    if (this.lastTouchControlsVisibility !== nextVisible) {
-      this.lastTouchControlsVisibility = nextVisible;
-      this.debugTouchControls('touch controls visibility changed', { visible: nextVisible });
-    }
-  }
-
-  updatePortraitHint() {
-    if (!this.touchControls) {
-      return;
-    }
-    this.touchControls.portraitOverlay.setVisible(this.touchControlsEnabled && this.isPortraitLayout());
-  }
-
-  isPortraitLayout() {
-    const viewport = window.visualViewport;
-    const width = viewport?.width ?? window.innerWidth;
-    const height = viewport?.height ?? window.innerHeight;
-    return height > width;
-  }
-
-  debugTouchControls(message, extra = {}) {
-    const params = new URLSearchParams(window.location.search);
-    const storageEnabled = (() => {
-      try {
-        return localStorage.getItem('debugTouchControls') === '1';
-      } catch {
-        return false;
-      }
-    })();
-    if (!params.has('debugTouch') && !storageEnabled) {
-      return;
-    }
-
-    const gameEl = document.getElementById('game');
-    const canvas = this.game.canvas;
-    const gameStyle = gameEl ? getComputedStyle(gameEl) : null;
-    const canvasStyle = canvas ? getComputedStyle(canvas) : null;
-    console.info('[touch-controls]', message, {
-      ...extra,
-      detection: this.touchDetection,
-      created: Boolean(this.touchControls),
-      enabled: this.touchControlsEnabled,
-      phase: this.state.phase,
-      portrait: this.isPortraitLayout(),
-      containerVisible: this.touchControls?.container.visible ?? null,
-      containerAlpha: this.touchControls?.container.alpha ?? null,
-      containerDepth: this.touchControls?.container.depth ?? null,
-      viewport: {
-        innerWidth: window.innerWidth,
-        innerHeight: window.innerHeight,
-        visualWidth: window.visualViewport?.width ?? null,
-        visualHeight: window.visualViewport?.height ?? null,
-      },
-      gameDom: gameStyle ? {
-        exists: true,
-        display: gameStyle.display,
-        visibility: gameStyle.visibility,
-        position: gameStyle.position,
-        zIndex: gameStyle.zIndex,
-        pointerEvents: gameStyle.pointerEvents,
-        width: gameStyle.width,
-        height: gameStyle.height,
-      } : { exists: false },
-      canvasDom: canvasStyle ? {
-        exists: true,
-        display: canvasStyle.display,
-        visibility: canvasStyle.visibility,
-        position: canvasStyle.position,
-        zIndex: canvasStyle.zIndex,
-        pointerEvents: canvasStyle.pointerEvents,
-        opacity: canvasStyle.opacity,
-        width: canvasStyle.width,
-        height: canvasStyle.height,
-      } : { exists: false },
-    });
   }
 
   getMovementVector() {
@@ -1965,43 +1643,6 @@ class FairyGuildScene extends Phaser.Scene {
       x: this.player.iso.x + this.player.facing.x * maxRange,
       y: this.player.iso.y + this.player.facing.y * maxRange,
     }, 0.8);
-  }
-
-  handleTouchAction(action: TouchActionKey) {
-    if (this.state.phase !== 'playing') {
-      return;
-    }
-    const now = this.time.now;
-    if (action === 'melee') {
-      if (this.state.repairMode) {
-        this.tryRepairBuilding();
-      } else {
-        this.swingSword(now);
-      }
-    } else if (action === 'bow') {
-      this.setRepairMode(false, false);
-      this.fireBow(now, this.getAutoTargetIso(7.2));
-    } else if (action === 'spell') {
-      this.setRepairMode(false, false);
-      this.castSpell(now, this.getAutoTargetIso(4.2));
-    } else if (action === 'repair') {
-      this.toggleRepairMode();
-    } else if (action === 'repairConfirm') {
-      this.tryRepairBuilding();
-    } else if (action === 'repairCancel') {
-      this.setRepairMode(false, false);
-    }
-  }
-
-  pulseTouchButton(button: Phaser.GameObjects.Container) {
-    this.tweens.add({
-      targets: button,
-      scale: 0.9,
-      yoyo: true,
-      duration: 80,
-      ease: 'Sine.easeOut',
-      onComplete: () => button.setScale(1),
-    });
   }
 
   ensureAudio() {
@@ -2219,145 +1860,21 @@ class FairyGuildScene extends Phaser.Scene {
     reward = 'bonus-upgrade',
     options: { source?: 'enemyDrop'; lifetimeMs?: number } = {},
   ) {
-    const p = this.isoToScreen(x, y, 10);
-    const chestTexture = this.generatedLevelActive ? 'worldTilesAtlas' : 'chestTexture';
-    const chestFrame = this.generatedLevelActive ? 'chest_closed_01' : undefined;
-    const chestSize = this.generatedLevelActive ? this.scaleGeneratedSize([101, 103]) : [58, 58];
-    const sprite = this.add.image(p.x, p.y, chestTexture, chestFrame)
-      .setOrigin(0.5, 0.78)
-      .setDisplaySize(chestSize[0], chestSize[1])
-      .setDepth(p.y + 60);
-    const glow = this.add.circle(p.x, p.y - 22, 19 * (chestSize[0] / 58), 0xfff2a4, 0.14).setDepth(p.y + 50);
-    this.tweens.add({
-      targets: glow,
-      scale: 1.35,
-      alpha: 0.34,
-      yoyo: true,
-      repeat: -1,
-      duration: 1050,
-      ease: 'Sine.inOut',
-    });
-    this.entityLayer.add([glow, sprite]);
-    const lifetimeMs = options.lifetimeMs ?? 5000;
-    const spawnedAt = this.time.now;
-    this.chests.push({
-      iso: { x, y },
-      sprite,
-      glow,
-      reward,
-      opened: false,
-      bob: Math.random() * 1000,
-      source: 'enemyDrop',
-      spawnedAt,
-      despawnAt: spawnedAt + lifetimeMs,
-      blinkAt: spawnedAt + Math.max(2500, lifetimeMs - 1800),
-    } satisfies DroppedChest);
+    _spawnChest(this as any, x, y, reward, options);
   }
 
   updateChests(time) {
-    (this.chests as DroppedChest[]).slice().forEach((chest) => {
-      if (chest.opened) {return;}
-      if (chest.despawnAt && time >= chest.despawnAt) {
-        chest.opened = true;
-        this.tweens.add({
-          targets: [chest.sprite, chest.glow],
-          alpha: 0,
-          scale: 0.55,
-          duration: 180,
-          onComplete: () => {
-            chest.sprite.destroy();
-            chest.glow.destroy();
-          },
-        });
-        this.chests = this.chests.filter((candidate) => candidate !== chest);
-        this.checkLevelClear();
-        return;
-      }
-      const p = this.isoToScreen(chest.iso.x, chest.iso.y, 10 + Math.sin(time / 450 + chest.bob) * 2.5);
-      chest.sprite.setPosition(p.x, p.y);
-      chest.glow.setPosition(p.x, p.y - 20);
-      if (chest.blinkAt && time >= chest.blinkAt) {
-        const pulse = 0.45 + Math.abs(Math.sin(time / 65)) * 0.55;
-        chest.sprite.setAlpha(pulse);
-        chest.glow.setAlpha(0.12 + pulse * 0.24);
-      } else {
-        chest.sprite.setAlpha(1);
-        chest.glow.setAlpha(0.18);
-      }
-      if (Phaser.Math.Distance.Between(chest.iso.x, chest.iso.y, this.player.iso.x, this.player.iso.y) < 0.95) {
-        this.openChest(chest);
-      }
-    });
+    _updateChests(this as any, time);
   }
 
   tryOpenChest() {
-    if (this.state.phase !== 'playing') {return;}
-    const chest = this.chests.find((candidate) => !candidate.opened && Phaser.Math.Distance.Between(
-      candidate.iso.x,
-      candidate.iso.y,
-      this.player.iso.x,
-      this.player.iso.y,
-    ) < 1.35);
-    if (!chest) {
-      this.addGuildNote('No chest close enough yet.');
-      return;
-    }
-    this.openChest(chest);
+    _tryOpenChest(this as any);
   }
 
-  openChest(chest: DroppedChest) {
-    if (!chest || chest.opened) {
-      return;
-    }
-    chest.opened = true;
-    this.playTone('chest');
-    chest.sprite.setTint(0xfff2a4);
-    this.tweens.add({
-      targets: [chest.sprite, chest.glow],
-      y: '-=22',
-      alpha: 0,
-      scale: 1.22,
-      duration: 760,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        chest.sprite.destroy();
-        chest.glow.destroy();
-      },
-    });
-    const p = this.isoToScreen(chest.iso.x, chest.iso.y, 18);
-    this.spawnSparkleBurst(p.x, p.y - 22, 0xfff0a4, 20, 1.1);
-    this.chests = this.chests.filter((candidate) => candidate !== chest);
-    if (chest.reward === 'bonus-upgrade') {
-      this.pauseRoundForChestBonus();
-      return;
-    }
-    this.grantChestReward(chest.reward);
-  }
 
-  pauseRoundForChestBonus() {
-    if (this.state.phase !== 'playing') {
-      return;
-    }
-    this.upgradePauseContext = 'chestBonus' as UpgradePauseContext;
-    this.state.phase = 'levelUp';
-    this.state.inventoryOpen = false;
-    this.setRepairMode(false, false);
-    this.inventoryPanel?.setVisible(false);
-    this.levelTimers.forEach((timer) => { timer.paused = true; });
-    this.showLevelUpScreen('chestBonus');
-  }
 
   resumeRoundAfterChestBonus() {
-    this.upgradePauseContext = 'roundClear' as UpgradePauseContext;
-    this.levelTimers.forEach((timer) => {
-      if (timer && !timer.hasDispatched) {
-        timer.paused = false;
-      }
-    });
-    this.state.phase = 'playing';
-    this.levelUpOverlay?.setVisible(false);
-    this.addGuildNote('The chest blessing settles in. Back to the defense!');
-    this.checkLevelClear();
+    _resumeRoundAfterChestBonus(this as any);
   }
 
   toggleRepairMode() {
@@ -2646,30 +2163,6 @@ class FairyGuildScene extends Phaser.Scene {
       ease: 'Cubic.easeOut',
       onComplete: () => plus.destroy(),
     });
-  }
-
-  grantChestReward(reward) {
-    if (reward === 'mana') {
-      this.state.mana = this.playerStats.maxMana;
-      this.addGuildNote('You found a blue mana orb!');
-    } else if (reward === 'xp') {
-      this.gainXp(38);
-      this.addGuildNote('You found a swirl of XP stars!');
-    } else if (reward === 'heart') {
-      this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 2);
-      this.addGuildNote('A heart charm patched you up.');
-    } else if (reward === 'buff') {
-      this.playerStats.speed += 0.45;
-      this.time.delayedCall(8500, () => {
-        this.playerStats.speed -= 0.45;
-        this.addGuildNote('The quick-step sparkle faded.');
-      });
-      this.addGuildNote('Temporary quick-step sparkle!');
-    } else {
-      const amount = Phaser.Math.Between(22, 42);
-      this.state.gold += amount;
-      this.addGuildNote(`You found ${amount} gold!`);
-    }
   }
 
   clearLevelTimers() {
@@ -3437,95 +2930,27 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   dropReward(x, y, enemy = null) {
-    const roll = Phaser.Math.Between(0, 100);
-    const type = roll < 58 ? 'gold' : roll < 76 ? 'mana' : roll < 90 ? 'heart' : 'xp';
-    const texture = type === 'gold' ? 'coinTexture' : type === 'heart' ? 'heartTexture' : type === 'mana' ? 'manaTexture' : 'xpTexture';
-    const p = this.isoToScreen(x, y, 12);
-    const sprite = this.add.image(p.x, p.y - 16, texture)
-      .setOrigin(0.5)
-      .setDisplaySize(32, 32)
-      .setDepth(p.y + 120);
-    const goldRange = enemy?.rewardGold || [6, 15];
-    const value = type === 'gold'
-      ? Phaser.Math.Between(goldRange[0], goldRange[1])
-      : type === 'xp'
-        ? Math.max(12, Math.round((enemy?.rewardXp || 20) * 0.8))
-        : 1;
-    this.pickups.push({ type, iso: { x, y }, sprite, age: 0, value });
-    this.fxLayer.add(sprite);
+    _dropReward(this as any, x, y, enemy);
   }
 
   updatePickups(dt) {
-    this.pickups.slice().forEach((pickup) => {
-      pickup.age += dt;
-      const p = this.isoToScreen(pickup.iso.x, pickup.iso.y, 22 + Math.sin(pickup.age * 5) * 5);
-      pickup.sprite.setPosition(p.x, p.y - 18);
-      pickup.sprite.rotation += dt * 1.4;
-      const close = Phaser.Math.Distance.Between(pickup.iso.x, pickup.iso.y, this.player.iso.x, this.player.iso.y) < 1.05;
-      if (close || pickup.age > 8) {
-        this.collectPickup(pickup);
-      }
-    });
+    _updatePickups(this as any, dt);
   }
 
   collectPickup(pickup) {
-    this.pickups = this.pickups.filter((candidate) => candidate !== pickup);
-    if (pickup.type === 'gold') {
-      this.state.gold += pickup.value;
-      if (Phaser.Math.Between(0, 4) === 0) {this.addGuildNote(`You found ${pickup.value} gold!`);}
-    } else if (pickup.type === 'heart') {
-      this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
-    } else if (pickup.type === 'mana') {
-      this.state.mana = Math.min(this.playerStats.maxMana, this.state.mana + 22);
-    } else {
-      this.gainXp(pickup.value);
-    }
-    this.playTone('sparkle');
-    this.tweens.add({
-      targets: pickup.sprite,
-      y: pickup.sprite.y - 32,
-      alpha: 0,
-      scale: 1.4,
-      duration: 280,
-      onComplete: () => pickup.sprite.destroy(),
-    });
+    _collectPickup(this as any, pickup);
   }
 
   updateProjectiles(dt) {
-    this.projectiles.slice().forEach((projectile) => {
-      projectile.iso.x += projectile.velocity.x * dt;
-      projectile.iso.y += projectile.velocity.y * dt;
-      projectile.distance += Math.hypot(projectile.velocity.x * dt, projectile.velocity.y * dt);
-      const p = this.isoToScreen(projectile.iso.x, projectile.iso.y, 24);
-      projectile.sprite.setPosition(p.x, p.y - 8);
-      const target = this.enemies.find((enemy) => Phaser.Math.Distance.Between(
-        projectile.iso.x,
-        projectile.iso.y,
-        enemy.iso.x,
-        enemy.iso.y,
-      ) < 0.54);
-      if (target) {
-        this.damageEnemy(target, projectile.power, 'arrow');
-        this.destroyProjectile(projectile);
-      } else if (projectile.distance > projectile.range) {
-        this.destroyProjectile(projectile);
-      }
-    });
+    _updateProjectiles(this as any, dt);
   }
 
   destroyProjectile(projectile) {
-    this.projectiles = this.projectiles.filter((candidate) => candidate !== projectile);
-    this.tweens.add({
-      targets: projectile.sprite,
-      alpha: 0,
-      scale: 0.45,
-      duration: 150,
-      onComplete: () => projectile.sprite.destroy(),
-    });
+    _destroyProjectile(this as any, projectile);
   }
 
   clearProjectiles() {
-    this.projectiles.splice(0).forEach((projectile) => projectile.sprite.destroy());
+    _clearProjectiles(this as any);
   }
 
   createBuildingHealthBar(x, y, width = 58, height = 10, depth = 0) {
