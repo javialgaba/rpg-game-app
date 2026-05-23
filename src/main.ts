@@ -7,7 +7,7 @@ import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } fr
 import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
 import { findGridPath, pathCost } from './levels/pathfinding';
 
-import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
+
 import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
   BOSS_CONFIGS,
@@ -70,6 +70,9 @@ import {
 import { createGeneratedTextures } from './generatedTextures';
 import { getWorldFogPieces, getWorldBackdropPieces, getWorldEdgeClusters } from './generatedWorldRenderData';
 import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDebugAutomationHost, toDebugSlug, getDebugBuildingSummary, setDebugCommandResult, findDebugBuilding, teleportPlayerToDebugTarget, triggerDebugSeasonTransition } from './devCommands';
+import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createUiCardFrame, createUiButton, createManaMeter, uiTextStyle } from './uiFactory';
+import { drawGeneratedLevelDebug, toggleGeneratedLevelDebug, updateGeneratedLevelDebug } from './levelDebugRenderer';
+import { getActiveTimeOfDay, cycleTimeOfDay, getLampGlowIsoPoints, createTimeOfDayLayer } from './timeOfDayRenderer';
 import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
 import {
   getIsoMetrics as _getIsoMetrics,
@@ -1582,251 +1585,31 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getActiveTimeOfDay() {
-    if (this.timeOfDayOverride) {
-      return this.timeOfDayOverride;
-    }
-    const paramValue = new URLSearchParams(window.location.search).get('timeOfDay');
-    if (isTimeOfDay(paramValue)) {
-      return paramValue;
-    }
-    return this.generatedLevel?.config.timeOfDay ?? 'morning';
+    return getActiveTimeOfDay(this);
   }
 
   cycleTimeOfDay() {
-    const order = ['morning', 'noon', 'afternoon', 'night'];
-    const current = this.getActiveTimeOfDay();
-    const next = order[(order.indexOf(current) + 1) % order.length];
-    this.timeOfDayOverride = next;
-    this.createTimeOfDayLayer();
-    this.addGuildNote(`Time preview: ${next}.`);
-    this.updateDebugOverlay();
+    cycleTimeOfDay(this);
   }
 
   getLampGlowIsoPoints() {
-    if (this.generatedLevelActive && this.generatedLevel) {
-      return [
-        ...this.generatedLevel.objects
-          .filter((placement) => placement.token === 'lamp')
-          .map((placement) => placement.iso),
-        ...this.generatedLevel.decorations
-          .filter((placement) => placement.decorationKind === 'magicPlant')
-          .map((placement) => placement.iso),
-      ];
-    }
-    return [
-      { x: 8.8, y: 5.8 },
-      { x: 10.8, y: 4.8 },
-      { x: 3.7, y: 9.7 },
-    ];
+    return getLampGlowIsoPoints(this);
   }
 
   createTimeOfDayLayer() {
-    this.timeOfDayOverlay?.destroy();
-    this.timeOfDayMist?.destroy();
-    this.lampGlowGraphics?.destroy();
-    this.timeOfDayOverlay = null;
-    this.timeOfDayMist = null;
-    this.lampGlowGraphics = null;
-    if (this.generatedLevelActive && this.sceneVariant) {
-      return;
-    }
-    const profile = TIME_OF_DAY_PROFILES[this.getActiveTimeOfDay()];
-    const layerItems = [];
-
-    if (profile.overlayAlpha > 0) {
-      this.timeOfDayOverlay = this.add.rectangle(
-        WIDTH / 2,
-        HEIGHT / 2,
-        WIDTH,
-        HEIGHT,
-        profile.overlayColor,
-        profile.overlayAlpha,
-      ).setScrollFactor(0);
-      layerItems.push(this.timeOfDayOverlay);
-    }
-
-    if (profile.mistAlpha > 0) {
-      const mist = this.add.graphics();
-      mist.fillStyle(0xffffff, profile.mistAlpha);
-      [
-        [190, 184, 210, 34],
-        [612, 156, 260, 42],
-        [1050, 196, 220, 36],
-      ].forEach(([x, y, w, h]) => mist.fillEllipse(x, y, w, h));
-      this.timeOfDayMist = mist;
-      layerItems.push(mist);
-    }
-
-    if (profile.glowAlpha > 0) {
-      const glow = this.add.graphics();
-      glow.setBlendMode(Phaser.BlendModes.ADD);
-      this.getLampGlowIsoPoints().forEach((iso) => {
-        const p = this.isoToScreen(iso.x, iso.y, 20);
-        glow.fillStyle(profile.glowColor, profile.glowAlpha);
-        glow.fillCircle(p.x, p.y, 34);
-        glow.fillStyle(profile.glowColor, profile.glowAlpha * 0.42);
-        glow.fillCircle(p.x, p.y, 58);
-      });
-      this.lampGlowGraphics = glow;
-      layerItems.push(glow);
-    }
-
-    if (layerItems.length > 0) {
-      this.lightingLayer.add(layerItems);
-    }
-  }
-
-  drawDebugDiamond(gfx, grid, color, alpha = 0.18) {
-    const { tileW, tileH } = this.getIsoMetrics();
-    const center = this.isoToScreen(grid.x, grid.y);
-    gfx.fillStyle(color, alpha);
-    gfx.lineStyle(1, color, Math.min(1, alpha + 0.22));
-    gfx.beginPath();
-    gfx.moveTo(center.x, center.y - tileH / 2);
-    gfx.lineTo(center.x + tileW / 2, center.y);
-    gfx.lineTo(center.x, center.y + tileH / 2);
-    gfx.lineTo(center.x - tileW / 2, center.y);
-    gfx.closePath();
-    gfx.fillPath();
-    gfx.strokePath();
-  }
-
-  getDecorationDebugColor(kind) {
-    if (kind === 'fullTree' || kind === 'sapling') {
-      return 0x2ed573;
-    }
-    if (kind === 'treeCluster') {
-      return 0x1fa85f;
-    }
-    if (kind === 'bush') {
-      return 0x78d66a;
-    }
-    if (kind === 'rocks') {
-      return 0xd0d5dd;
-    }
-    if (kind === 'puddle') {
-      return 0x7fd8f6;
-    }
-    if (kind === 'grassPatch') {
-      return 0x9be86b;
-    }
-    if (kind === 'mushrooms') {
-      return 0xffaa55;
-    }
-    if (kind === 'magicPlant') {
-      return 0x6af7ff;
-    }
-    if (kind === 'sparkles') {
-      return 0xffffff;
-    }
-    if (kind === 'lamp') {
-      return 0xffe36a;
-    }
-    if (kind === 'fence' || kind === 'sign') {
-      return 0xc7924e;
-    }
-    return 0xff93d8;
-  }
-
-  drawDebugPath(gfx, path, color, alpha = 0.56) {
-    if (!path?.length) {
-      return;
-    }
-    gfx.lineStyle(2, color, alpha);
-    const first = this.isoToScreen(path[0].x, path[0].y, -5);
-    gfx.beginPath();
-    gfx.moveTo(first.x, first.y);
-    path.slice(1).forEach((cell) => {
-      const p = this.isoToScreen(cell.x, cell.y, -5);
-      gfx.lineTo(p.x, p.y);
-    });
-    gfx.strokePath();
+    createTimeOfDayLayer(this);
   }
 
   drawGeneratedLevelDebug() {
-    if (!this.generatedLevel) {
-      return;
-    }
-    this.levelDebugGraphics?.destroy();
-    const gfx = this.add.graphics().setDepth(0);
-    this.levelDebugGraphics = gfx;
-    for (let y = 0; y < this.generatedLevel.height; y += 1) {
-      for (let x = 0; x < this.generatedLevel.width; x += 1) {
-        this.drawDebugDiamond(gfx, { x, y }, 0xffffff, 0.035);
-        if (this.generatedLevel.roadGrid[y]?.[x]) {
-          this.drawDebugDiamond(gfx, { x, y }, 0xe8d39c, 0.18);
-        }
-        if (this.generatedLevel.blockedGrid[y][x]) {
-          this.drawDebugDiamond(gfx, { x, y }, 0xff6b6b, 0.22);
-        }
-      }
-    }
-    const top = this.isoToScreen((this.generatedLevel.width - 1) / 2, 0, -8);
-    const right = this.isoToScreen(this.generatedLevel.width - 1, (this.generatedLevel.height - 1) / 2, -8);
-    const bottom = this.isoToScreen((this.generatedLevel.width - 1) / 2, this.generatedLevel.height - 1, -8);
-    const left = this.isoToScreen(0, (this.generatedLevel.height - 1) / 2, -8);
-    gfx.lineStyle(3, 0xffffff, 0.38);
-    gfx.strokePoints([top, right, bottom, left, top], false, true);
-    this.generatedLevel.spawnPoints.forEach((spawn) => this.drawDebugDiamond(gfx, spawn, 0xc678ff, 0.38));
-    if (this.generatedLevel.playerSpawn) {
-      this.drawDebugDiamond(gfx, this.generatedLevel.playerSpawn, 0x68d8ff, 0.42);
-    }
-    this.generatedLevel.protectedTargets.forEach((target) => {
-      target.cells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0xffdf6a, 0.34));
-      target.attackCells.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x7dff9a, 0.18));
-    });
-    this.generatedLevel.chests.forEach((chest) => this.drawDebugDiamond(gfx, chest.grid, 0xffb84f, 0.42));
-    this.generatedLevel.decorations.forEach((decoration) => (
-      this.drawDebugDiamond(gfx, decoration.grid, this.getDecorationDebugColor(decoration.decorationKind), 0.20)
-    ));
-    const goals = this.generatedLevel.protectedTargets.flatMap((target) => target.attackCells);
-    this.generatedLevel.spawnPoints.forEach((spawn) => {
-      const path = findGridPath(this.generatedLevel.walkableGrid, spawn, goals);
-      path?.forEach((cell) => this.drawDebugDiamond(gfx, cell, 0x60ffb2, 0.16));
-      this.drawDebugPath(gfx, path, 0x60ffb2, 0.35);
-    });
-    this.enemies
-      .filter((enemy) => !enemy.defeated && !enemy.retreating)
-      .forEach((enemy) => {
-        this.drawDebugPath(gfx, enemy.path, 0xff5cc6, 0.82);
-        this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.iso), 0xff5cc6, 0.42);
-        if (enemy.target?.iso) {
-          this.drawDebugDiamond(gfx, this.isoToGridCell(enemy.target.iso), 0xfff15c, 0.42);
-        }
-      });
-    this.levelDebugLayer.add(gfx);
+    drawGeneratedLevelDebug(this);
   }
 
   toggleGeneratedLevelDebug() {
-    if (!this.generatedLevel) {
-      return;
-    }
-    this.levelDebugVisible = !this.levelDebugVisible;
-    try {
-      localStorage.setItem('debugLevelOverlay', this.levelDebugVisible ? '1' : '0');
-    } catch {
-      // Debug persistence is optional.
-    }
-    if (this.levelDebugVisible) {
-      this.drawGeneratedLevelDebug();
-      this.addGuildNote('Level grid debug shown.');
-    } else {
-      this.levelDebugGraphics?.destroy();
-      this.levelDebugGraphics = null;
-      this.addGuildNote('Level grid debug hidden.');
-    }
-    this.updateDebugOverlay();
+    toggleGeneratedLevelDebug(this);
   }
 
   updateGeneratedLevelDebug(time) {
-    if (!this.levelDebugVisible || !this.generatedLevel) {
-      return;
-    }
-    if (time - this.levelDebugLastRenderAt < 260) {
-      return;
-    }
-    this.levelDebugLastRenderAt = time;
-    this.drawGeneratedLevelDebug();
+    updateGeneratedLevelDebug(this, time);
   }
 
   drawMapTiles() {
@@ -4423,88 +4206,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createUiPanelFrame(width, height, options: { decorScale?: number; fillAlpha?: number } = {}) {
-    const decorScale = options.decorScale ?? 0.72;
-    const container = this.add.container(0, 0);
-    const shadow = this.add.graphics();
-    shadow.fillStyle(0x132130, 0.34);
-    shadow.fillRoundedRect(-width / 2 + 8, -height / 2 + 12, width - 16, height - 14, 14);
-    const fill = this.add.tileSprite(0, 0, width - 72, height - 64, 'gameUiAtlas', 'panel_fill')
-      .setAlpha(options.fillAlpha ?? 0.98);
-    const rim = this.add.graphics();
-    rim.lineStyle(4, 0xd79a38, 0.82);
-    rim.strokeRoundedRect(-width / 2 + 32, -height / 2 + 28, width - 64, height - 56, 12);
-    rim.lineStyle(2, 0xffedb6, 0.7);
-    rim.strokeRoundedRect(-width / 2 + 44, -height / 2 + 40, width - 88, height - 80, 10);
-
-    const cornerInset = 76 * decorScale;
-    const verticalInset = 26 * decorScale;
-    const topY = -height / 2 + 34 * decorScale;
-    const bottomY = height / 2 - 34 * decorScale;
-    const leftX = -width / 2 + 38 * decorScale;
-    const rightX = width / 2 - 38 * decorScale;
-    const topSize = this.getGameUiFrameSize('panel_edge_top');
-    const bottomSize = this.getGameUiFrameSize('panel_edge_bottom');
-    const leftSize = this.getGameUiFrameSize('panel_edge_left');
-    const rightSize = this.getGameUiFrameSize('panel_edge_right');
-    const horizontalEdgeMargin = 168 * decorScale;
-    const verticalEdgeMargin = 166 * decorScale;
-    const topEdge = this.createTiledGameUiFrame(
-      0,
-      topY,
-      Math.max(topSize.width * decorScale, width - horizontalEdgeMargin * 2),
-      topSize.height * decorScale,
-      'panel_edge_top',
-      decorScale,
-    );
-    const bottomEdge = this.createTiledGameUiFrame(
-      0,
-      bottomY,
-      Math.max(bottomSize.width * decorScale, width - horizontalEdgeMargin * 2),
-      bottomSize.height * decorScale,
-      'panel_edge_bottom',
-      decorScale,
-    );
-    const leftEdge = this.createTiledGameUiFrame(
-      leftX,
-      0,
-      leftSize.width * decorScale,
-      Math.max(leftSize.height * decorScale, height - verticalEdgeMargin * 2),
-      'panel_edge_left',
-      decorScale,
-    );
-    const rightEdge = this.createTiledGameUiFrame(
-      rightX,
-      0,
-      rightSize.width * decorScale,
-      Math.max(rightSize.height * decorScale, height - verticalEdgeMargin * 2),
-      'panel_edge_right',
-      decorScale,
-    );
-    const topLeft = this.add.image(-width / 2 + cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tl').setScale(decorScale);
-    const topRight = this.add.image(width / 2 - cornerInset, -height / 2 + cornerInset, 'gameUiAtlas', 'panel_corner_tr').setScale(decorScale);
-    const bottomLeft = this.add.image(-width / 2 + cornerInset + verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_bl').setScale(decorScale);
-    const bottomRight = this.add.image(width / 2 - cornerInset - verticalInset, height / 2 - cornerInset, 'gameUiAtlas', 'panel_corner_br').setScale(decorScale);
-    container.add([shadow, fill, rim, topEdge, bottomEdge, leftEdge, rightEdge, topLeft, topRight, bottomLeft, bottomRight]);
-    return container;
+    return createUiPanelFrame(this, width, height, options);
   }
 
   createTiledGameUiFrame(x, y, displayWidth, displayHeight, frameName, scale = 1) {
-    return this.add.tileSprite(
-      x,
-      y,
-      Math.max(1, displayWidth / scale),
-      Math.max(1, displayHeight / scale),
-      'gameUiAtlas',
-      frameName,
-    ).setScale(scale);
+    return createTiledGameUiFrame(this, x, y, displayWidth, displayHeight, frameName, scale);
   }
 
   getGameUiFrameSize(frameName) {
-    const frame = this.textures.getFrame('gameUiAtlas', frameName) as any;
-    return {
-      width: frame?.width ?? frame?.cutWidth ?? 1,
-      height: frame?.height ?? frame?.cutHeight ?? 1,
-    };
+    return getGameUiFrameSize(this, frameName);
   }
 
   createHorizontalSlicedFrame(
@@ -4515,111 +4225,35 @@ class FairyGuildScene extends Phaser.Scene {
     frameNames,
     options: { leftWidth?: number; rightWidth?: number; alpha?: number } = {},
   ) {
-    const leftSize = this.getGameUiFrameSize(frameNames.left);
-    const middleSize = this.getGameUiFrameSize(frameNames.middle);
-    const rightSize = this.getGameUiFrameSize(frameNames.right);
-    const baseHeight = Math.max(1, leftSize.height, middleSize.height, rightSize.height);
-    const scale = height / baseHeight;
-    const leftWidth = options.leftWidth ?? leftSize.width * scale;
-    const rightWidth = options.rightWidth ?? rightSize.width * scale;
-    const middleWidth = Math.max(1, width - leftWidth - rightWidth);
-    const container = this.add.container(x, y);
-    const left = this.add.image(-width / 2 + leftWidth / 2, 0, 'gameUiAtlas', frameNames.left)
-      .setScale(scale);
-    const middle = this.add.tileSprite(0, 0, middleWidth / scale, middleSize.height, 'gameUiAtlas', frameNames.middle)
-      .setScale(scale);
-    const right = this.add.image(width / 2 - rightWidth / 2, 0, 'gameUiAtlas', frameNames.right)
-      .setScale(scale);
-    container.add([left, middle, right]);
-    if (options.alpha !== undefined) {
-      container.setAlpha(options.alpha);
-    }
-    return { container, pieces: [left, middle, right], leftWidth, rightWidth, middleWidth };
+    return createHorizontalSlicedFrame(this, x, y, width, height, frameNames, options);
   }
 
   createUiTitleBanner(x, y, width = 360, height = 70) {
-    return this.createHorizontalSlicedFrame(x, y, width, height, {
-      left: 'title_left',
-      middle: 'title_mid',
-      right: 'title_right',
-    }).container;
+    return createUiTitleBanner(this, x, y, width, height);
   }
 
   fitUiTextToWidth(text, maxWidth, maxSize, minSize = 16) {
-    text.setScale(1);
-    text.setFontSize(maxSize);
-    let size = maxSize;
-    while (text.width > maxWidth && size > minSize) {
-      size -= 1;
-      text.setFontSize(size);
-    }
-    return text;
+    return fitUiTextToWidth(text, maxWidth, maxSize, minSize);
   }
 
   createFittedTitleText(x, y, label, maxWidth, maxSize, minSize) {
-    const text = this.add.text(x, y, label, {
-      ...this.uiTextStyle(maxSize, '#714617'),
-      align: 'center',
-      strokeThickness: 4,
-    }).setOrigin(0.5);
-    return this.fitUiTextToWidth(text, maxWidth, maxSize, minSize);
+    return createFittedTitleText(this, x, y, label, maxWidth, maxSize, minSize);
   }
 
   createHudChip(x, y, width, height) {
-    return this.createHorizontalSlicedFrame(x, y, width, height, {
-      left: 'hud_chip_left',
-      middle: 'hud_chip_mid',
-      right: 'hud_chip_right',
-    }, { alpha: 0.92 }).container;
+    return createHudChip(this, x, y, width, height);
   }
 
   createUiCardFrame(x, y, width, height) {
-    const slice = Math.max(12, Math.min(42, Math.floor(width / 3), Math.floor(height / 3)));
-    return this.add.nineslice(x, y, 'gameUiAtlas', 'content_slot', width, height, slice, slice, slice, slice);
+    return createUiCardFrame(this, x, y, width, height);
   }
 
   createUiButton(x, y, width, height, label, onPress) {
-    const container = this.add.container(x, y);
-    const frame = this.createHorizontalSlicedFrame(0, 0, width, height, {
-      left: 'button_left',
-      middle: 'button_mid',
-      right: 'button_right',
-    });
-    const hit = this.add.rectangle(0, 0, width, height, 0xfff1b8, 0.001)
-      .setInteractive({ useHandCursor: true });
-    const text = this.add.text(0, -2, label, {
-      ...this.uiTextStyle(Math.max(16, Math.round(height * 0.42)), '#684315'),
-      strokeThickness: 3,
-    }).setOrigin(0.5);
-    const pieces = frame.pieces;
-    hit.on('pointerover', () => {
-      pieces.forEach((piece) => piece.setTint(0xfff4bf));
-      hit.setFillStyle(0xfff1b8, 0.12);
-    });
-    hit.on('pointerout', () => {
-      pieces.forEach((piece) => piece.clearTint());
-      hit.setFillStyle(0xfff1b8, 0.001);
-    });
-    hit.on('pointerup', onPress);
-    container.add([frame.container, hit, text]);
-    return { container, hit, text, pieces };
+    return createUiButton(this, x, y, width, height, label, onPress);
   }
 
   createManaMeter(x, y, width, height) {
-    const frame = this.createHorizontalSlicedFrame(x, y, width, height, {
-      left: 'mana_left',
-      middle: 'mana_mid',
-      right: 'mana_right',
-    });
-    const insetX = Math.max(10, Math.round(height * 0.54));
-    const insetY = Math.max(6, Math.round(height * 0.32));
-    const fillWidth = Math.max(1, width - insetX * 2);
-    const fillHeight = Math.max(3, height - insetY * 2);
-    const fill = this.add.rectangle(x - width / 2 + insetX, y - fillHeight / 2, fillWidth, fillHeight, 0x5bd5ff, 1)
-      .setOrigin(0, 0);
-    const shine = this.add.rectangle(x - width / 2 + insetX + 2, y - fillHeight / 2 + 2, fillWidth - 4, 2, 0xffffff, 0.44)
-      .setOrigin(0, 0);
-    return { fill, shine, frame: frame.container, width: fillWidth, parts: [fill, shine, frame.container] };
+    return createManaMeter(this, x, y, width, height);
   }
 
   createSplashOverlay() {
@@ -5274,13 +4908,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   uiTextStyle(size, color) {
-    return {
-      fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-      fontSize: `${size}px`,
-      color,
-      stroke: 'rgba(255,255,255,0.55)',
-      strokeThickness: 2,
-    };
+    return uiTextStyle(size, color);
   }
 
   addGuildNote(message) {
