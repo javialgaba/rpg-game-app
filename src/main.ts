@@ -6,7 +6,7 @@ import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
 import { findGridPath, pathCost } from './levels/pathfinding';
-import { isFootprintWalkable } from './levels/playerFootprint';
+
 import { isTimeOfDay, TIME_OF_DAY_PROFILES } from './levels/timeOfDay';
 import { DEFAULT_PLAYABLE_BOUNDS, resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
@@ -31,7 +31,6 @@ import {
   LEVEL_UP_MAX_PIPS,
   MAP_H,
   MAP_W,
-  ORIGIN,
   PLAYER_BASE,
   REPAIR_AMOUNT,
   REPAIR_COOLDOWN,
@@ -49,25 +48,36 @@ import {
   WORLD_ENEMY_THEMES,
   WORLD_SEQUENCE,
 } from './gameConfig';
-
-type HeroChoice = 'male' | 'princess';
-type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'repairConfirm' | 'repairCancel';
-type TouchButtonSlot = 'left' | 'top' | 'right' | 'bottom';
-type UpgradePauseContext = 'roundClear' | 'chestBonus';
-type TouchActionIcon = { texture: string; frame?: string } | null;
-type RepairModeTargetState = keyof typeof REPAIR_OUTLINE_COLORS;
-type GeneratedSurroundAnchor =
-  | 'topLeft'
-  | 'topCenter'
-  | 'topRight'
-  | 'leftUpper'
-  | 'leftLower'
-  | 'rightUpper'
-  | 'rightLower'
-  | 'bottomLeft'
-  | 'bottomCenter'
-  | 'bottomRight';
-type GeneratedSurroundLayer = 'background' | 'shadow' | 'edge' | 'water' | 'decor';
+import type {
+  HeroChoice,
+  TouchActionKey,
+  TouchButtonSlot,
+  UpgradePauseContext,
+  TouchActionIcon,
+  RepairModeTargetState,
+  GeneratedSurroundAnchor,
+  GeneratedSurroundLayer,
+  ScreenFootprintBounds,
+  TouchControlsState,
+  RunResumeBuildingSnapshot,
+  RunResumeStateSnapshot,
+  DroppedChest,
+} from './gameTypes';
+import {
+  GENERATED_SURROUND_PIECES,
+} from './generatedSurroundConfig';
+import { createGeneratedTextures } from './generatedTextures';
+import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
+import {
+  getIsoMetrics as _getIsoMetrics,
+  scaleGeneratedSize as _scaleGeneratedSize,
+  getFootprintScreenBounds as _getFootprintScreenBounds,
+  isoToScreen as _isoToScreen,
+  isoToGroundedEntityScreen as _isoToGroundedEntityScreen,
+  screenToIso as _screenToIso,
+  clampIso as _clampIso,
+  isGeneratedIsoWalkable as _isGeneratedIsoWalkable,
+} from './isoUtils';
 
 const TOUCH_CONTROL_SCALE = 1.5;
 const scaleTouchControl = (value: number) => value * TOUCH_CONTROL_SCALE;
@@ -95,296 +105,6 @@ const SPLASH_HERO_CARD_IDLE_LABEL_COLOR = '#7d6039';
 const SPLASH_START_BUTTON_READY_FILL_ALPHA = 0.1;
 const SPLASH_START_BUTTON_DISABLED_FILL_ALPHA = 0.035;
 const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
-const GENERATED_SURROUND_DEPTH_WATER = 2;
-const GENERATED_SURROUND_DEPTH_SHADOW = 3;
-const GENERATED_SURROUND_DEPTH_BACKGROUND = 4;
-const GENERATED_SURROUND_DEPTH_FOREGROUND = 5;
-const GENERATED_SURROUND_DEPTH_MIST_NEAR = 16;
-const GENERATED_SURROUND_DEPTH_MIST_FAR = 17;
-const GENERATED_SURROUND_DEPTH_GROUND_MIST = 21;
-const GENERATED_SURROUND_DEPTH_GROUND_FOG = 22;
-const GENERATED_SURROUND_ORIGIN_SHADOW = 0.5;
-const GENERATED_SURROUND_ORIGIN_WATER = 0.58;
-const GENERATED_SURROUND_ORIGIN_FOREST = 0.64;
-const GENERATED_SURROUND_ORIGIN_CLIFF = 0.66;
-const GENERATED_SURROUND_ORIGIN_CLUSTER = 0.74;
-const GENERATED_SURROUND_ORIGIN_FRAME = 0.62;
-const GENERATED_SURROUND_ORIGIN_MIST_FILL = 0.6;
-const GENERATED_SURROUND_ORIGIN_MIST_PATCH = 0.56;
-const GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER = 0.72;
-const GENERATED_SURROUND_ORIGIN_FOG_PATCH = 0.52;
-const GENERATED_SURROUND_ORIGIN_PINE = 0.84;
-const GENERATED_SURROUND_ALPHA = {
-  opaque: 1,
-  water: {
-    soft: 0.92,
-    highlight: 0.98,
-    recessed: 0.88,
-  },
-  foliage: {
-    highlight: 0.98,
-    strong: 0.96,
-    primary: 0.94,
-    secondary: 0.92,
-    tertiary: 0.9,
-    distant: 0.88,
-  },
-  frame: {
-    accent: 0.98,
-  },
-  shadow: {
-    large: 0.32,
-  },
-  mist: {
-    near: 0.62,
-    side: 0.58,
-    far: 0.38,
-    ground: 0.36,
-    soft: 0.32,
-  },
-  fog: {
-    strong: 0.44,
-    medium: 0.42,
-    soft: 0.32,
-    faint: 0.3,
-    ground: 0.28,
-  },
-  purpleMist: {
-    accent: 0.18,
-  },
-  silhouette: {
-    leftPine: 0.22,
-    rightPine: 0.2,
-  },
-} as const;
-
-type GeneratedSurroundDepth = number | { edge: 'top' | 'bottom'; tileOffset: number };
-
-interface ScreenFootprintBounds {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-  width: number;
-  height: number;
-  centerX: number;
-  centerY: number;
-  bottomCenterX: number;
-  bottomCenterY: number;
-}
-
-interface GeneratedSurroundPiece {
-  frame: string;
-  anchor: GeneratedSurroundAnchor;
-  offsetXUnits: number;
-  offsetYUnits: number;
-  uniformScale: number;
-  layer: GeneratedSurroundLayer;
-  depth: GeneratedSurroundDepth;
-  alpha?: number;
-  originX?: number;
-  originY?: number;
-}
-
-type GeneratedSurroundTransform = Readonly<Pick<GeneratedSurroundPiece, 'offsetXUnits' | 'offsetYUnits' | 'uniformScale'>>;
-
-interface TouchControlsState {
-  container: Phaser.GameObjects.Container;
-  joystickBase: Phaser.GameObjects.Arc;
-  joystickThumb: Phaser.GameObjects.Arc;
-  joystickVector: { x: number; y: number };
-  joystickPointerId: number | null;
-  joystickCenter: { x: number; y: number };
-  buttons: Partial<Record<TouchActionKey, Phaser.GameObjects.Container>>;
-  repairButtons: Phaser.GameObjects.Container[];
-  portraitOverlay: Phaser.GameObjects.Container;
-}
-
-interface RunResumeBuildingSnapshot {
-  id?: string;
-  name: string;
-  hp: number;
-  max: number;
-}
-
-interface RunResumeStateSnapshot {
-  playerStats?: Partial<typeof PLAYER_BASE>;
-  state?: Partial<FairyGuildScene['state']>;
-  buildings?: RunResumeBuildingSnapshot[];
-  heroChoice?: HeroChoice;
-  upgradeLevels?: number[];
-  note?: string;
-}
-
-interface DroppedChest {
-  iso: { x: number; y: number };
-  sprite: Phaser.GameObjects.Image;
-  glow: Phaser.GameObjects.Arc;
-  reward: string;
-  opened: boolean;
-  bob: number;
-  source: 'enemyDrop';
-  spawnedAt: number;
-  despawnAt: number;
-  blinkAt: number;
-}
-
-const GENERATED_SURROUND_TOP_EDGE_DEPTH: GeneratedSurroundDepth = { edge: 'top', tileOffset: 0.18 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.62 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 0.98 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.02 };
-const GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER: GeneratedSurroundDepth = { edge: 'bottom', tileOffset: 1.04 };
-
-const GENERATED_SURROUND_LAYOUT = {
-  shadow: {
-    bottomCenterBase: { offsetXUnits: 0, offsetYUnits: 0.82, uniformScale: 2.72 },
-  },
-  water: {
-    topLeftWide: { offsetXUnits: -1.86, offsetYUnits: 2.04, uniformScale: 2.04 },
-    topLeftInset: { offsetXUnits: 1.36, offsetYUnits: 1.42, uniformScale: 1.36 },
-    topRightHighlight: { offsetXUnits: 1.86, offsetYUnits: 1.98, uniformScale: 1.8 },
-    topRightRecess: { offsetXUnits: -1.28, offsetYUnits: 1.26, uniformScale: 1.28 },
-  },
-  forest: {
-    topLeftOuter: { offsetXUnits: -3.3, offsetYUnits: 0.96, uniformScale: 1.28 },
-    topRightOuter: { offsetXUnits: 3.4, offsetYUnits: 0.18, uniformScale: 1.08 },
-    topLeftMid: { offsetXUnits: 2.28, offsetYUnits: 1.78, uniformScale: 0.9 },
-    topRightMid: { offsetXUnits: -1.92, offsetYUnits: 1.84, uniformScale: 0.84 },
-    topLeftRearRight: { offsetXUnits: 3.24, offsetYUnits: 2.46, uniformScale: 0.78 },
-    topLeftRearCenter: { offsetXUnits: 0.82, offsetYUnits: 3.22, uniformScale: 0.74 },
-    topLeftRearInner: { offsetXUnits: 1.9, offsetYUnits: 3.56, uniformScale: 0.84 },
-    topRightRearLeft: { offsetXUnits: -3.16, offsetYUnits: 2.44, uniformScale: 0.76 },
-    topRightRearCenter: { offsetXUnits: -0.92, offsetYUnits: 3.18, uniformScale: 0.74 },
-    topRightRearInner: { offsetXUnits: -1.98, offsetYUnits: 3.52, uniformScale: 0.82 },
-    rightUpperBackdrop: { offsetXUnits: 1.66, offsetYUnits: -1.16, uniformScale: 0.92 },
-    leftLowerBackdrop: { offsetXUnits: -1.28, offsetYUnits: 1.46, uniformScale: 0.88 },
-    bottomCenterFill: { offsetXUnits: 0, offsetYUnits: 0.86, uniformScale: 0.9 },
-  },
-  cliff: {
-    topLeftOuter: { offsetXUnits: -3.6, offsetYUnits: 2.44, uniformScale: 0.92 },
-    topRightOuter: { offsetXUnits: 3.32, offsetYUnits: 2.38, uniformScale: 0.9 },
-    topLeftInner: { offsetXUnits: 2.84, offsetYUnits: 2.84, uniformScale: 0.88 },
-    topRightInner: { offsetXUnits: -2.74, offsetYUnits: 2.88, uniformScale: 0.86 },
-    topLeftEdge: { offsetXUnits: 4.6, offsetYUnits: 0.38, uniformScale: 0.9 },
-    topRightEdge: { offsetXUnits: -4.6, offsetYUnits: 0.52, uniformScale: 0.96 },
-    bottomCenterFill: { offsetXUnits: -2.18, offsetYUnits: 0.76, uniformScale: 0.76 },
-  },
-  cluster: {
-    topLeftNear: { offsetXUnits: -0.38, offsetYUnits: 2.76, uniformScale: 1.36 },
-    topLeftMid: { offsetXUnits: 1.54, offsetYUnits: 3.08, uniformScale: 1.22 },
-    topLeftOuter: { offsetXUnits: -2.28, offsetYUnits: 3.12, uniformScale: 1.46 },
-    topRightNear: { offsetXUnits: 0.42, offsetYUnits: 2.92, uniformScale: 1.3 },
-    topRightMid: { offsetXUnits: -1.44, offsetYUnits: 3.04, uniformScale: 1.18 },
-    topRightOuter: { offsetXUnits: 2.22, offsetYUnits: 3.14, uniformScale: 1.38 },
-    bottomCenterAccent: { offsetXUnits: 2.08, offsetYUnits: 0.78, uniformScale: 1.08 },
-    bottomLeftBackdrop: { offsetXUnits: -2.12, offsetYUnits: 0.96, uniformScale: 1.02 },
-    bottomRightBackdrop: { offsetXUnits: 2.12, offsetYUnits: 0.96, uniformScale: 1.02 },
-  },
-  frame: {
-    topLeftCap: { offsetXUnits: -0.82, offsetYUnits: 1.12, uniformScale: 1.24 },
-    topCenterLeftAccent: { offsetXUnits: -1.6, offsetYUnits: 0.74, uniformScale: 1.2 },
-    topCenterRightAccent: { offsetXUnits: 1.6, offsetYUnits: 0.74, uniformScale: 1.2 },
-    topCenterMain: { offsetXUnits: 0, offsetYUnits: 0.94, uniformScale: 1.3 },
-    topRightCap: { offsetXUnits: 0.92, offsetYUnits: 1.06, uniformScale: 1.24 },
-    leftUpper: { offsetXUnits: -0.26, offsetYUnits: 1.52, uniformScale: 1.26 },
-    rightUpper: { offsetXUnits: 0.3, offsetYUnits: 1.66, uniformScale: 1.28 },
-    leftLower: { offsetXUnits: -0.22, offsetYUnits: 0.1, uniformScale: 1.1 },
-    rightLower: { offsetXUnits: 0.22, offsetYUnits: 0.1, uniformScale: 1.1 },
-    bottomLeft: { offsetXUnits: -0.46, offsetYUnits: 0.54, uniformScale: 0.84 },
-    bottomRight: { offsetXUnits: 0.46, offsetYUnits: 0.54, uniformScale: 0.84 },
-  },
-  mist: {
-    topLeftNear: { offsetXUnits: 0.72, offsetYUnits: 1.18, uniformScale: 1.02 },
-    topLeftFar: { offsetXUnits: -1.42, offsetYUnits: 2.72, uniformScale: 1.2 },
-    topRightNear: { offsetXUnits: -0.52, offsetYUnits: 1.16, uniformScale: 1 },
-    topRightGround: { offsetXUnits: 1.38, offsetYUnits: 2.78, uniformScale: 1.14 },
-    bottomLeftSoft: { offsetXUnits: 0.44, offsetYUnits: 0.82, uniformScale: 1.02 },
-    bottomCenterGround: { offsetXUnits: 0, offsetYUnits: 0.9, uniformScale: 1.16 },
-    bottomRightSoft: { offsetXUnits: -0.44, offsetYUnits: 0.82, uniformScale: 1.02 },
-  },
-  fog: {
-    topLeftStrong: { offsetXUnits: 1.46, offsetYUnits: 2.92, uniformScale: 1.54 },
-    topLeftSoft: { offsetXUnits: 3.16, offsetYUnits: 2.66, uniformScale: 1.06 },
-    topRightMedium: { offsetXUnits: -1.54, offsetYUnits: 2.88, uniformScale: 1.42 },
-    topRightFaint: { offsetXUnits: -3.06, offsetYUnits: 2.6, uniformScale: 1.02 },
-    bottomLeftGround: { offsetXUnits: 1.72, offsetYUnits: 1.02, uniformScale: 1.26 },
-    bottomRightGround: { offsetXUnits: -1.72, offsetYUnits: 1.02, uniformScale: 1.26 },
-  },
-  purpleMist: {
-    topLeftAccent: { offsetXUnits: -0.12, offsetYUnits: 3.26, uniformScale: 1.18 },
-    topRightAccent: { offsetXUnits: 0.12, offsetYUnits: 3.22, uniformScale: 1.14 },
-  },
-  silhouette: {
-    topLeftPine: { offsetXUnits: -2.42, offsetYUnits: 3.7, uniformScale: 1.24 },
-    topRightPine: { offsetXUnits: 2.46, offsetYUnits: 3.62, uniformScale: 1.2 },
-  },
-} as const satisfies Record<string, Record<string, GeneratedSurroundTransform>>;
-
-// Generated surround art is tuned in tile-space units so layout changes live in one place.
-const GENERATED_SURROUND_PIECES: ReadonlyArray<GeneratedSurroundPiece> = [
-  { frame: 'large_shadow', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.shadow.bottomCenterBase, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.shadow.large, originY: GENERATED_SURROUND_ORIGIN_SHADOW },
-  { frame: 'surround_water_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.water.topLeftWide, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_water_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.water.topLeftInset, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.soft, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_water_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.water.topRightHighlight, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.highlight, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_water_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.water.topRightRecess, layer: 'background', depth: GENERATED_SURROUND_DEPTH_WATER, alpha: GENERATED_SURROUND_ALPHA.water.recessed, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftNear, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cluster.topLeftOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearRight, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearCenter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.forest.topLeftRearInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightNear, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightMid, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cluster.topRightOuter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_CLUSTER },
-  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_CLIFF },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearLeft, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearCenter, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.tertiary, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_forest_mass_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.forest.topRightRearInner, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.distant, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'surround_top_left_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.frame.topLeftCap, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterLeftAccent, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterRightAccent, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.frame.accent, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_center_01', anchor: 'topCenter', ...GENERATED_SURROUND_LAYOUT.frame.topCenterMain, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_top_right_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.frame.topRightCap, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_left_upper_01', anchor: 'leftUpper', ...GENERATED_SURROUND_LAYOUT.frame.leftUpper, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_right_upper_01', anchor: 'rightUpper', ...GENERATED_SURROUND_LAYOUT.frame.rightUpper, layer: 'background', depth: GENERATED_SURROUND_DEPTH_FOREGROUND, alpha: GENERATED_SURROUND_ALPHA.opaque, originY: GENERATED_SURROUND_ORIGIN_FRAME },
-  { frame: 'surround_cliff_filler_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.cliff.topLeftEdge, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_cliff_filler_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.cliff.topRightEdge, layer: 'edge', depth: GENERATED_SURROUND_TOP_EDGE_DEPTH, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_mist_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.mist.topLeftNear, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.near, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
-  { frame: 'surround_mist_fill_01', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.mist.topLeftFar, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.far, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'fog_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.fog.topLeftStrong, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.strong, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'fog_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.fog.topLeftSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'purple_mist_patch', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.purpleMist.topLeftAccent, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_mist_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.mist.topRightNear, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_NEAR, alpha: GENERATED_SURROUND_ALPHA.mist.side, originY: GENERATED_SURROUND_ORIGIN_MIST_FILL },
-  { frame: 'surround_mist_fill_01', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.mist.topRightGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_WATER },
-  { frame: 'fog_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.fog.topRightMedium, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.medium, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'fog_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.fog.topRightFaint, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.fog.faint, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'purple_mist_patch', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.purpleMist.topRightAccent, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_MIST_FAR, alpha: GENERATED_SURROUND_ALPHA.purpleMist.accent, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_left_lower_01', anchor: 'leftLower', ...GENERATED_SURROUND_LAYOUT.frame.leftLower, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_right_lower_01', anchor: 'rightLower', ...GENERATED_SURROUND_LAYOUT.frame.rightLower, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_NEAR, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_bottom_left_01', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.frame.bottomLeft, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_cliff_filler_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.cliff.bottomCenterFill, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_forest_mass_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.forest.bottomCenterFill, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_FILLER, alpha: GENERATED_SURROUND_ALPHA.foliage.highlight, originY: GENERATED_SURROUND_ORIGIN_FOREST },
-  { frame: 'forest_cluster_back', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.cluster.bottomCenterAccent, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_CLUSTER, alpha: GENERATED_SURROUND_ALPHA.foliage.strong, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
-  { frame: 'surround_bottom_right_01', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.frame.bottomRight, layer: 'decor', depth: GENERATED_SURROUND_BOTTOM_DECOR_DEPTH_EDGE, alpha: GENERATED_SURROUND_ALPHA.opaque },
-  { frame: 'surround_mist_fill_01', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.mist.bottomLeftSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_mist_fill_01', anchor: 'bottomCenter', ...GENERATED_SURROUND_LAYOUT.mist.bottomCenterGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.mist.ground, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'surround_mist_fill_01', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.mist.bottomRightSoft, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_MIST, alpha: GENERATED_SURROUND_ALPHA.mist.soft, originY: GENERATED_SURROUND_ORIGIN_MIST_PATCH },
-  { frame: 'fog_patch', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.fog.bottomLeftGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
-  { frame: 'fog_patch', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.fog.bottomRightGround, layer: 'shadow', depth: GENERATED_SURROUND_DEPTH_GROUND_FOG, alpha: GENERATED_SURROUND_ALPHA.fog.ground, originY: GENERATED_SURROUND_ORIGIN_FOG_PATCH },
-  { frame: 'surround_forest_mass_01', anchor: 'rightUpper', ...GENERATED_SURROUND_LAYOUT.forest.rightUpperBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
-  { frame: 'surround_forest_mass_01', anchor: 'leftLower', ...GENERATED_SURROUND_LAYOUT.forest.leftLowerBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.primary },
-  { frame: 'forest_cluster_back', anchor: 'bottomLeft', ...GENERATED_SURROUND_LAYOUT.cluster.bottomLeftBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
-  { frame: 'forest_cluster_back', anchor: 'bottomRight', ...GENERATED_SURROUND_LAYOUT.cluster.bottomRightBackdrop, layer: 'background', depth: GENERATED_SURROUND_DEPTH_BACKGROUND, alpha: GENERATED_SURROUND_ALPHA.foliage.secondary, originY: GENERATED_SURROUND_ORIGIN_DECOR_CLUSTER },
-  { frame: 'pine_silhouette_tall', anchor: 'topLeft', ...GENERATED_SURROUND_LAYOUT.silhouette.topLeftPine, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.leftPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
-  { frame: 'pine_silhouette_tall', anchor: 'topRight', ...GENERATED_SURROUND_LAYOUT.silhouette.topRightPine, layer: 'background', depth: GENERATED_SURROUND_DEPTH_SHADOW, alpha: GENERATED_SURROUND_ALPHA.silhouette.rightPine, originY: GENERATED_SURROUND_ORIGIN_PINE },
-];
 
 class FairyGuildScene extends Phaser.Scene {
   [key: string]: any;
@@ -470,6 +190,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.upgradePauseContext = 'roundClear';
     this.pausedRoundTimers = [];
     this.parallaxSprites = [];
+    this.audio = createAudioState();
   }
 
   init(data) {
@@ -533,7 +254,6 @@ class FairyGuildScene extends Phaser.Scene {
     if (import.meta.env.DEV) {
       (window as typeof window & { __fairyGuildScene?: FairyGuildScene }).__fairyGuildScene = this;
     }
-    this.createAudio();
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
     if (this.textures.exists('princessHeroSheet')) {
       this.registerSheetFrames('princessHeroSheet', 8, 4, 'princess');
@@ -738,324 +458,19 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createGeneratedTextures() {
-    const g = this.make.graphics({ x: 0, y: 0, add: false } as any);
-    const make = (key, width, height, draw) => {
-      g.clear();
-      if (this.textures.exists(key)) {this.textures.remove(key);}
-      draw(g, width, height);
-      g.generateTexture(key, width, height);
-    };
-
-    make('castleTexture', 180, 156, (gfx) => {
-      gfx.fillStyle(0x4f8bd6, 0.22);
-      gfx.fillEllipse(90, 132, 128, 26);
-      gfx.fillStyle(0xf6e7c6, 1);
-      gfx.fillRoundedRect(50, 58, 80, 64, 8);
-      gfx.fillStyle(0xffd37a, 1);
-      gfx.fillTriangle(42, 62, 90, 20, 138, 62);
-      gfx.fillStyle(0xffa75e, 1);
-      gfx.fillRect(58, 66, 64, 10);
-      gfx.fillStyle(0xd9f6ff, 1);
-      gfx.fillRoundedRect(80, 85, 20, 30, 8);
-      gfx.fillStyle(0x8d70d6, 1);
-      gfx.fillRoundedRect(24, 70, 30, 48, 6);
-      gfx.fillRoundedRect(126, 70, 30, 48, 6);
-      gfx.fillStyle(0xffd37a, 1);
-      gfx.fillTriangle(18, 72, 39, 42, 60, 72);
-      gfx.fillTriangle(120, 72, 141, 42, 162, 72);
-      gfx.fillStyle(0xffffff, 1);
-      gfx.fillCircle(90, 48, 6);
-      gfx.lineStyle(4, 0x7d5a35, 0.65);
-      gfx.strokeRoundedRect(50, 58, 80, 64, 8);
-      gfx.strokeRoundedRect(24, 70, 30, 48, 6);
-      gfx.strokeRoundedRect(126, 70, 30, 48, 6);
-    });
-
-    make('cottageTexture', 142, 120, (gfx) => {
-      gfx.fillStyle(0x7f5b38, 0.22);
-      gfx.fillEllipse(71, 100, 96, 20);
-      gfx.fillStyle(0xfff0c9, 1);
-      gfx.fillRoundedRect(34, 48, 74, 48, 8);
-      gfx.fillStyle(0xf4a13f, 1);
-      gfx.fillTriangle(24, 52, 72, 18, 118, 52);
-      gfx.fillStyle(0xffc35c, 1);
-      gfx.fillRoundedRect(36, 50, 72, 10, 4);
-      gfx.fillStyle(0x6ac5ff, 1);
-      gfx.fillRoundedRect(48, 64, 16, 16, 5);
-      gfx.fillRoundedRect(78, 64, 16, 16, 5);
-      gfx.fillStyle(0xa87343, 1);
-      gfx.fillRoundedRect(63, 74, 16, 24, 8);
-      gfx.lineStyle(4, 0x74523a, 0.6);
-      gfx.strokeRoundedRect(34, 48, 74, 48, 8);
-    });
-
-    make('bakeryTexture', 142, 120, (gfx) => {
-      gfx.fillStyle(0x7f5b38, 0.22);
-      gfx.fillEllipse(71, 100, 96, 20);
-      gfx.fillStyle(0xffe4b8, 1);
-      gfx.fillRoundedRect(30, 50, 82, 46, 8);
-      gfx.fillStyle(0x8bd3ff, 1);
-      gfx.fillTriangle(22, 52, 72, 16, 122, 52);
-      gfx.fillStyle(0xffffff, 1);
-      for (let i = 0; i < 5; i += 1) {
-        gfx.fillRect(31 + i * 16, 52, 8, 22);
-      }
-      gfx.fillStyle(0xed7a62, 1);
-      for (let i = 0; i < 5; i += 1) {
-        gfx.fillRect(39 + i * 16, 52, 8, 22);
-      }
-      gfx.fillStyle(0xc68647, 1);
-      gfx.fillRoundedRect(60, 74, 22, 22, 6);
-      gfx.fillStyle(0x8b5a30, 1);
-      gfx.fillEllipse(72, 66, 36, 12);
-      gfx.lineStyle(4, 0x73553f, 0.58);
-      gfx.strokeRoundedRect(30, 50, 82, 46, 8);
-    });
-
-    make('marketTexture', 150, 110, (gfx) => {
-      gfx.fillStyle(0x7f5b38, 0.2);
-      gfx.fillEllipse(75, 92, 110, 18);
-      gfx.fillStyle(0x875b3e, 1);
-      gfx.fillRoundedRect(40, 62, 70, 24, 6);
-      gfx.fillStyle(0xf8f2d0, 1);
-      gfx.fillRoundedRect(32, 38, 86, 26, 5);
-      gfx.fillStyle(0xed6b68, 1);
-      for (let i = 0; i < 5; i += 1) {
-        gfx.fillRect(34 + i * 17, 38, 9, 27);
-      }
-      gfx.fillStyle(0x7fd56a, 1);
-      gfx.fillCircle(54, 72, 7);
-      gfx.fillStyle(0xffd15a, 1);
-      gfx.fillCircle(75, 73, 7);
-      gfx.fillStyle(0xff8f6f, 1);
-      gfx.fillCircle(96, 72, 7);
-      gfx.lineStyle(4, 0x765239, 0.55);
-      gfx.strokeRoundedRect(32, 38, 86, 26, 5);
-    });
-
-    make('treeTexture', 104, 132, (gfx) => {
-      gfx.fillStyle(0x7a5330, 1);
-      gfx.fillRoundedRect(45, 72, 16, 40, 7);
-      gfx.fillStyle(0x399b5d, 1);
-      gfx.fillCircle(52, 46, 30);
-      gfx.fillStyle(0x55ba67, 1);
-      gfx.fillCircle(34, 58, 26);
-      gfx.fillStyle(0x70cf76, 1);
-      gfx.fillCircle(70, 60, 28);
-      gfx.fillStyle(0xefffa4, 0.75);
-      gfx.fillCircle(67, 37, 4);
-      gfx.fillCircle(31, 51, 3);
-      gfx.lineStyle(4, 0x276f45, 0.35);
-      gfx.strokeCircle(52, 46, 30);
-    });
-
-    make('wellTexture', 78, 84, (gfx) => {
-      gfx.fillStyle(0x6d95bd, 1);
-      gfx.fillEllipse(39, 58, 48, 20);
-      gfx.fillStyle(0xd7edf8, 1);
-      gfx.fillEllipse(39, 50, 46, 18);
-      gfx.fillStyle(0x9a7145, 1);
-      gfx.fillRect(21, 28, 6, 34);
-      gfx.fillRect(51, 28, 6, 34);
-      gfx.fillStyle(0xf3b85e, 1);
-      gfx.fillTriangle(16, 30, 39, 8, 62, 30);
-      gfx.lineStyle(3, 0x735239, 0.6);
-      gfx.strokeEllipse(39, 50, 46, 18);
-    });
-
-    make('lampTexture', 46, 94, (gfx) => {
-      gfx.fillStyle(0x664735, 1);
-      gfx.fillRoundedRect(20, 34, 6, 46, 3);
-      gfx.fillStyle(0xffef9b, 1);
-      gfx.fillCircle(23, 26, 12);
-      gfx.fillStyle(0xffffff, 0.6);
-      gfx.fillCircle(19, 22, 4);
-      gfx.lineStyle(3, 0x74533a, 0.7);
-      gfx.strokeCircle(23, 26, 12);
-      gfx.strokeRoundedRect(14, 80, 18, 7, 3);
-    });
-
-    make('signTexture', 70, 80, (gfx) => {
-      gfx.fillStyle(0x7b5232, 1);
-      gfx.fillRoundedRect(32, 26, 6, 48, 3);
-      gfx.fillStyle(0xb9783d, 1);
-      gfx.fillRoundedRect(12, 22, 46, 22, 5);
-      gfx.fillStyle(0xffe6a3, 1);
-      gfx.fillCircle(48, 33, 3);
-      gfx.lineStyle(3, 0x704b32, 0.7);
-      gfx.strokeRoundedRect(12, 22, 46, 22, 5);
-    });
-
-    make('chestTexture', 72, 58, (gfx) => {
-      gfx.fillStyle(0xffdf7a, 0.35);
-      gfx.fillEllipse(36, 44, 54, 12);
-      gfx.fillStyle(0x9a6033, 1);
-      gfx.fillRoundedRect(14, 24, 44, 22, 5);
-      gfx.fillStyle(0xd5893e, 1);
-      gfx.fillRoundedRect(14, 17, 44, 18, 8);
-      gfx.fillStyle(0xffd45b, 1);
-      gfx.fillRoundedRect(32, 27, 8, 12, 3);
-      gfx.lineStyle(3, 0x66442a, 0.7);
-      gfx.strokeRoundedRect(14, 24, 44, 22, 5);
-      gfx.strokeRoundedRect(14, 17, 44, 18, 8);
-    });
-
-    make('coinTexture', 36, 36, (gfx) => {
-      gfx.fillStyle(0xffcf4d, 1);
-      gfx.fillCircle(18, 18, 13);
-      gfx.fillStyle(0xfff3a6, 0.9);
-      gfx.fillCircle(14, 13, 4);
-      gfx.lineStyle(3, 0xbc842d, 0.9);
-      gfx.strokeCircle(18, 18, 13);
-    });
-
-    make('heartTexture', 38, 36, (gfx) => {
-      gfx.fillStyle(0xf05c78, 1);
-      gfx.fillCircle(14, 14, 8);
-      gfx.fillCircle(24, 14, 8);
-      gfx.fillTriangle(7, 17, 31, 17, 19, 32);
-      gfx.fillStyle(0xffb5c4, 0.75);
-      gfx.fillCircle(13, 12, 3);
-    });
-
-    make('manaTexture', 38, 38, (gfx) => {
-      gfx.fillStyle(0x76d9ff, 1);
-      gfx.fillCircle(19, 19, 13);
-      gfx.fillStyle(0xffffff, 0.7);
-      gfx.fillCircle(15, 14, 4);
-      gfx.lineStyle(3, 0x348fce, 0.8);
-      gfx.strokeCircle(19, 19, 13);
-    });
-
-    make('xpTexture', 42, 42, (gfx) => {
-      gfx.fillStyle(0xffec73, 1);
-      const points = [];
-      for (let i = 0; i < 10; i += 1) {
-        const r = i % 2 === 0 ? 17 : 7;
-        const a = -Math.PI / 2 + (i * Math.PI) / 5;
-        points.push(new Phaser.Geom.Point(21 + Math.cos(a) * r, 21 + Math.sin(a) * r));
-      }
-      gfx.fillPoints(points, true);
-      gfx.lineStyle(3, 0xd49a28, 0.7);
-      gfx.strokePoints(points, true);
-    });
-
-    make('swordIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0x8fd5ff, 1);
-      gfx.fillTriangle(26, 6, 34, 27, 19, 27);
-      gfx.fillStyle(0x9b6a39, 1);
-      gfx.fillRoundedRect(20, 27, 8, 13, 3);
-      gfx.fillStyle(0xffd86b, 1);
-      gfx.fillRoundedRect(12, 26, 24, 6, 3);
-      gfx.lineStyle(2, 0x5f4a36, 0.8);
-      gfx.strokeTriangle(26, 6, 34, 27, 19, 27);
-    });
-
-    make('bowIconTexture', 48, 48, (gfx) => {
-      gfx.lineStyle(5, 0x9a6238, 1);
-      gfx.beginPath();
-      gfx.arc(24, 24, 16, -1.2, 1.2, false);
-      gfx.strokePath();
-      gfx.lineStyle(2, 0xf7efd2, 1);
-      gfx.lineBetween(31, 9, 31, 39);
-      gfx.fillStyle(0x7fd6ff, 1);
-      gfx.fillTriangle(9, 24, 23, 18, 23, 30);
-    });
-
-    make('spellIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0x8ae7ff, 1);
-      gfx.fillCircle(24, 24, 13);
-      gfx.fillStyle(0xfff49a, 1);
-      gfx.fillCircle(24, 8, 4);
-      gfx.fillCircle(40, 24, 4);
-      gfx.fillCircle(24, 40, 4);
-      gfx.fillCircle(8, 24, 4);
-      gfx.lineStyle(3, 0x4b9ed1, 0.8);
-      gfx.strokeCircle(24, 24, 13);
-    });
-
-    make('bootIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0xcf7b45, 1);
-      gfx.fillRoundedRect(15, 13, 15, 24, 5);
-      gfx.fillRoundedRect(23, 28, 17, 9, 4);
-      gfx.fillStyle(0xffd86b, 1);
-      gfx.fillRect(16, 20, 14, 4);
-      gfx.lineStyle(3, 0x6f4a31, 0.75);
-      gfx.strokeRoundedRect(15, 13, 15, 24, 5);
-    });
-
-    make('shieldIconTexture', 48, 48, (gfx) => {
-      gfx.fillStyle(0x7ee0aa, 1);
-      gfx.fillTriangle(24, 7, 39, 15, 34, 34);
-      gfx.fillTriangle(24, 7, 9, 15, 14, 34);
-      gfx.fillTriangle(14, 34, 34, 34, 24, 43);
-      gfx.fillStyle(0xffffff, 0.45);
-      gfx.fillTriangle(24, 11, 31, 17, 24, 35);
-      gfx.lineStyle(3, 0x378c63, 0.8);
-      gfx.strokeTriangle(24, 7, 39, 15, 34, 34);
-      gfx.strokeTriangle(24, 7, 9, 15, 14, 34);
-    });
+    createGeneratedTextures(this);
   }
 
   getIsoMetrics() {
-    const generated = this.generatedLevelActive && this.generatedLevel;
-    const scale = generated ? this.generatedLevel.config.tileSize / 64 : 1;
-    const tileW = TILE_W * scale;
-    const tileH = TILE_H * scale;
-    const mapW = generated ? this.generatedLevel.width : MAP_W;
-    const mapH = generated ? this.generatedLevel.height : MAP_H;
-    const defaultCenterY = ORIGIN.y + ((MAP_W - 1 + MAP_H - 1) * TILE_H) / 4;
-    const origin = generated
-      ? {
-        x: ORIGIN.x,
-        y: defaultCenterY - ((mapW - 1 + mapH - 1) * tileH) / 4,
-      }
-      : ORIGIN;
-    return { origin, tileW, tileH, scale, mapW, mapH };
+    return _getIsoMetrics(this.generatedLevelActive, this.generatedLevel);
   }
 
   scaleGeneratedSize(size) {
-    const scale = this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.config.tileSize / 64 : 1;
-    return [size[0] * scale, size[1] * scale];
+    return _scaleGeneratedSize(size, this.generatedLevelActive, this.generatedLevel);
   }
 
   getFootprintScreenBounds(footprintCells: GridPoint[]): ScreenFootprintBounds {
-    const { tileW, tileH } = this.getIsoMetrics();
-    const halfW = tileW / 2;
-    const halfH = tileH / 2;
-    let left = Number.POSITIVE_INFINITY;
-    let right = Number.NEGATIVE_INFINITY;
-    let top = Number.POSITIVE_INFINITY;
-    let bottom = Number.NEGATIVE_INFINITY;
-
-    footprintCells.forEach((cell) => {
-      const center = this.isoToScreen(cell.x, cell.y);
-      left = Math.min(left, center.x - halfW);
-      right = Math.max(right, center.x + halfW);
-      top = Math.min(top, center.y - halfH);
-      bottom = Math.max(bottom, center.y + halfH);
-    });
-
-    if (!Number.isFinite(left) || !Number.isFinite(right) || !Number.isFinite(top) || !Number.isFinite(bottom)) {
-      const center = this.isoToScreen(0, 0);
-      left = center.x - halfW;
-      right = center.x + halfW;
-      top = center.y - halfH;
-      bottom = center.y + halfH;
-    }
-
-    return {
-      left,
-      right,
-      top,
-      bottom,
-      width: right - left,
-      height: bottom - top,
-      centerX: (left + right) / 2,
-      centerY: (top + bottom) / 2,
-      bottomCenterX: (left + right) / 2,
-      bottomCenterY: bottom,
-    };
+    return _getFootprintScreenBounds(footprintCells, this.generatedLevelActive, this.generatedLevel);
   }
 
   getGeneratedFootprintSpriteLayout(
@@ -1086,55 +501,23 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   isoToScreen(x, y, z = 0) {
-    const { origin, tileW, tileH, scale } = this.getIsoMetrics();
-    return {
-      x: origin.x + (x - y) * (tileW / 2),
-      y: origin.y + (x + y) * (tileH / 2) - z * scale,
-    };
+    return _isoToScreen(x, y, z, this.generatedLevelActive, this.generatedLevel);
   }
 
   isoToGroundedEntityScreen(x, y, z = 18) {
-    const point = this.isoToScreen(x, y, this.generatedLevelActive ? 0 : z);
-    if (!this.generatedLevelActive) {
-      return point;
-    }
-    const { tileH } = this.getIsoMetrics();
-    return { x: point.x, y: point.y + tileH / 2 };
+    return _isoToGroundedEntityScreen(x, y, z, this.generatedLevelActive, this.generatedLevel);
   }
 
   screenToIso(x, y) {
-    const { origin, tileW, tileH } = this.getIsoMetrics();
-    const sx = x - origin.x;
-    const sy = y - origin.y;
-    return {
-      x: sy / tileH + sx / tileW,
-      y: sy / tileH - sx / tileW,
-    };
+    return _screenToIso(x, y, this.generatedLevelActive, this.generatedLevel);
   }
 
   clampIso(point, padding = 0.5) {
-    if (this.generatedLevelActive && this.generatedLevel) {
-      const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
-      point.x = Phaser.Math.Clamp(point.x, minX, maxX);
-      point.y = Phaser.Math.Clamp(point.y, minY, maxY);
-      return point;
-    }
-    const maxX = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.width : MAP_W) - 1 - padding;
-    const maxY = (this.generatedLevelActive && this.generatedLevel ? this.generatedLevel.height : MAP_H) - 1 - padding;
-    point.x = Phaser.Math.Clamp(point.x, padding, maxX);
-    point.y = Phaser.Math.Clamp(point.y, padding, maxY);
-    return point;
+    return _clampIso(point, padding, this.generatedLevelActive, this.generatedLevel);
   }
 
   isGeneratedIsoWalkable(iso) {
-    if (!this.generatedLevelActive || !this.generatedLevel) {
-      return true;
-    }
-    return isFootprintWalkable(
-      this.generatedLevel.walkableGrid,
-      iso,
-      this.generatedLevel.playableBounds,
-    );
+    return _isGeneratedIsoWalkable(iso, this.generatedLevelActive, this.generatedLevel);
   }
 
   createBackground() {
@@ -3607,147 +2990,20 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
-  createAudio() {
-    this.audio = {
-      context: null,
-      ready: false,
-      masterGain: null,
-      sfxGain: null,
-      musicGain: null,
-      musicTimer: null,
-      musicStep: 0,
-      musicSoftened: false,
-    };
-  }
-
   ensureAudio() {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) {return;}
-    this.audio.context = this.audio.context || new AudioContext();
-    const ctx = this.audio.context;
-    if (!this.audio.masterGain) {
-      this.audio.masterGain = ctx.createGain();
-      this.audio.masterGain.gain.value = 0.82;
-      this.audio.masterGain.connect(ctx.destination);
-
-      this.audio.sfxGain = ctx.createGain();
-      this.audio.sfxGain.gain.value = 0.8;
-      this.audio.sfxGain.connect(this.audio.masterGain);
-
-      this.audio.musicGain = ctx.createGain();
-      this.audio.musicGain.gain.value = 0.028;
-      this.audio.musicGain.connect(this.audio.masterGain);
-    }
-    if (this.audio.context.state === 'suspended') {
-      this.audio.context.resume();
-    }
-    this.audio.ready = true;
-    this.startVillageTheme();
+    ensureAudio(this.audio, this);
   }
 
   playTone(type = 'sparkle') {
-    if (!this.audio.ready || !this.audio.context) {return;}
-    const ctx = this.audio.context;
-    const now = ctx.currentTime;
-    const motifs = {
-      sparkle: [
-        { freq: 740, endFreq: 1080, delay: 0, duration: 0.09, wave: 'triangle', gain: 0.038 },
-        { freq: 980, endFreq: 1320, delay: 0.045, duration: 0.11, wave: 'sine', gain: 0.026 },
-      ],
-      chest: [
-        { freq: 660, endFreq: 880, delay: 0, duration: 0.12, wave: 'triangle', gain: 0.045 },
-        { freq: 880, endFreq: 1175, delay: 0.09, duration: 0.14, wave: 'triangle', gain: 0.052 },
-        { freq: 1320, endFreq: 1760, delay: 0.2, duration: 0.18, wave: 'sine', gain: 0.035 },
-      ],
-      hit: [
-        { freq: 330, endFreq: 220, delay: 0, duration: 0.08, wave: 'square', gain: 0.022 },
-        { freq: 520, endFreq: 390, delay: 0.025, duration: 0.08, wave: 'triangle', gain: 0.018 },
-      ],
-      daze: [
-        { freq: 520, endFreq: 610, delay: 0, duration: 0.1, wave: 'sine', gain: 0.026 },
-        { freq: 430, endFreq: 510, delay: 0.1, duration: 0.12, wave: 'sine', gain: 0.023 },
-      ],
-      level: [
-        { freq: 523, endFreq: 523, delay: 0, duration: 0.1, wave: 'triangle', gain: 0.045 },
-        { freq: 659, endFreq: 659, delay: 0.1, duration: 0.12, wave: 'triangle', gain: 0.05 },
-        { freq: 784, endFreq: 988, delay: 0.22, duration: 0.22, wave: 'sine', gain: 0.055 },
-      ],
-      bow: [
-        { freq: 540, endFreq: 840, delay: 0, duration: 0.06, wave: 'triangle', gain: 0.03 },
-        { freq: 260, endFreq: 180, delay: 0.015, duration: 0.1, wave: 'sine', gain: 0.017 },
-      ],
-      repair: [
-        { freq: 440, endFreq: 587, delay: 0, duration: 0.1, wave: 'triangle', gain: 0.04 },
-        { freq: 587, endFreq: 740, delay: 0.1, duration: 0.12, wave: 'triangle', gain: 0.038 },
-        { freq: 880, endFreq: 1175, delay: 0.21, duration: 0.16, wave: 'sine', gain: 0.028 },
-      ],
-      gameOver: [
-        { freq: 392, endFreq: 330, delay: 0, duration: 0.2, wave: 'triangle', gain: 0.038 },
-        { freq: 330, endFreq: 262, delay: 0.18, duration: 0.28, wave: 'sine', gain: 0.034 },
-        { freq: 262, endFreq: 220, delay: 0.43, duration: 0.36, wave: 'sine', gain: 0.026 },
-      ],
-    };
-    (motifs[type] || motifs.sparkle).forEach((note) => this.playAudioNote(note, now, this.audio.sfxGain));
+    playTone(this.audio, type);
   }
 
   playAudioNote(note, baseTime, destination) {
-    const ctx = this.audio.context;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const start = baseTime + (note.delay || 0);
-    const duration = note.duration || 0.12;
-    osc.type = note.wave || 'sine';
-    osc.frequency.setValueAtTime(note.freq, start);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(20, note.endFreq || note.freq), start + duration);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(note.gain || 0.03, start + 0.014);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration + 0.045);
-    osc.connect(gain);
-    gain.connect(destination || this.audio.sfxGain || ctx.destination);
-    osc.start(start);
-    osc.stop(start + duration + 0.07);
-  }
-
-  startVillageTheme() {
-    if (!this.audio.ready || this.audio.musicTimer) {return;}
-    this.scheduleVillageTheme();
-    this.audio.musicTimer = this.time.addEvent({
-      delay: 3200,
-      loop: true,
-      callback: () => this.scheduleVillageTheme(),
-    });
-  }
-
-  scheduleVillageTheme() {
-    if (!this.audio.ready || !this.audio.context || !this.audio.musicGain) {return;}
-    const ctx = this.audio.context;
-    const now = ctx.currentTime;
-    const chords = [
-      [392, 523, 659],
-      [440, 554, 659],
-      [349, 523, 698],
-      [392, 494, 659],
-    ];
-    const chord = chords[this.audio.musicStep % chords.length];
-    const baseGain = this.audio.musicSoftened ? 0.008 : 0.018;
-    chord.forEach((freq, index) => {
-      this.playAudioNote({
-        freq,
-        endFreq: freq * 1.005,
-        delay: index * 0.42,
-        duration: 1.05,
-        wave: index === 0 ? 'sine' : 'triangle',
-        gain: baseGain * (index === 0 ? 0.78 : 1),
-      }, now, this.audio.musicGain);
-    });
-    this.audio.musicStep += 1;
+    playAudioNote(this.audio, note, baseTime, destination);
   }
 
   setMusicSoftened(softened) {
-    this.audio.musicSoftened = softened;
-    if (!this.audio.musicGain || !this.audio.context) {return;}
-    const target = softened ? 0.012 : 0.028;
-    this.audio.musicGain.gain.setTargetAtTime(target, this.audio.context.currentTime, 0.18);
+    setMusicSoftened(this.audio, softened);
   }
 
   updatePointerIso() {
