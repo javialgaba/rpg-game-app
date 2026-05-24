@@ -70,6 +70,7 @@ import {
 } from './staticMapRenderer';
 import {
   getSceneVariantTerrainTexture,
+  getSceneVariantBuildingTexture,
   getSceneVariantPropTexture,
   getSceneVariantDecorationTexture,
   addSceneVariantImage,
@@ -236,6 +237,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.atlas('worldEdgesAtlas', '/assets/world_edges_atlas.png', '/assets/world_edges_atlas.json');
     this.load.atlas('environmentFrameAtlas', '/assets/environment_frame_atlas.png', '/assets/environment_frame_atlas.json');
     this.load.atlas('effectsAtlas', '/assets/effects_atlas.png', '/assets/effects_atlas.json');
+    this.load.atlas('sceneVariantTerrainAtlas', '/assets/scene-variants/scene_variant_terrain_atlas.png', '/assets/scene-variants/scene_variant_terrain_atlas.json');
+    this.load.atlas('sceneVariantPropsAtlas', '/assets/scene-variants/scene_variant_props_atlas.png', '/assets/scene-variants/scene_variant_props_atlas.json');
+    this.load.atlas('sceneVariantBuildingsAtlas', '/assets/scene-variants/scene_variant_buildings_atlas.png', '/assets/scene-variants/scene_variant_buildings_atlas.json');
     this.preloadSceneVariantAssets();
     this.preloadWorldEnemyAssets();
   }
@@ -247,11 +251,6 @@ class FairyGuildScene extends Phaser.Scene {
       this.load.image(`sceneVariantFrame_${variantKey}`, `/assets/scene-variants/${variantKey}-frame.png`);
       this.load.image(`sceneVariantForeground_${variantKey}`, `/assets/scene-variants/${variantKey}-fg.png`);
     });
-    this.load.image('winter_grass_01', '/assets/scene-variants/winter-grass-01.png');
-    this.load.image('winter_path_01', '/assets/scene-variants/winter-path-01.png');
-    this.load.image('winter_pine_01', '/assets/scene-variants/winter-pine-01.png');
-    this.load.image('winter_oak_01', '/assets/scene-variants/winter-oak-01.png');
-    this.load.image('winter_flower_patch_01', '/assets/scene-variants/winter-flower-patch-01.png');
   }
 
   preloadWorldEnemyAssets() {
@@ -828,12 +827,16 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateVillageSafety();
   }
 
-  getSceneVariantTerrainTexture(token) {
-    return getSceneVariantTerrainTexture(this, token);
+  getSceneVariantTerrainTexture(placement) {
+    return getSceneVariantTerrainTexture(this, placement);
   }
 
   getSceneVariantPropTexture(placement) {
     return getSceneVariantPropTexture(this, placement);
+  }
+
+  getSceneVariantBuildingTexture(placement) {
+    return getSceneVariantBuildingTexture(this, placement);
   }
 
   getSceneVariantDecorationTexture(placement) {
@@ -974,7 +977,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevel.terrain.forEach((placement) => {
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
       const render = placement.render ?? {};
-      const terrainTexture = this.getSceneVariantTerrainTexture(placement.token);
+      const terrainTexture = this.getSceneVariantTerrainTexture(placement);
       const textureKey = terrainTexture?.textureKey ?? render.textureKey;
       const frameKey = terrainTexture?.frameKey ?? render.frameKey;
       const texture = textureKey ? this.textures.get(textureKey) : null;

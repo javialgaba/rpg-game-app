@@ -1,46 +1,116 @@
 import * as Phaser from 'phaser';
 import { WIDTH, HEIGHT } from './gameConfig';
+import {
+  resolveSeasonalBuildingPresentation,
+  selectSeasonalFrame,
+  type SeasonalBuildingRole,
+  type SeasonalPropGroup,
+} from './sceneVariants';
 
-export function getSceneVariantTerrainTexture(scene, token) {
+const SEASONAL_TERRAIN_ATLAS = 'sceneVariantTerrainAtlas';
+const SEASONAL_PROPS_ATLAS = 'sceneVariantPropsAtlas';
+const SEASONAL_BUILDINGS_ATLAS = 'sceneVariantBuildingsAtlas';
+const BUILDING_ROLES = new Set<SeasonalBuildingRole>(['castle', 'house-1', 'house-2', 'market', 'well']);
+
+const getSelectionKey = (scene, placement, group: string) => {
   const variant = scene.getActiveSceneVariant();
-  if (variant.key === 'noon_winter') {
-    if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
-      return { textureKey: 'winter_path_01', frameKey: undefined };
-    }
-    return { textureKey: 'winter_grass_01', frameKey: undefined };
+  const seed = scene.generatedLevel?.config?.seed ?? variant.key;
+  const placementKey = placement?.id
+    ?? `${placement?.token ?? group}-${placement?.grid?.x ?? 0}-${placement?.grid?.y ?? 0}`;
+  return `${seed}:${placementKey}:${group}`;
+};
+
+const getPropTexture = (scene, placement, group: SeasonalPropGroup) => {
+  const variant = scene.getActiveSceneVariant();
+  return {
+    textureKey: SEASONAL_PROPS_ATLAS,
+    frameKey: selectSeasonalFrame(variant.propPalette[group], getSelectionKey(scene, placement, group)),
+  };
+};
+
+export function getSceneVariantTerrainTexture(scene, placement) {
+  const variant = scene.getActiveSceneVariant();
+  const token = placement.token;
+  const palette = token === 'path'
+    ? variant.tilePalette.path
+    : (token === 'village-center' || token === 'player-spawn'
+      ? variant.tilePalette.plaza
+      : (token === 'decoration' ? variant.tilePalette.grass.slice(2) : variant.tilePalette.grass));
+  return {
+    textureKey: SEASONAL_TERRAIN_ATLAS,
+    frameKey: selectSeasonalFrame(palette, getSelectionKey(scene, placement, token)),
+  };
+}
+
+export function getSceneVariantBuildingTexture(scene, placement) {
+  if (!BUILDING_ROLES.has(placement.token as SeasonalBuildingRole)) {
+    return null;
   }
-  if (token === 'path' || token === 'village-center' || token === 'player-spawn') {
-    return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.path[0] };
-  }
-  return { textureKey: 'worldTilesAtlas', frameKey: variant.tilePalette.grass[0] };
+  const variant = scene.getActiveSceneVariant();
+  const presentation = resolveSeasonalBuildingPresentation(
+    variant,
+    placement.token as SeasonalBuildingRole,
+    getSelectionKey(scene, placement, 'building'),
+  );
+  return {
+    textureKey: SEASONAL_BUILDINGS_ATLAS,
+    frameKey: presentation.frame,
+    label: presentation.label,
+  };
 }
 
 export function getSceneVariantPropTexture(scene, placement) {
-  const variant = scene.getActiveSceneVariant();
-  if (variant.key !== 'noon_winter') {
-    return null;
+  if (placement.token === 'well') {
+    return getSceneVariantBuildingTexture(scene, placement);
   }
   if (placement.token === 'tree') {
-    return { textureKey: 'winter_pine_01', frameKey: undefined };
+    return getPropTexture(scene, placement, 'trees');
+  }
+  if (placement.token === 'lamp') {
+    return getPropTexture(scene, placement, 'lamps');
+  }
+  if (placement.token === 'fence') {
+    return getPropTexture(scene, placement, 'fences');
+  }
+  if (placement.token === 'sign') {
+    return getPropTexture(scene, placement, 'signs');
   }
   if (placement.type === 'terrain' && placement.token === 'decoration') {
-    return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
+    return getPropTexture(scene, placement, 'flowers');
   }
   return null;
 }
 
 export function getSceneVariantDecorationTexture(scene, placement) {
-  const variant = scene.getActiveSceneVariant();
-  if (variant.key !== 'noon_winter') {
-    return null;
+  switch (placement.decorationKind) {
+    case 'flowers':
+      return getPropTexture(scene, placement, 'flowers');
+    case 'grassPatch':
+      return getPropTexture(scene, placement, 'grassPatches');
+    case 'magicPlant':
+    case 'mushrooms':
+      return getPropTexture(scene, placement, 'magicPatches');
+    case 'sapling':
+      return getPropTexture(scene, placement, 'saplings');
+    case 'fullTree':
+      return getPropTexture(scene, placement, 'trees');
+    case 'treeCluster':
+      return getPropTexture(scene, placement, 'treeClusters');
+    case 'rocks':
+      return getPropTexture(scene, placement, 'rocks');
+    case 'puddle':
+      return getPropTexture(scene, placement, 'ponds');
+    case 'bush':
+      return getPropTexture(scene, placement, 'bushes');
+    case 'lamp':
+      return getPropTexture(scene, placement, 'lamps');
+    case 'fence':
+      return getPropTexture(scene, placement, 'fences');
+    case 'sign':
+      return getPropTexture(scene, placement, 'signs');
+    default:
+      return null;
   }
-  if (placement.decorationKind === 'flowers' || placement.decorationKind === 'grassPatch') {
-    return { textureKey: 'winter_flower_patch_01', frameKey: undefined };
-  }
-  if (placement.decorationKind === 'sapling' || placement.decorationKind === 'fullTree' || placement.decorationKind === 'treeCluster') {
-    return { textureKey: 'winter_pine_01', frameKey: undefined };
-  }
-  return null;
 }
 
 export function addSceneVariantImage(
@@ -130,18 +200,24 @@ export function renderSceneVariantForeground(scene, config, bounds) {
 }
 
 export function renderSceneVariantOverlapDecor(scene, config, bounds, tileW, tileH) {
-  config.overlapDecorAnchors.forEach((anchor) => {
+  if (!scene.textures.exists(SEASONAL_PROPS_ATLAS)) {
+    return;
+  }
+  const texture = scene.textures.get(SEASONAL_PROPS_ATLAS);
+  const atlasScale = scene.generatedLevel?.config?.tileSize ? scene.generatedLevel.config.tileSize / 64 : 1;
+  config.overlapDecorAnchors.forEach((anchor, index) => {
+    const frame = selectSeasonalFrame(config.propPalette[anchor.group], `${config.key}:overlap:${index}`);
+    if (!texture.has(frame)) {
+      return;
+    }
     const x = bounds.centerX + anchor.x * tileW;
     const y = bounds.centerY + anchor.y * tileH;
-    scene.addEnvironmentUniformSprite(
-      scene.edgeLayer,
-      anchor.frame,
-      x,
-      y,
-      anchor.scale,
-      bounds.centerY + anchor.depthBias,
-      { alpha: anchor.alpha, originY: 0.82 },
-    );
+    const sprite = scene.add.image(x, y, SEASONAL_PROPS_ATLAS, frame)
+      .setOrigin(0.5, 0.82)
+      .setScale(anchor.scale * atlasScale)
+      .setDepth(bounds.centerY + anchor.depthBias)
+      .setAlpha(anchor.alpha ?? 1);
+    scene.edgeLayer.add(sprite);
   });
 }
 

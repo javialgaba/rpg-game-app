@@ -74,6 +74,7 @@ export interface SceneAPI {
   getFootprintCells(x: number, y: number, footprint?: { w: number; h: number }): Array<{ x: number; y: number }>;
   createBuildingHealthBar(x: number, y: number, width: number, height: number, depth: number): any;
   updateBuildingHealthBar(building: any): void;
+  getSceneVariantBuildingTexture(placement: any): any;
   getSceneVariantPropTexture(placement: any): any;
   getSceneVariantDecorationTexture(placement: any): any;
   isGeneratedBoardEdgeCell(grid: { x: number; y: number }): boolean;

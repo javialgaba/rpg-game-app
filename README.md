@@ -116,6 +116,8 @@ Rebuild or validate the fixed-cell atlas assets:
 ```bash
 npm run build:atlases
 npm run validate:atlases
+npm run build:scene-variants
+npm run validate:scene-variants
 ```
 
 Run the local test server script:
@@ -201,7 +203,7 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD/world-edge source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png`, `world-edges-structural-source.png`, `world-edges-atmosphere-source.png`, and their transparent cutout sheets.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. Seasonal board visuals are built from chroma-key sheets under `public/assets/scene-variants/sources/<theme>/` into `scene_variant_terrain_atlas`, `scene_variant_props_atlas`, and `scene_variant_buildings_atlas`; the runtime themes are `spring`, `summer`, `twilight_autumn`, and `winter`. The existing `night_spring` world key intentionally renders with the `twilight_autumn` library. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD/world-edge source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png`, `world-edges-structural-source.png`, `world-edges-atmosphere-source.png`, and their transparent cutout sheets.
 
 Atlas split rules:
 
@@ -213,6 +215,9 @@ Atlas split rules:
 - `hud_ui_atlas`: square/compact HUD badges such as coin, crown, and repair tool.
 - `hud_bars_atlas`: long HUD bar frames only, with a separate fixed rectangular cell size.
 - `effects_atlas`: smoke, sparkles, arrows, magic splashes, and shield glows.
+- `scene_variant_terrain_atlas`: theme-specific grass, path, and plaza diamond tiles.
+- `scene_variant_props_atlas`: theme-specific trees, rocks, ponds, vegetation, lamps, fences, and signs.
+- `scene_variant_buildings_atlas`: role-preserving seasonal castle and village building presentations.
 
 Large panel art remains standalone: generated `status-panel-ui.png`, `guild-notes-ui-transparent.png`, textless `level-up-ui.png`, and `game-over-ui.png`.
 
