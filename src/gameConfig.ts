@@ -104,7 +104,22 @@ export const COMPACT_NOTES_MAX_VISIBLE = 2;
 export const DESKTOP_NOTES_MAX_VISIBLE = 3;
 export const COMPACT_NOTE_MAX_CHARS = 62;
 
-export const ENEMY_ARCHETYPES = [
+export interface EnemyArchetypeConfig {
+  key: string;
+  label: string;
+  row: number;
+  unlockLevel: number;
+  weight: number;
+  hp: number;
+  speed: number;
+  buildingDamage: number;
+  contactDamage: number;
+  size: number;
+  rewardGold: [number, number];
+  rewardXp: number;
+}
+
+export const ENEMY_ARCHETYPES: EnemyArchetypeConfig[] = [
   {
     key: 'blob',
     label: 'forest blob',
@@ -177,7 +192,21 @@ export const ENEMY_ARCHETYPES = [
   },
 ];
 
-export const ENEMY_VARIANTS = [
+export interface EnemyVariantConfig {
+  key: string;
+  label: string;
+  unlockLevel: number;
+  weight: number;
+  tint: number | null;
+  scale: number;
+  hp: number;
+  speed: number;
+  buildingDamage: number;
+  contactDamage: number;
+  reward: number;
+}
+
+export const ENEMY_VARIANTS: EnemyVariantConfig[] = [
   {
     key: 'normal',
     label: '',
