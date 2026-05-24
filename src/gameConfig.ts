@@ -8,73 +8,118 @@ export const MAP_W = 15;
 export const MAP_H = 15;
 export const ORIGIN = { x: WIDTH / 2, y: 108 };
 
-export const PLAYER_BASE = {
-  maxHealth: 3,
-  maxMana: 90,
-  speed: 3.15,
-  swordPower: 1,
-  bowPower: 1,
-  bowEvolved: false,
-  spellPower: 2,
-  bowCooldown: 560,
-  spellCost: 28,
-};
+export type HeroClass = 'warrior' | 'archer' | 'sorcerer';
+export type CardKey = 'swiftBoots' | 'strongerStrikes' | 'quickHands' | 'magicRepair' | 'reinforcedWalls' | 'toughHeart';
+export type PersistentCardKey = Exclude<CardKey, 'magicRepair'>;
+export type EnemyRoleKey = 'sproutling' | 'thornRunner' | 'mushroomBrute' | 'spitter' | 'wispMage' | 'leafSneak' | 'bombBud';
 
-export const LEVEL_UP_CARD_XS = [-210, 0, 210];
-export const LEVEL_UP_MAX_PIPS = 5;
-export const BOW_EVOLUTION_POWER_BONUS = 2;
-export const BOW_EVOLVED_PROGRESS_BASELINE = PLAYER_BASE.bowPower + LEVEL_UP_MAX_PIPS + BOW_EVOLUTION_POWER_BONUS;
-
-export interface LevelUpProgressStats {
-  bowPower: number;
-  bowEvolved: boolean;
-  swordPower: number;
-  spellPower: number;
+export interface HeroClassConfig {
+  key: HeroClass;
+  label: string;
+  identity: string;
+  mainAttack: string;
+  skill: string;
+  maxHealth: number;
+  speed: number;
+  attackDamage: number;
+  attackCooldown: number;
+  attackRange: number;
+  skillCooldown: number;
 }
 
-export const clampLevelUpProgress = (value: number) => Math.min(LEVEL_UP_MAX_PIPS, Math.max(0, value));
-
-export const getBowLevelUpProgress = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => (
-  stats.bowEvolved
-    ? clampLevelUpProgress(stats.bowPower - BOW_EVOLVED_PROGRESS_BASELINE)
-    : clampLevelUpProgress(stats.bowPower - PLAYER_BASE.bowPower)
-);
-
-export const isBowEvolutionReadyForStats = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => (
-  !stats.bowEvolved && getBowLevelUpProgress(stats) >= LEVEL_UP_MAX_PIPS
-);
-
-export const getRangeLevelUpPresentationForStats = (stats: Pick<LevelUpProgressStats, 'bowPower' | 'bowEvolved'>) => {
-  if (stats.bowEvolved) {
-    return {
-      label: 'Evolved Bow',
-      detail: '+1 master bow',
-      evolved: true,
-    };
-  }
-  if (isBowEvolutionReadyForStats(stats)) {
-    return {
-      label: 'Bow Evolution',
-      detail: 'Improved bow',
-      evolved: true,
-    };
-  }
-  return {
-    label: 'Range Damage',
-    detail: '+1 bow',
-    evolved: false,
-  };
+export const HERO_CLASSES: Record<HeroClass, HeroClassConfig> = {
+  warrior: {
+    key: 'warrior',
+    label: 'Warrior',
+    identity: 'Close-range protector.',
+    mainAttack: 'Sword Slash',
+    skill: 'Shield Guard',
+    maxHealth: 4,
+    speed: 3.15,
+    attackDamage: 2,
+    attackCooldown: 480,
+    attackRange: 1.45,
+    skillCooldown: 5000,
+  },
+  archer: {
+    key: 'archer',
+    label: 'Archer',
+    identity: 'Ranged hunter with traps.',
+    mainAttack: 'Bow Shot',
+    skill: 'Trap',
+    maxHealth: 3,
+    speed: 3.45,
+    attackDamage: 1,
+    attackCooldown: 360,
+    attackRange: 9,
+    skillCooldown: 6000,
+  },
+  sorcerer: {
+    key: 'sorcerer',
+    label: 'Sorcerer',
+    identity: 'Magic defender with shields.',
+    mainAttack: 'Wand Bolt',
+    skill: 'Magic Shield',
+    maxHealth: 3,
+    speed: 3.15,
+    attackDamage: 2,
+    attackCooldown: 620,
+    attackRange: 6,
+    skillCooldown: 8000,
+  },
 };
 
-export const getLevelUpProgressForStat = (
-  stats: LevelUpProgressStats,
-  stat: 'swordPower' | 'bowPower' | 'spellPower',
-) => {
-  if (stat === 'bowPower') {
-    return getBowLevelUpProgress(stats);
-  }
-  return clampLevelUpProgress(stats[stat] - PLAYER_BASE[stat]);
+export const PLAYER_BASE = {
+  maxHealth: HERO_CLASSES.warrior.maxHealth,
+  speed: HERO_CLASSES.warrior.speed,
+  attackDamage: HERO_CLASSES.warrior.attackDamage,
+  attackCooldown: HERO_CLASSES.warrior.attackCooldown,
+  attackRange: HERO_CLASSES.warrior.attackRange,
+  skillCooldown: HERO_CLASSES.warrior.skillCooldown,
 };
+
+export const LEVEL_UP_CARD_XS = [-126, 126];
+export const LEVEL_UP_MAX_PIPS = 5;
+export const CARD_TIER_PERCENTAGES = {
+  swiftBoots: [8, 8, 8, 6, 6],
+  strongerStrikes: [15, 15, 12, 10, 10],
+  quickHands: [10, 10, 8, 8, 6],
+  reinforcedWalls: [15, 15, 12, 10, 10],
+} as const;
+
+export const SKILL_LEVELS = [3, 5, 7, 9] as const;
+export const SHIELD_GUARD = {
+  duration: 1250,
+  upgradedDuration: 1650,
+  cooldown: 5000,
+  upgradedCooldown: 4000,
+  meleeReduction: 0.5,
+  pushback: 0.35,
+  upgradedPushback: 0.65,
+};
+export const ARCHER_TRAP = {
+  lifetime: 10000,
+  cooldown: 6000,
+  upgradedCooldown: 5000,
+  radius: 0.8,
+  upgradedRadius: 1.05,
+  slowFactor: 0.55,
+  slowDuration: 2500,
+  upgradedSlowDuration: 3500,
+};
+export const MAGIC_SHIELD = {
+  duration: 4000,
+  upgradedDuration: 5000,
+  cooldown: 8000,
+  upgradedCooldown: 7000,
+  buildingAbsorb: 16,
+  upgradedBuildingAbsorb: 24,
+  heroAbsorb: 2,
+  upgradedHeroAbsorb: 3,
+};
+export const BOSS_HEALTH_MULTIPLIER = 1.6;
+export const BOSS_PROJECTILE_DAMAGE = 5;
+export const BOSS_PROJECTILE_COOLDOWN = 2250;
 
 export const REPAIR_COST = 5;
 export const REPAIR_AMOUNT = 16;
@@ -90,13 +135,11 @@ export const REPAIR_OUTLINE_BACKING_WIDTH = 10;
 export const REPAIR_OUTLINE_STROKE_WIDTH = 7;
 export const REPAIR_OUTLINE_FILL_ALPHA = 0.12;
 
-export const LEVEL_SPAWN_BASE = 3;
-export const LEVEL_SPAWN_PER_LEVEL = 2;
-export const LEVEL_SPAWN_MAX = 22;
 export const LEVEL_FIRST_SPAWN_DELAY = 740;
 export const LEVEL_SPAWN_INTERVAL_BASE = 820;
 export const LEVEL_SPAWN_INTERVAL_STEP = 28;
 export const LEVEL_SPAWN_INTERVAL_MIN = 300;
+export const WAVE_BUDGETS = [6, 9, 12, 16, 20, 24, 29, 34, 40] as const;
 export const ROUNDS_PER_WORLD = 4;
 export const BOSS_ROUND_INDEX = 4;
 
@@ -105,10 +148,10 @@ export const DESKTOP_NOTES_MAX_VISIBLE = 3;
 export const COMPACT_NOTE_MAX_CHARS = 62;
 
 export interface EnemyArchetypeConfig {
-  key: string;
+  key: EnemyRoleKey;
   label: string;
   row: number;
-  unlockLevel: number;
+  cost: number;
   weight: number;
   hp: number;
   speed: number;
@@ -116,15 +159,14 @@ export interface EnemyArchetypeConfig {
   contactDamage: number;
   size: number;
   rewardGold: [number, number];
-  rewardXp: number;
 }
 
 export const ENEMY_ARCHETYPES: EnemyArchetypeConfig[] = [
   {
-    key: 'blob',
-    label: 'forest blob',
+    key: 'sproutling',
+    label: 'Sproutling',
     row: 0,
-    unlockLevel: 1,
+    cost: 1,
     weight: 4,
     hp: 2,
     speed: 0.76,
@@ -132,65 +174,116 @@ export const ENEMY_ARCHETYPES: EnemyArchetypeConfig[] = [
     contactDamage: 1,
     size: 52,
     rewardGold: [6, 13],
-    rewardXp: 13,
   },
   {
-    key: 'sprite',
-    label: 'leafy sprite',
+    key: 'thornRunner',
+    label: 'Thorn Runner',
     row: 1,
-    unlockLevel: 1,
+    cost: 2,
     weight: 3,
     hp: 2,
-    speed: 0.88,
+    speed: 1.16,
     buildingDamage: 3,
     contactDamage: 1,
     size: 50,
     rewardGold: [7, 14],
-    rewardXp: 14,
   },
   {
-    key: 'mushroom',
-    label: 'mushroom sprite',
+    key: 'mushroomBrute',
+    label: 'Mushroom Brute',
     row: 2,
-    unlockLevel: 1,
-    weight: 3,
-    hp: 3,
-    speed: 0.68,
-    buildingDamage: 5,
+    cost: 4,
+    weight: 2,
+    hp: 8,
+    speed: 0.56,
+    buildingDamage: 8,
     contactDamage: 1,
     size: 60,
     rewardGold: [8, 16],
-    rewardXp: 16,
   },
   {
-    key: 'lizard',
-    label: 'leafy lizard',
+    key: 'spitter',
+    label: 'Spitter',
     row: 3,
-    unlockLevel: 2,
+    cost: 3,
     weight: 2,
-    hp: 3,
-    speed: 0.96,
+    hp: 4,
+    speed: 0.72,
     buildingDamage: 4,
     contactDamage: 1,
     size: 58,
     rewardGold: [9, 17],
-    rewardXp: 18,
   },
   {
-    key: 'acorn',
-    label: 'acorn critter',
+    key: 'leafSneak',
+    label: 'Leaf Sneak',
     row: 4,
-    unlockLevel: 3,
+    cost: 2,
     weight: 2,
-    hp: 4,
-    speed: 0.78,
-    buildingDamage: 6,
+    hp: 3,
+    speed: 1.04,
+    buildingDamage: 5,
     contactDamage: 1,
     size: 62,
     rewardGold: [10, 20],
-    rewardXp: 20,
+  },
+  {
+    key: 'wispMage',
+    label: 'Wisp Mage',
+    row: 3,
+    cost: 5,
+    weight: 1,
+    hp: 5,
+    speed: 0.62,
+    buildingDamage: 4,
+    contactDamage: 1,
+    size: 58,
+    rewardGold: [16, 25],
+  },
+  {
+    key: 'bombBud',
+    label: 'Bomb Bud',
+    row: 4,
+    cost: 5,
+    weight: 1,
+    hp: 4,
+    speed: 0.82,
+    buildingDamage: 16,
+    contactDamage: 1,
+    size: 62,
+    rewardGold: [17, 26],
   },
 ];
+
+export const ENEMY_UNLOCK_LEVELS: Record<HeroClass, Record<EnemyRoleKey, number>> = {
+  warrior: {
+    sproutling: 1,
+    thornRunner: 2,
+    mushroomBrute: 3,
+    spitter: 5,
+    leafSneak: 7,
+    wispMage: 8,
+    bombBud: 9,
+  },
+  archer: {
+    sproutling: 1,
+    thornRunner: 2,
+    mushroomBrute: 4,
+    spitter: 5,
+    leafSneak: 3,
+    wispMage: 7,
+    bombBud: 8,
+  },
+  sorcerer: {
+    sproutling: 1,
+    thornRunner: 3,
+    mushroomBrute: 2,
+    spitter: 4,
+    leafSneak: 6,
+    wispMage: 7,
+    bombBud: 8,
+  },
+};
 
 export interface EnemyVariantConfig {
   key: string;
@@ -390,9 +483,7 @@ export const BOSS_CONFIGS: Record<SeasonPreset, {
   buildingDamage: number;
   contactDamage: number;
   rewardGold: [number, number];
-  rewardXp: number;
   clearGold: number;
-  clearXp: number;
   tint: number | null;
 }> = {
   day_spring: {
@@ -403,9 +494,7 @@ export const BOSS_CONFIGS: Record<SeasonPreset, {
     buildingDamage: 11,
     contactDamage: 1,
     rewardGold: [22, 34],
-    rewardXp: 52,
     clearGold: 58,
-    clearXp: 72,
     tint: null,
   },
   afternoon_summer: {
@@ -416,9 +505,7 @@ export const BOSS_CONFIGS: Record<SeasonPreset, {
     buildingDamage: 12,
     contactDamage: 1,
     rewardGold: [26, 39],
-    rewardXp: 60,
     clearGold: 66,
-    clearXp: 84,
     tint: 0xffd385,
   },
   night_spring: {
@@ -429,9 +516,7 @@ export const BOSS_CONFIGS: Record<SeasonPreset, {
     buildingDamage: 13,
     contactDamage: 1,
     rewardGold: [30, 44],
-    rewardXp: 72,
     clearGold: 74,
-    clearXp: 96,
     tint: 0xd5deff,
   },
   noon_winter: {
@@ -442,9 +527,7 @@ export const BOSS_CONFIGS: Record<SeasonPreset, {
     buildingDamage: 14,
     contactDamage: 1,
     rewardGold: [34, 48],
-    rewardXp: 84,
     clearGold: 84,
-    clearXp: 108,
     tint: 0xe7ffff,
   },
 };
@@ -462,98 +545,87 @@ export const COLORS = {
   uiInk: '#25324a',
 };
 
-export interface UpgradeDef {
-  name: string;
-  detail: string;
-  cost: number;
-  level: number;
-  icon: string;
-  apply: (scene: any) => void;
-}
-
-export const UPGRADE_DEFS: UpgradeDef[] = [
-  {
-    name: 'Sword',
-    detail: '+1 soft bonk',
-    cost: 55,
-    level: 0,
-    icon: 'swordIconTexture',
-    apply: (scene) => {
-      scene.playerStats.swordPower += 1;
-      scene.addGuildNote('Your wooden sword feels braver!');
-    },
-  },
-];
-
 export const GENERATED_BUILDING_SPRITE_ALPHA = 1;
 export const STATIC_BUILDING_BASE_ALPHA = 0.14;
 export const STATIC_BUILDING_SPRITE_ALPHA = 0.74;
 
-export interface LevelUpChoiceDef {
-  key: string;
+export interface CardDefinition {
+  key: CardKey;
   label: string;
   detail: string;
   icon: { texture: string; frame: string };
-  stat: string;
+  category: 'offenseMobility' | 'survivalVillage';
+  persistent: boolean;
   color: number;
   stageColor: number;
   stageAccent: number;
-  apply: (scene: any) => void;
 }
 
-export const LEVEL_UP_CHOICE_DEFS: LevelUpChoiceDef[] = [
+export const CARD_DEFINITIONS: CardDefinition[] = [
   {
-    key: 'melee',
-    label: 'Melee Damage',
-    detail: '+1 sword power',
+    key: 'strongerStrikes',
+    label: 'Stronger Strikes',
+    detail: 'Main attack hits harder.',
     icon: { texture: 'uiAtlas', frame: 'sword_icon_01' },
-    stat: 'swordPower',
+    category: 'offenseMobility',
+    persistent: true,
     color: 0xf4bc3f,
     stageColor: 0xb94136,
     stageAccent: 0xffd45c,
-    apply: (scene) => {
-      scene.playerStats.swordPower += 1;
-      scene.addGuildNote('Melee training complete! Sword damage increased.');
-    },
   },
   {
-    key: 'range',
-    label: 'Range Damage',
-    detail: '+1 bow power',
+    key: 'quickHands',
+    label: 'Quick Hands',
+    detail: 'Main attack readies faster.',
     icon: { texture: 'uiAtlas', frame: 'bow_icon_01' },
-    stat: 'bowPower',
+    category: 'offenseMobility',
+    persistent: true,
     color: 0x72c96d,
     stageColor: 0x397f4a,
     stageAccent: 0xbde679,
-    apply: (scene) => {
-      if (scene.isBowEvolutionReady()) {
-        scene.playerStats.bowEvolved = true;
-        scene.playerStats.bowPower += BOW_EVOLUTION_POWER_BONUS;
-        scene.playerStats.bowCooldown = Math.max(220, scene.playerStats.bowCooldown - 90);
-        scene.addGuildNote('Bow evolution complete! Arrows fly faster and hit harder.');
-        return;
-      }
-      scene.playerStats.bowPower += 1;
-      if (scene.playerStats.bowEvolved) {
-        scene.playerStats.bowCooldown = Math.max(220, scene.playerStats.bowCooldown - 30);
-        scene.addGuildNote('Evolved bow training complete! Master shots improved.');
-        return;
-      }
-      scene.addGuildNote('Range training complete! Bow damage increased.');
-    },
   },
   {
-    key: 'magic',
-    label: 'Magic Damage',
-    detail: '+1 spell power',
-    icon: { texture: 'uiAtlas', frame: 'spell_icon_01' },
-    stat: 'spellPower',
+    key: 'swiftBoots',
+    label: 'Swift Boots',
+    detail: 'Move faster.',
+    icon: { texture: 'uiAtlas', frame: 'boot_icon_01' },
+    category: 'offenseMobility',
+    persistent: true,
     color: 0x6cc5ff,
     stageColor: 0x3267c9,
     stageAccent: 0xa8f3ff,
-    apply: (scene) => {
-      scene.playerStats.spellPower += 1;
-      scene.addGuildNote('Magic training complete! Spell damage increased.');
-    },
+  },
+  {
+    key: 'toughHeart',
+    label: 'Tough Heart',
+    detail: 'Gain 1 extra heart.',
+    icon: { texture: 'gameUiAtlas', frame: 'health_full_01' },
+    category: 'survivalVillage',
+    persistent: true,
+    color: 0xe65a72,
+    stageColor: 0xa43c56,
+    stageAccent: 0xffa9bd,
+  },
+  {
+    key: 'reinforcedWalls',
+    label: 'Reinforced Walls',
+    detail: 'Buildings gain max health.',
+    icon: { texture: 'uiAtlas', frame: 'shield_icon_01' },
+    category: 'survivalVillage',
+    persistent: true,
+    color: 0x59c96b,
+    stageColor: 0x347c48,
+    stageAccent: 0xb8ffd5,
+  },
+  {
+    key: 'magicRepair',
+    label: 'Magic Repair',
+    detail: 'Fully repair all buildings.',
+    icon: { texture: 'uiAtlas', frame: 'repair_icon_01' },
+    category: 'survivalVillage',
+    persistent: false,
+    color: 0x66cfc3,
+    stageColor: 0x347c76,
+    stageAccent: 0xb8fff3,
   },
 ];

@@ -134,7 +134,40 @@ function createTouchActionButton(
     handleTouchAction(scene, action);
   });
   button.add(labelText ? [hit, focusRing, glyph, labelText] : [hit, focusRing, glyph]);
+  button.setData('labelText', labelText);
+  button.setData('glyph', glyph);
   return button;
+}
+
+function getClassActionPresentation(scene: SceneAPI) {
+  const hero = scene.getHeroConfig();
+  const attackIcon = scene.heroClass === 'warrior'
+    ? { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }
+    : scene.heroClass === 'archer'
+      ? { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }
+      : { texture: 'touchControlsAtlas', frame: 'touch_spell_01' };
+  const skillIcon = scene.heroClass === 'warrior'
+    ? { texture: 'shieldIconTexture' }
+    : scene.heroClass === 'archer'
+      ? { texture: 'trapIconTexture' }
+      : { texture: 'touchControlsAtlas', frame: 'touch_spell_01' };
+  return { hero, attackIcon, skillIcon };
+}
+
+export function updateTouchClassActions(scene: SceneAPI): void {
+  if (!scene.touchControls) {
+    return;
+  }
+  const { hero, attackIcon, skillIcon } = getClassActionPresentation(scene);
+  const updateButton = (action: TouchActionKey, label: string, icon: { texture: string; frame?: string }) => {
+    const button = scene.touchControls.buttons[action];
+    button?.getData('labelText')?.setText(label);
+    button?.getData('glyph')
+      ?.setTexture(icon.texture, icon.frame)
+      .setDisplaySize(scaleTouchControl(70), scaleTouchControl(70));
+  };
+  updateButton('mainAttack', hero.mainAttack, attackIcon);
+  updateButton('classSkill', hero.skill, skillIcon);
 }
 
 function createPortraitOverlay(scene: SceneAPI) {
@@ -229,24 +262,12 @@ function handleTouchAction(scene: SceneAPI, action: TouchActionKey) {
     return;
   }
   const now = scene.time.now;
-  if (action === 'melee') {
-    if (scene.state.repairMode) {
-      scene.tryRepairBuilding();
-    } else {
-      scene.swingSword(now);
-    }
-  } else if (action === 'bow') {
-    scene.setRepairMode(false, false);
-    scene.fireBow(now, scene.getAutoTargetIso(7.2));
-  } else if (action === 'spell') {
-    scene.setRepairMode(false, false);
-    scene.castSpell(now, scene.getAutoTargetIso(4.2));
+  if (action === 'mainAttack') {
+    scene.useMainAttack(now, scene.getAutoTargetIso(scene.playerStats.attackRange));
+  } else if (action === 'classSkill') {
+    scene.useClassSkill(now);
   } else if (action === 'repair') {
-    scene.toggleRepairMode();
-  } else if (action === 'repairConfirm') {
     scene.tryRepairBuilding();
-  } else if (action === 'repairCancel') {
-    scene.setRepairMode(false, false);
   }
 }
 
@@ -256,11 +277,6 @@ function updateTouchControlsInternal(scene: SceneAPI) {
   }
   updatePortraitHint(scene);
   scene.touchControls.container.setAlpha(scene.state.phase === 'countdown' ? 0.72 : 1);
-  const repairModeActive = scene.state.repairMode && scene.state.phase === 'playing';
-  ['melee', 'bow', 'spell', 'repair'].forEach((action) => {
-    scene.touchControls?.buttons[action]?.setVisible(!repairModeActive);
-  });
-  scene.touchControls.repairButtons?.forEach((button) => button.setVisible(repairModeActive));
   setTouchControlsVisible(
     scene,
     (scene.state.phase === 'countdown' || scene.state.phase === 'playing') && !isPortraitLayout(),
@@ -294,11 +310,11 @@ export function touchControlsCreate(scene: SceneAPI): void {
   const actionCenterX = WIDTH - scaleTouchControl(150);
   const actionCenterY = HEIGHT - scaleTouchControl(118);
   const actionRadiusX = scaleTouchControl(86);
-  const actionRadiusY = scaleTouchControl(54);
-  const normalLayout: Record<TouchButtonSlot, [TouchActionKey, string, TouchActionIcon, number]> = {
-    left: ['melee', 'Sword', { texture: 'touchControlsAtlas', frame: 'touch_sword_01' }, 0xf2bf52],
-    top: ['bow', 'Bow', { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }, 0x8fd56c],
-    right: ['spell', 'Spell', { texture: 'touchControlsAtlas', frame: 'touch_spell_01' }, 0x75d8ff],
+  const actionRadiusY = scaleTouchControl(56);
+  const { hero, attackIcon, skillIcon } = getClassActionPresentation(scene);
+  const normalLayout: Partial<Record<TouchButtonSlot, [TouchActionKey, string, TouchActionIcon, number]>> = {
+    left: ['mainAttack', hero.mainAttack, attackIcon, 0xf2bf52],
+    right: ['classSkill', hero.skill, skillIcon, 0x75d8ff],
     bottom: ['repair', 'Repair', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
   };
   const slotPositions: Record<TouchButtonSlot, { x: number; y: number }> = {
@@ -307,18 +323,12 @@ export function touchControlsCreate(scene: SceneAPI): void {
     right: { x: actionCenterX + actionRadiusX, y: actionCenterY },
     bottom: { x: actionCenterX, y: actionCenterY + actionRadiusY },
   };
-  Object.entries(normalLayout).forEach(([slot, [action, label, icon, color]]) => {
+  Object.entries(normalLayout).forEach(([slot, definition]) => {
+    const [action, label, icon, color] = definition as [TouchActionKey, string, TouchActionIcon, number];
     const point = slotPositions[slot as TouchButtonSlot];
     buttons[action] = createTouchActionButton(scene, action, point.x, point.y, label, icon, color);
   });
-  const repairLayout: Array<[TouchActionKey, TouchButtonSlot, string, TouchActionIcon, number]> = [
-    ['repairConfirm', 'left', '', { texture: 'touchControlsAtlas', frame: 'touch_repair_01' }, 0x9fe9bf],
-    ['repairCancel', 'right', '', { texture: 'repairModeCancelIcon' }, 0xff9ca0],
-  ];
-  const repairButtons = repairLayout.map(([action, slot, label, icon, color]) => {
-    const point = slotPositions[slot];
-    return createTouchActionButton(scene, action, point.x, point.y, label, icon, color).setVisible(false);
-  });
+  const repairButtons: Phaser.GameObjects.Container[] = [];
 
   const portraitOverlay = createPortraitOverlay(scene);
   container.add([joystickZone, joystickBase, joystickThumb, ...Object.values(buttons), ...repairButtons]);

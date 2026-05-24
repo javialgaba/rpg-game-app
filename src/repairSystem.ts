@@ -1,6 +1,5 @@
-import { REPAIR_COST, REPAIR_RANGE } from './gameConfig';
+import { REPAIR_RANGE } from './gameConfig';
 import type { BuildingEntity, GridPoint } from './gameTypes';
-import type { RepairModeTargetState } from './gameTypes';
 
 export function getFootprintCells(
   x: number,
@@ -59,39 +58,4 @@ export function getNearestDamagedBuilding(
     }
   }
   return nearest;
-}
-
-export function getRepairModeTarget(
-  buildings: BuildingEntity[],
-  playerIso: GridPoint | null,
-  footprintCellsFn: (x: number, y: number, footprint?: { w: number; h: number }) => GridPoint[],
-  range = REPAIR_RANGE,
-): BuildingEntity | null {
-  let nearestDamaged: { building: BuildingEntity; distance: number } | null = null;
-  let nearestPerfect: { building: BuildingEntity; distance: number } | null = null;
-  for (const building of buildings) {
-    if (building.name === 'Castle' && building.hp <= 0) { continue; }
-    const distance = getRepairDistanceToBuilding(building, playerIso, footprintCellsFn);
-    if (distance > range) { continue; }
-    if (building.hp < building.max) {
-      if (!nearestDamaged || distance < nearestDamaged.distance) {
-        nearestDamaged = { building, distance };
-      }
-      continue;
-    }
-    if (!nearestPerfect || distance < nearestPerfect.distance) {
-      nearestPerfect = { building, distance };
-    }
-  }
-  return nearestDamaged?.building ?? nearestPerfect?.building ?? null;
-}
-
-export function getRepairModeTargetState(
-  building: BuildingEntity,
-  gold: number,
-): RepairModeTargetState {
-  if (building.hp >= building.max) {
-    return 'perfect';
-  }
-  return gold >= REPAIR_COST ? 'repairable' : 'unaffordable';
 }

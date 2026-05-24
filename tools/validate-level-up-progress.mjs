@@ -7,62 +7,43 @@ import fs from 'node:fs/promises';
 import ts from 'typescript';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outRoot = path.join(os.tmpdir(), `rpg-level-up-progress-tests-${process.pid}`);
-
-const compileFile = async (relativePath) => {
-  const sourcePath = path.join(repoRoot, relativePath);
-  const outPath = path.join(outRoot, relativePath).replace(/\.ts$/, '.js');
-  const source = await fs.readFile(sourcePath, 'utf8');
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      esModuleInterop: true,
-      isolatedModules: true,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  });
-  await fs.mkdir(path.dirname(outPath), { recursive: true });
-  await fs.writeFile(outPath, compiled.outputText);
-};
+const outRoot = path.join(os.tmpdir(), `village-card-progress-tests-${process.pid}`);
+const sourcePath = path.join(repoRoot, 'src/gameConfig.ts');
+const outPath = path.join(outRoot, 'gameConfig.js');
+const source = await fs.readFile(sourcePath, 'utf8');
+const compiled = ts.transpileModule(source, {
+  compilerOptions: {
+    esModuleInterop: true,
+    isolatedModules: true,
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2022,
+  },
+  fileName: sourcePath,
+});
 
 await fs.rm(outRoot, { force: true, recursive: true });
 await fs.mkdir(outRoot, { recursive: true });
 await fs.writeFile(path.join(outRoot, 'package.json'), '{"type":"commonjs"}\n');
-await compileFile('src/gameConfig.ts');
+await fs.writeFile(outPath, compiled.outputText);
 
 const require = createRequire(path.join(outRoot, 'index.cjs'));
 const {
-  BOW_EVOLUTION_POWER_BONUS,
+  CARD_DEFINITIONS,
+  CARD_TIER_PERCENTAGES,
+  HERO_CLASSES,
   LEVEL_UP_MAX_PIPS,
-  PLAYER_BASE,
-  getBowLevelUpProgress,
-  getRangeLevelUpPresentationForStats,
-  isBowEvolutionReadyForStats,
-} = require(path.join(outRoot, 'src', 'gameConfig.js'));
+  SKILL_LEVELS,
+  WAVE_BUDGETS,
+} = require(outPath);
 
-const stats = (bowPower, bowEvolved = false) => ({
-  ...PLAYER_BASE,
-  bowPower,
-  bowEvolved,
-});
+assert.deepEqual(Object.keys(HERO_CLASSES), ['warrior', 'archer', 'sorcerer']);
+assert.equal(HERO_CLASSES.warrior.maxHealth, 4);
+assert.equal(HERO_CLASSES.archer.attackRange, 9);
+assert.equal(HERO_CLASSES.sorcerer.skill, 'Magic Shield');
+assert.equal(CARD_DEFINITIONS.length, 6);
+assert.equal(CARD_DEFINITIONS.filter((card) => card.persistent).length, 5);
+assert.equal(CARD_TIER_PERCENTAGES.swiftBoots.length, LEVEL_UP_MAX_PIPS);
+assert.deepEqual(SKILL_LEVELS, [3, 5, 7, 9]);
+assert.deepEqual(WAVE_BUDGETS, [6, 9, 12, 16, 20, 24, 29, 34, 40]);
 
-const baseBow = stats(PLAYER_BASE.bowPower);
-assert.equal(getBowLevelUpProgress(baseBow), 0, 'base bow should show no pips');
-assert.equal(getRangeLevelUpPresentationForStats(baseBow).label, 'Range Damage');
-
-const maxBow = stats(PLAYER_BASE.bowPower + LEVEL_UP_MAX_PIPS);
-assert.equal(getBowLevelUpProgress(maxBow), LEVEL_UP_MAX_PIPS, 'max normal bow should show full pips');
-assert.equal(isBowEvolutionReadyForStats(maxBow), true, 'max normal bow should be ready to evolve');
-assert.equal(getRangeLevelUpPresentationForStats(maxBow).label, 'Bow Evolution');
-
-const evolvedBow = stats(PLAYER_BASE.bowPower + LEVEL_UP_MAX_PIPS + BOW_EVOLUTION_POWER_BONUS, true);
-assert.equal(getBowLevelUpProgress(evolvedBow), 0, 'evolved bow should reset pips');
-assert.equal(isBowEvolutionReadyForStats(evolvedBow), false, 'evolved bow should not show pending evolution');
-assert.equal(getRangeLevelUpPresentationForStats(evolvedBow).label, 'Evolved Bow');
-
-const trainedEvolvedBow = stats(evolvedBow.bowPower + 1, true);
-assert.equal(getBowLevelUpProgress(trainedEvolvedBow), 1, 'one evolved bow lesson should show one pip');
-assert.equal(getRangeLevelUpPresentationForStats(trainedEvolvedBow).detail, '+1 master bow');
-
-console.log('validated level-up progress states');
+console.log('validated class, card, skill, and wave progression configuration');

@@ -122,6 +122,7 @@ export function createBuildings(scene) {
     scene.entityLayer.add([base, sprite, healthBar.container]);
     const building = {
       ...data,
+      baseMax: data.max,
       iso: { x: data.x, y: data.y },
       footprintCells,
       baseAlpha: STATIC_BUILDING_BASE_ALPHA,
@@ -182,6 +183,7 @@ export function renderGeneratedBuilding(scene, placement) {
     y: placement.iso.y,
     hp: placement.maxHealth,
     max: placement.maxHealth,
+    baseMax: placement.maxHealth,
     importance: placement.importance,
     levelPlacementId: placement.id,
     texture: textureKey,

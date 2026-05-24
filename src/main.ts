@@ -11,12 +11,14 @@ import { findGridPath, pathCost } from './levels/pathfinding';
 import { resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
   BOSS_CONFIGS,
+  BOSS_HEALTH_MULTIPLIER,
+  BOSS_PROJECTILE_COOLDOWN,
+  BOSS_PROJECTILE_DAMAGE,
   BOSS_ROUND_INDEX,
+  CARD_DEFINITIONS,
   COLORS,
+  HERO_CLASSES,
   GENERATED_BUILDING_SPRITE_ALPHA,
-  getLevelUpProgressForStat,
-  getRangeLevelUpPresentationForStats,
-  isBowEvolutionReadyForStats,
   HEIGHT,
   LEVEL_UP_CARD_XS,
   LEVEL_UP_MAX_PIPS,
@@ -24,23 +26,16 @@ import {
   REPAIR_AMOUNT,
   REPAIR_COOLDOWN,
   REPAIR_COST,
-  REPAIR_OUTLINE_BACKING_COLOR,
-  REPAIR_OUTLINE_BACKING_WIDTH,
-  REPAIR_OUTLINE_COLORS,
-  REPAIR_OUTLINE_FILL_ALPHA,
-  REPAIR_OUTLINE_STROKE_WIDTH,
   REPAIR_RANGE,
   STATIC_BUILDING_BASE_ALPHA,
   WIDTH,
   WORLD_ENEMY_THEMES,
   WORLD_SEQUENCE,
-  UPGRADE_DEFS,
-  LEVEL_UP_CHOICE_DEFS,
+  type CardKey,
+  type EnemyRoleKey,
+  type HeroClass,
 } from './gameConfig';
 import type {
-  HeroChoice,
-  UpgradePauseContext,
-  RepairModeTargetState,
   GeneratedSurroundAnchor,
   GeneratedSurroundLayer,
   ScreenFootprintBounds,
@@ -53,7 +48,7 @@ import {
 import { createGeneratedTextures } from './generatedTextures';
 import { getWorldFogPieces, getWorldBackdropPieces, getWorldEdgeClusters } from './generatedWorldRenderData';
 import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDebugAutomationHost, toDebugSlug, getDebugBuildingSummary, setDebugCommandResult, findDebugBuilding, teleportPlayerToDebugTarget, triggerDebugSeasonTransition } from './devCommands';
-import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createUiCardFrame, createUiButton, createManaMeter, uiTextStyle } from './uiFactory';
+import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createUiCardFrame, createUiButton, uiTextStyle } from './uiFactory';
 import { drawGeneratedLevelDebug, toggleGeneratedLevelDebug, updateGeneratedLevelDebug } from './levelDebugRenderer';
 import { getActiveTimeOfDay, cycleTimeOfDay, getLampGlowIsoPoints, createTimeOfDayLayer } from './timeOfDayRenderer';
 import {
@@ -83,17 +78,17 @@ import {
   applySceneVariantAmbient,
   updateCinematicParallax,
 } from './sceneVariantRenderer';
-import { touchControlsCreate, setupMobileViewportHandlers, touchControlsUpdate } from './touchControls';
-import { spawnChest as _spawnChest, updateChests as _updateChests, tryOpenChest as _tryOpenChest, resumeRoundAfterChestBonus as _resumeRoundAfterChestBonus } from './chests';
-import { updateProjectiles as _updateProjectiles, destroyProjectile as _destroyProjectile, clearProjectiles as _clearProjectiles, dropReward as _dropReward, updatePickups as _updatePickups, collectPickup as _collectPickup } from './projectiles';
+import { touchControlsCreate, setupMobileViewportHandlers, touchControlsUpdate, updateTouchClassActions } from './touchControls';
+import { updateProjectiles as _updateProjectiles, destroyProjectile as _destroyProjectile, clearProjectiles as _clearProjectiles, fireEnemyProjectile as _fireEnemyProjectile } from './projectiles';
 import { clearLevelTimers as _clearLevelTimers, addLevelTimer as _addLevelTimer, showCountdownLabel as _showCountdownLabel, scheduleLevelSpawns as _scheduleLevelSpawns, resetLevelRoundState as _resetLevelRoundState, buildCountdownSequence as _buildCountdownSequence, checkLevelClearCondition, getCurrentRoundTitle, getNextWorldProgressionState, calculateRoundReward } from './levelFlow';
 import { pickWeighted as _pickWeighted, getEnemyArchetype as _getEnemyArchetype, getEnemyVariant as _getEnemyVariant, getEnemyDisplayName as _getEnemyDisplayName, getEnemyFrameKey as _getEnemyFrameKey, getWorldEliteVisual as _getWorldEliteVisual, getBossVisual as _getBossVisual } from './enemySpawning';
 import { getNearestForestExit as _getNearestForestExit, getPathProgress as _getPathProgress, isRetreatComplete as _isRetreatComplete } from './enemyAI';
-import { getFootprintCells as _getFootprintCells, getRepairModeTargetState as _getRepairModeTargetState, getRepairModeTarget as _getRepairModeTarget, getNearestDamagedBuilding as _getNearestDamagedBuilding, getRepairDistanceToBuilding as _getRepairDistanceToBuilding, getBuildingFootprintCells as _getBuildingFootprintCells } from './repairSystem';
+import { getFootprintCells as _getFootprintCells, getNearestDamagedBuilding as _getNearestDamagedBuilding } from './repairSystem';
 import { isoToGridCell as _isoToGridCell, getGeneratedEdgeSpawnPoints as _getGeneratedEdgeSpawnPoints, getGeneratedFallbackSpawnAnchors as _getGeneratedFallbackSpawnAnchors, getGeneratedPlayableEdgeCells as _getGeneratedPlayableEdgeCells } from './generatedLevelSpawning';
 import { getBuildingHealthColor as _getBuildingHealthColor, computeVillageSafety as _computeVillageSafety } from './buildingSystem';
 import { spawnSparkleBurst as _spawnSparkleBurst, spawnSpellBloom as _spawnSpellBloom, spawnShieldGlow as _spawnShieldGlow, spawnRepairToolEffect as _spawnRepairToolEffect, updateEffects as _updateEffects } from './effects';
-import { swingSword as _swingSword, fireBow as _fireBow, castSpell as _castSpell, damageEnemy as _damageEnemy, removeEnemy as _removeEnemy } from './combat';
+import { useMainAttack as _useMainAttack, useClassSkill as _useClassSkill, updateClassEffects as _updateClassEffects, getClassSkillConfig as _getClassSkillConfig, damageEnemy as _damageEnemy, removeEnemy as _removeEnemy } from './combat';
+import { applyCardStats, chooseCardOffer, createEmptyCardTiers, percentageForTiers } from './progression';
 import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
 import {
   getIsoMetrics as _getIsoMetrics,
@@ -136,9 +131,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.playerStats = { ...PLAYER_BASE };
     this.state = {
       health: PLAYER_BASE.maxHealth,
-      mana: PLAYER_BASE.maxMana,
       gold: 0,
-      xp: 0,
       level: 1,
       worldIndex: 0,
       worldKey: WORLD_SEQUENCE[0],
@@ -147,23 +140,26 @@ class FairyGuildScene extends Phaser.Scene {
       worldCycle: 0,
       phase: 'splash',
       villageSafety: 100,
-      equipped: 'Wooden Sword',
-      repairMode: false,
-      spell: 'Sparkle Burst',
-      inventoryOpen: false,
+      equipped: 'Sword Slash',
       gameOverReason: '',
     };
-    this.heroChoice = this.resolveRequestedHeroChoice();
+    this.heroClass = this.resolveRequestedHeroClass();
     this.heroAnimPrefix = 'hero';
     this.keys = {};
     this.enemies = [];
     this.projectiles = [];
-    this.chests = [];
-    this.pickups = [];
     this.buildings = [];
     this.effects = [];
     this.notes = [];
-    this.upgrades = [];
+    this.cardTiers = createEmptyCardTiers();
+    this.levelUpChoices = [];
+    this.lastSelectedCard = null as CardKey | null;
+    this.lastOfferedCards = [] as CardKey[];
+    this.runStats = { enemiesDefeated: 0 };
+    this.traps = [];
+    this.guardUntil = 0;
+    this.magicShield = null;
+    this.roundEnemyQueue = [];
     this.levelUpProgressBars = [];
     this.levelUpChoiceCards = [];
     this.lastPointerIso = { x: 7, y: 7 };
@@ -177,8 +173,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelTimers = [];
     this.generatedValidSpawnPoints = [];
     this.lastRepairAt = 0;
-    this.repairModeIndicator = null;
-    this.repairModeOutline = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
     this.touchDetection = null;
@@ -208,8 +202,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.resumeRunState = null as RunResumeStateSnapshot | null;
     this.resumeSkipSplash = false;
     this.forceFreshStart = false;
-    this.upgradePauseContext = 'roundClear';
-    this.pausedRoundTimers = [];
+    this.autoSelectHero = false;
+    this.preselectHero = false;
     this.parallaxSprites = [];
     this.audio = createAudioState();
   }
@@ -219,7 +213,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.forceFreshStart = Boolean(data?.forceFreshStart);
     this.resumeRunState = this.forceFreshStart ? null : data?.resumeRunState ?? null;
     this.resumeSkipSplash = !this.forceFreshStart && Boolean(data?.resumeSkipSplash);
-    this.heroChoice = data?.heroChoice ?? data?.resumeRunState?.heroChoice ?? this.resolveRequestedHeroChoice();
+    this.heroClass = data?.heroClass ?? data?.resumeRunState?.heroClass ?? this.resolveRequestedHeroClass();
+    this.autoSelectHero = Boolean(data?.autoSelectHero);
+    this.preselectHero = Boolean(data?.preselectHero);
   }
 
   preload() {
@@ -227,7 +223,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
     this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
-    this.load.image('repairModeCancelIcon', '/assets/repair-mode-cancel-icon.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
     this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
@@ -307,9 +302,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.createHud();
     this.createTouchControls();
     this.setupMobileViewportHandlers();
-    this.createUpgrades();
+    this.createCardProgression();
     this.createPhaseOverlays();
-    this.spawnInitialChests();
     if (this.resumeRunState && this.resumeSkipSplash) {
       this.restoreRunStateFromResume();
       this.startLevelCountdown();
@@ -325,7 +319,6 @@ class FairyGuildScene extends Phaser.Scene {
       loop: true,
       callback: () => {
         if (this.state.phase === 'playing') {
-          this.regenMana(2 + Math.floor(this.state.level / 2));
           this.updateVillageSafety();
           this.checkFailureState();
         }
@@ -333,7 +326,7 @@ class FairyGuildScene extends Phaser.Scene {
     });
 
     this.addGuildNote('The village is safe for now!');
-    this.addGuildNote('Dropped chests open on contact and fade quickly.');
+    this.addGuildNote('Defeated enemies send their gold straight to your purse.');
   }
 
   registerWorldEnemySheets() {
@@ -367,9 +360,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.playerStats = { ...PLAYER_BASE };
     this.state = {
       health: PLAYER_BASE.maxHealth,
-      mana: PLAYER_BASE.maxMana,
       gold: 0,
-      xp: 0,
       level: 1,
       worldIndex: 0,
       worldKey: WORLD_SEQUENCE[0],
@@ -378,20 +369,23 @@ class FairyGuildScene extends Phaser.Scene {
       worldCycle: 0,
       phase: 'splash',
       villageSafety: 100,
-      equipped: 'Wooden Sword',
-      repairMode: false,
-      spell: 'Sparkle Burst',
-      inventoryOpen: false,
+      equipped: 'Sword Slash',
       gameOverReason: '',
     };
     this.enemies = [];
     this.projectiles = [];
-    this.chests = [];
-    this.pickups = [];
     this.buildings = [];
     this.effects = [];
     this.notes = [];
-    this.upgrades = [];
+    this.cardTiers = createEmptyCardTiers();
+    this.levelUpChoices = [];
+    this.lastSelectedCard = null;
+    this.lastOfferedCards = [];
+    this.runStats = { enemiesDefeated: 0 };
+    this.traps = [];
+    this.guardUntil = 0;
+    this.magicShield = null;
+    this.roundEnemyQueue = [];
     this.levelUpProgressBars = [];
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
@@ -404,8 +398,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelTimers = [];
     this.generatedValidSpawnPoints = [];
     this.lastRepairAt = 0;
-    this.repairModeIndicator = null;
-    this.repairModeOutline = null;
     this.touchControls = null;
     this.touchControlsEnabled = false;
     this.touchDetection = null;
@@ -431,8 +423,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.lampGlowGraphics = null;
     this.timeOfDayOverride = null;
     this.sceneVariant = null;
-    this.upgradePauseContext = 'roundClear';
-    this.pausedRoundTimers = [];
     this.parallaxSprites = [];
   }
 
@@ -443,14 +433,12 @@ class FairyGuildScene extends Phaser.Scene {
       this.updatePlayer(dt, time);
       this.updateEnemies(dt, time);
       this.updateProjectiles(dt);
-      this.updatePickups(dt);
-      this.updateChests(time);
+      this.updateClassEffects(time);
       this.checkLevelClear();
       this.checkFailureState();
     }
     this.updateEffects(dt);
     this.updateDepths();
-    this.updateRepairModeIndicator(time);
     this.updateTouchControls();
     this.updateHud();
     this.updateDebugOverlay();
@@ -588,33 +576,34 @@ class FairyGuildScene extends Phaser.Scene {
     this.state.worldCycle = this.state.worldCycle || 0;
   }
 
-  resolveRequestedHeroChoice() {
-    const raw = new URLSearchParams(window.location.search).get('hero');
-    if (raw === 'princess') {
-      return 'princess' as HeroChoice;
+  resolveRequestedHeroClass() {
+    const raw = new URLSearchParams(window.location.search).get('heroClass') ?? new URLSearchParams(window.location.search).get('hero');
+    if (raw === 'archer' || raw === 'sorcerer' || raw === 'warrior') {
+      return raw as HeroClass;
     }
-    if (raw === 'male') {
-      return 'male' as HeroChoice;
-    }
-    return 'male';
+    return 'warrior';
   }
 
-  getHeroProfile(choice = this.heroChoice) {
-    const wantsPrincess = choice === 'princess' && this.textures.exists('princessHeroSheet');
-    const resolvedChoice = wantsPrincess ? 'princess' : 'male';
+  getHeroConfig(heroClass = this.heroClass) {
+    return HERO_CLASSES[heroClass as HeroClass] ?? HERO_CLASSES.warrior;
+  }
+
+  getHeroProfile(heroClass = this.heroClass) {
+    const sorcerer = heroClass === 'sorcerer' && this.textures.exists('princessHeroSheet');
     return {
-      choice: resolvedChoice as HeroChoice,
-      label: resolvedChoice === 'princess' ? 'Princess Hero' : 'Village Hero',
-      sheetKey: resolvedChoice === 'princess' ? 'princessHeroSheet' : 'heroSheet',
-      framePrefix: resolvedChoice === 'princess' ? 'princess' : 'hero',
-      animPrefix: resolvedChoice === 'princess' ? 'princess-hero' : 'male-hero',
+      heroClass: heroClass as HeroClass,
+      label: this.getHeroConfig(heroClass).label,
+      sheetKey: sorcerer ? 'princessHeroSheet' : 'heroSheet',
+      framePrefix: sorcerer ? 'princess' : 'hero',
+      animPrefix: sorcerer ? 'sorcerer-hero' : `${heroClass}-hero`,
+      tint: heroClass === 'archer' ? 0xb6ed9a : heroClass === 'sorcerer' ? 0xcfe7ff : null,
       displaySize: [76, 76] as [number, number],
       origin: [0.5, 0.76] as [number, number],
     };
   }
 
-  getHeroAnimationKey(action, choice = this.heroChoice) {
-    return `${this.getHeroProfile(choice).animPrefix}-${action}`;
+  getHeroAnimationKey(action, heroClass = this.heroClass) {
+    return `${this.getHeroProfile(heroClass).animPrefix}-${action}`;
   }
 
   ensureHeroAnimations(profile) {
@@ -656,10 +645,14 @@ class FairyGuildScene extends Phaser.Scene {
     }
   }
 
-  applyHeroChoice(choice, options: { announce?: boolean; restartIdle?: boolean } = {}) {
+  applyHeroClass(heroClass, options: { announce?: boolean; restartIdle?: boolean } = {}) {
     const { announce = false, restartIdle = true } = options;
-    const profile = this.getHeroProfile(choice);
-    this.heroChoice = profile.choice;
+    const profile = this.getHeroProfile(heroClass);
+    this.heroClass = profile.heroClass;
+    this.playerStats = applyCardStats(this.heroClass, this.cardTiers);
+    this.state.health = this.state.phase === 'splash'
+      ? this.playerStats.maxHealth
+      : Math.min(this.state.health || this.playerStats.maxHealth, this.playerStats.maxHealth);
     this.heroAnimPrefix = profile.animPrefix;
     this.ensureHeroAnimations(profile);
     if (this.player?.sprite) {
@@ -670,26 +663,32 @@ class FairyGuildScene extends Phaser.Scene {
         .setTexture(profile.sheetKey, `${profile.framePrefix}-0-0`)
         .setOrigin(profile.origin[0], profile.origin[1])
         .setDisplaySize(profile.displaySize[0], profile.displaySize[1]);
+      if (profile.tint) {
+        this.player.sprite.setTint(profile.tint);
+      } else {
+        this.player.sprite.clearTint();
+      }
       if (restartIdle || !this.player.sprite.anims.currentAnim) {
         this.player.sprite.play(`${profile.animPrefix}-idle`, true);
       }
     }
     if (announce) {
-      this.addGuildNote(profile.choice === 'princess' ? 'The princess joins the village watch!' : 'The village hero is ready to patrol!');
+      this.addGuildNote(`${profile.label} is ready to defend the village!`);
     }
+    updateTouchClassActions(this as any);
     this.updateSplashHeroChoiceUi?.();
     return profile;
   }
 
-  selectHeroChoice(choice) {
-    this.pendingHeroChoice = choice;
-    this.applyHeroChoice(choice, { announce: false, restartIdle: true });
+  selectHeroClass(heroClass) {
+    this.pendingHeroClass = heroClass;
+    this.applyHeroClass(heroClass, { announce: false, restartIdle: true });
     this.updateSplashHeroChoiceUi();
   }
 
   updateSplashHeroChoiceUi() {
-    const activeChoice = this.pendingHeroChoice ?? null;
-    ['male', 'princess'].forEach((choice) => {
+    const activeChoice = this.pendingHeroClass ?? null;
+    (['warrior', 'archer', 'sorcerer'] as HeroClass[]).forEach((choice) => {
       const card = this.splashHeroCards?.[choice];
       if (!card) {
         return;
@@ -728,7 +727,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.splashHeroChoiceText) {
       this.splashHeroChoiceText.setText(
         activeChoice
-          ? `Chosen hero: ${activeChoice === 'princess' ? 'Princess' : 'Village Adventurer'}`
+          ? `Chosen hero: ${this.getHeroConfig(activeChoice).label}`
           : 'Choose your hero before you begin.',
       );
     }
@@ -736,6 +735,14 @@ class FairyGuildScene extends Phaser.Scene {
 
   restartGameFromBeginning() {
     this.scene.restart({ forceFreshStart: true });
+  }
+
+  restartSameClass() {
+    this.scene.restart({ forceFreshStart: true, heroClass: this.heroClass, autoSelectHero: true });
+  }
+
+  chooseNewHero() {
+    this.scene.restart({ forceFreshStart: true, heroClass: this.heroClass, preselectHero: true });
   }
 
   updateCinematicParallax() {
@@ -760,21 +767,24 @@ class FairyGuildScene extends Phaser.Scene {
       playerStats: { ...this.playerStats },
       state: {
         health: this.state.health,
-        mana: this.state.mana,
         gold: this.state.gold,
-        xp: this.state.xp,
         level: this.state.level,
         villageSafety: 100,
         equipped: this.state.equipped,
-        repairMode: false,
-        spell: this.state.spell,
-        inventoryOpen: false,
         gameOverReason: '',
         ...nextProgression,
       },
-      buildings: [],
-      heroChoice: this.heroChoice,
-      upgradeLevels: this.upgrades.map((upgrade) => upgrade.level),
+      buildings: this.buildings.map((building) => ({
+        id: building.levelPlacementId,
+        name: building.name,
+        hp: building.hp,
+        max: building.max,
+      })),
+      heroClass: this.heroClass,
+      cardTiers: { ...this.cardTiers },
+      lastSelectedCard: this.lastSelectedCard,
+      lastOfferedCards: [...this.lastOfferedCards],
+      runStats: { ...this.runStats },
       note,
     };
   }
@@ -796,19 +806,19 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.resumeRunState.playerStats) {
       this.playerStats = { ...this.playerStats, ...this.resumeRunState.playerStats };
     }
-    if (this.resumeRunState.heroChoice) {
-      this.heroChoice = this.resumeRunState.heroChoice;
+    if (this.resumeRunState.heroClass) {
+      this.heroClass = this.resumeRunState.heroClass;
     }
     if (this.resumeRunState.state) {
-      this.state = { ...this.state, ...this.resumeRunState.state, phase: 'countdown', inventoryOpen: false, repairMode: false };
+      this.state = { ...this.state, ...this.resumeRunState.state, phase: 'countdown' };
     }
-    if (this.resumeRunState.upgradeLevels?.length) {
-      this.resumeRunState.upgradeLevels.forEach((level, index) => {
-        if (this.upgrades[index]) {
-          this.upgrades[index].level = level;
-        }
-      });
+    if (this.resumeRunState.cardTiers) {
+      this.cardTiers = { ...this.cardTiers, ...this.resumeRunState.cardTiers };
     }
+    this.lastSelectedCard = (this.resumeRunState.lastSelectedCard as CardKey | null) ?? null;
+    this.lastOfferedCards = (this.resumeRunState.lastOfferedCards as CardKey[] | undefined) ?? [];
+    this.runStats = { ...this.runStats, ...this.resumeRunState.runStats };
+    this.playerStats = applyCardStats(this.heroClass, this.cardTiers);
     const buildingMap = new Map<string, RunResumeBuildingSnapshot>(
       (this.resumeRunState.buildings ?? []).map((building) => [building.id ?? building.name, building] as const),
     );
@@ -817,14 +827,49 @@ class FairyGuildScene extends Phaser.Scene {
       if (!snapshot) {
         return;
       }
-      building.hp = Math.max(0, Math.min(snapshot.hp, building.max));
       building.max = snapshot.max ?? building.max;
+      building.hp = Math.max(0, Math.min(snapshot.hp, building.max));
       this.updateBuildingRepairState(building);
     });
+    this.applyReinforcedWallHealth();
     if (this.resumeRunState.note) {
       this.addGuildNote(this.resumeRunState.note);
     }
     this.updateVillageSafety();
+  }
+
+  applyReinforcedWallHealth() {
+    const multiplier = percentageForTiers('reinforcedWalls', this.cardTiers.reinforcedWalls);
+    this.buildings.forEach((building) => {
+      building.baseMax = building.baseMax ?? building.max;
+      const desiredMax = Math.round(building.baseMax * (1 + multiplier));
+      const gained = Math.max(0, desiredMax - building.max);
+      building.max = desiredMax;
+      building.hp = Math.min(building.max, building.hp + gained);
+      this.updateBuildingRepairState(building);
+    });
+  }
+
+  applyLevelUpCard(choice) {
+    this.lastSelectedCard = choice.key;
+    if (choice.key === 'magicRepair') {
+      this.buildings.filter((building) => building.hp > 0).forEach((building) => {
+        building.hp = building.max;
+        this.updateBuildingRepairState(building);
+      });
+      this.addGuildNote('Magic Repair restored every standing building!');
+      return;
+    }
+    this.cardTiers[choice.key] += 1;
+    if (choice.key === 'reinforcedWalls') {
+      this.applyReinforcedWallHealth();
+    }
+    const previousMaxHealth = this.playerStats.maxHealth;
+    this.playerStats = applyCardStats(this.heroClass, this.cardTiers);
+    if (choice.key === 'toughHeart') {
+      this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + (this.playerStats.maxHealth - previousMaxHealth));
+    }
+    this.addGuildNote(`${choice.label} ${this.cardTiers[choice.key]} chosen!`);
   }
 
   getSceneVariantTerrainTexture(placement) {
@@ -1431,14 +1476,13 @@ class FairyGuildScene extends Phaser.Scene {
       ? this.generatedLevel.playerSpawn
       : { x: 7, y: 7 };
     const start = this.isoToGroundedEntityScreen(playerSpawn.x, playerSpawn.y);
-    const profile = this.getHeroProfile(this.heroChoice);
+    const profile = this.getHeroProfile(this.heroClass);
     this.ensureHeroAnimations(profile);
     this.player = {
       iso: { x: playerSpawn.x, y: playerSpawn.y },
       facing: { x: 0, y: 1 },
       lastAttack: 0,
-      lastBow: 0,
-      lastSpell: 0,
+      lastSkill: -99999,
       invulnerableUntil: 0,
       actionLockUntil: 0,
       sheetKey: profile.sheetKey,
@@ -1450,6 +1494,9 @@ class FairyGuildScene extends Phaser.Scene {
         .setDisplaySize(profile.displaySize[0], profile.displaySize[1])
         .setDepth(start.y + 40),
     };
+    if (profile.tint) {
+      this.player.sprite.setTint(profile.tint);
+    }
     this.player.sprite.play(`${profile.animPrefix}-idle`);
     this.entityLayer.add([this.player.shadow, this.player.sprite]);
   }
@@ -1464,13 +1511,9 @@ class FairyGuildScene extends Phaser.Scene {
       a: Phaser.Input.Keyboard.KeyCodes.A,
       s: Phaser.Input.Keyboard.KeyCodes.S,
       d: Phaser.Input.Keyboard.KeyCodes.D,
-      melee: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      bow: Phaser.Input.Keyboard.KeyCodes.F,
-      spell: Phaser.Input.Keyboard.KeyCodes.Q,
-      spellAlt: Phaser.Input.Keyboard.KeyCodes.R,
+      mainAttack: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      skill: Phaser.Input.Keyboard.KeyCodes.F,
       interact: Phaser.Input.Keyboard.KeyCodes.E,
-      repair: Phaser.Input.Keyboard.KeyCodes.T,
-      inventory: Phaser.Input.Keyboard.KeyCodes.I,
       one: Phaser.Input.Keyboard.KeyCodes.ONE,
       two: Phaser.Input.Keyboard.KeyCodes.TWO,
       three: Phaser.Input.Keyboard.KeyCodes.THREE,
@@ -1490,28 +1533,23 @@ class FairyGuildScene extends Phaser.Scene {
         return;
       }
       if (this.state.phase === 'playing' && pointer.leftButtonDown()) {
-        if (this.state.repairMode) {this.tryRepairBuilding();}
-        else {this.fireBow(this.time.now);}
+        this.useMainAttack(this.time.now, this.lastPointerIso);
       }
     });
     this.input.keyboard.on('keydown', () => this.ensureAudio());
-    this.keys.melee.on('down', () => {
+    this.keys.mainAttack.on('down', () => {
       if (this.state.phase === 'splash') {this.startGameFromSplash();}
     });
     this.keys.start.on('down', () => {
       if (this.state.phase === 'splash') {this.startGameFromSplash();}
     });
-    this.keys.inventory.on('down', () => this.toggleInventory());
-    this.keys.repair.on('down', () => this.toggleRepairMode());
     this.keys.interact.on('down', () => {
-      if (this.state.repairMode) {this.tryRepairBuilding();}
+      this.tryRepairBuilding();
     });
     [this.keys.one, this.keys.two, this.keys.three, this.keys.four, this.keys.five, this.keys.six].forEach((key, index) => {
       key.on('down', () => {
-        if (this.state.phase === 'levelUp' && index < 3) {
+        if (this.state.phase === 'levelUp' && index < 2) {
           this.chooseLevelUpgrade(index);
-        } else {
-          this.buyUpgrade(index);
         }
       });
     });
@@ -1682,16 +1720,11 @@ class FairyGuildScene extends Phaser.Scene {
       this.clampIso(this.player.iso, 1.2);
     }
 
-    const meleePressed = Phaser.Input.Keyboard.JustDown(this.keys.melee);
-    if (meleePressed) {
-      if (this.state.repairMode) {this.tryRepairBuilding();}
-      else {this.swingSword(time);}
+    if (Phaser.Input.Keyboard.JustDown(this.keys.mainAttack)) {
+      this.useMainAttack(time, this.lastPointerIso);
     }
-    if (Phaser.Input.Keyboard.JustDown(this.keys.bow)) {
-      this.fireBow(time);
-    }
-    if (Phaser.Input.Keyboard.JustDown(this.keys.spell) || Phaser.Input.Keyboard.JustDown(this.keys.spellAlt)) {
-      this.castSpell(time);
+    if (Phaser.Input.Keyboard.JustDown(this.keys.skill)) {
+      this.useClassSkill(time);
     }
 
     const p = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
@@ -1710,253 +1743,46 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.sprite.setAlpha(time < this.player.invulnerableUntil ? 0.62 + Math.sin(time / 50) * 0.18 : 1);
   }
 
-  swingSword(time) {
-    _swingSword(this as any, time);
+  useMainAttack(time, targetIso = this.lastPointerIso) {
+    _useMainAttack(this as any, time, targetIso);
   }
 
-  fireBow(time, targetIso = this.lastPointerIso) {
-    _fireBow(this as any, time, targetIso);
+  useClassSkill(time) {
+    _useClassSkill(this as any, time);
   }
 
-  castSpell(time, targetIso = this.lastPointerIso) {
-    _castSpell(this as any, time, targetIso);
+  getSkillConfig() {
+    return _getClassSkillConfig(this as any);
   }
 
-  createUpgrades() {
-    this.upgrades = UPGRADE_DEFS.map((def) => ({
-      ...def,
-      apply: () => def.apply(this),
-    }));
+  updateClassEffects(time) {
+    _updateClassEffects(this as any, time);
   }
 
-  buyUpgrade(index) {
-    if (this.state.phase !== 'playing') {return;}
-    if (!this.state.inventoryOpen) {return;}
-    const upgrade = this.upgrades[index];
-    if (!upgrade) {return;}
-    const price = upgrade.cost + upgrade.level * 25;
-    if (this.state.gold < price) {
-      this.addGuildNote(`${upgrade.name} needs ${price} gold.`);
-      this.playTone('hit');
-      return;
-    }
-    this.state.gold -= price;
-    upgrade.level += 1;
-    upgrade.apply();
-    this.playTone('level');
-    this.rebuildInventoryPanel();
-  }
-
-  spawnInitialChests() {
-    // Chests now drop from enemies instead of being pre-placed on the board.
-  }
-
-  spawnChest(
-    x,
-    y,
-    reward = 'bonus-upgrade',
-    options: { source?: 'enemyDrop'; lifetimeMs?: number } = {},
-  ) {
-    _spawnChest(this as any, x, y, reward, options);
-  }
-
-  updateChests(time) {
-    _updateChests(this as any, time);
-  }
-
-  tryOpenChest() {
-    _tryOpenChest(this as any);
-  }
-
-
-
-  resumeRoundAfterChestBonus() {
-    _resumeRoundAfterChestBonus(this as any);
-  }
-
-  toggleRepairMode() {
-    if (this.state.phase !== 'playing') {return;}
-    this.ensureAudio();
-    this.setRepairMode(!this.state.repairMode);
+  createCardProgression() {
+    this.cardTiers = this.cardTiers ?? createEmptyCardTiers();
   }
 
   getFootprintCells(x, y, footprint = { w: 1, h: 1 }) {
     return _getFootprintCells(x, y, footprint);
   }
 
-  setRepairMode(enabled, announce = true) {
-    if (enabled && this.state.phase !== 'playing') {return;}
-    if (this.state.repairMode === enabled) {
-      if (enabled) {this.state.equipped = 'Repair Kit';}
-      if (enabled) {this.showRepairModeIndicator();}
-      else {this.hideRepairModeIndicator();}
-      return;
-    }
-    this.state.repairMode = enabled;
-    if (enabled) {
-      this.state.inventoryOpen = false;
-      this.inventoryPanel?.setVisible(false);
-      this.state.equipped = 'Repair Kit';
-      this.showRepairModeIndicator();
-      if (announce) {this.addGuildNote('Repair Kit ready. Space/click/E near a damaged building.');}
-      this.playTone('sparkle');
-    } else {
-      this.hideRepairModeIndicator();
-      if (this.state.equipped === 'Repair Kit') {
-        this.state.equipped = 'Wooden Sword';
-        if (announce) {this.addGuildNote('Repair Kit tucked away.');}
-      }
-      this.clearRepairModeOutline();
-    }
-  }
-
-  showRepairModeIndicator() {
-    this.updateRepairModeIndicator(this.time.now);
-  }
-
-  hideRepairModeIndicator() {
-    if (this.repairModeIndicator) {
-      this.repairModeIndicator.destroy();
-      this.repairModeIndicator = null;
-    }
-    this.clearRepairModeOutline();
-  }
-
-  updateRepairModeIndicator(time) {
-    void time;
-    if (!this.state.repairMode || this.state.phase !== 'playing') {
-      this.hideRepairModeIndicator();
-      return;
-    }
-    this.updateRepairModeOutline();
-  }
-
-  pulseRepairModeIndicator() {
-    this.updateRepairModeOutline();
-  }
-
-  getBuildingFootprintCells(building) {
-    return _getBuildingFootprintCells(building, (x, y, f) => this.getFootprintCells(x, y, f));
-  }
-
-  getRepairDistanceToBuilding(building) {
-    return _getRepairDistanceToBuilding(building, this.player?.iso ?? null, (x, y, f) => this.getFootprintCells(x, y, f));
-  }
-
   getNearestDamagedBuilding(range = REPAIR_RANGE) {
     return _getNearestDamagedBuilding(this.buildings, this.player?.iso ?? null, (x, y, f) => this.getFootprintCells(x, y, f), range);
-  }
-
-  getRepairModeTarget(range = REPAIR_RANGE) {
-    return _getRepairModeTarget(this.buildings, this.player?.iso ?? null, (x, y, f) => this.getFootprintCells(x, y, f), range);
-  }
-
-  getRepairModeTargetState(building): RepairModeTargetState {
-    return _getRepairModeTargetState(building, this.state.gold);
-  }
-
-  clearRepairModeOutline() {
-    if (!this.repairModeOutline) {
-      return;
-    }
-    this.repairModeOutline.clear();
-    this.repairModeOutline.setVisible(false);
-  }
-
-  drawRepairModeFootprintFill(graphics, footprintCells, color, halfW, halfH) {
-    graphics.fillStyle(color, REPAIR_OUTLINE_FILL_ALPHA);
-    footprintCells.forEach((cell) => {
-      const center = this.isoToScreen(cell.x, cell.y);
-      graphics.beginPath();
-      graphics.moveTo(center.x, center.y - halfH);
-      graphics.lineTo(center.x + halfW, center.y);
-      graphics.lineTo(center.x, center.y + halfH);
-      graphics.lineTo(center.x - halfW, center.y);
-      graphics.closePath();
-      graphics.fillPath();
-    });
-  }
-
-  drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH) {
-    const cellKeys = new Set(footprintCells.map((cell) => `${cell.x},${cell.y}`));
-    footprintCells.forEach((cell) => {
-      const center = this.isoToScreen(cell.x, cell.y);
-      const top = { x: center.x, y: center.y - halfH };
-      const right = { x: center.x + halfW, y: center.y };
-      const bottom = { x: center.x, y: center.y + halfH };
-      const left = { x: center.x - halfW, y: center.y };
-      const edges = [
-        { neighbor: `${cell.x},${cell.y - 1}`, from: top, to: right },
-        { neighbor: `${cell.x + 1},${cell.y}`, from: right, to: bottom },
-        { neighbor: `${cell.x},${cell.y + 1}`, from: bottom, to: left },
-        { neighbor: `${cell.x - 1},${cell.y}`, from: left, to: top },
-      ];
-      edges.forEach((edge) => {
-        if (cellKeys.has(edge.neighbor)) {return;}
-        graphics.beginPath();
-        graphics.moveTo(edge.from.x, edge.from.y);
-        graphics.lineTo(edge.to.x, edge.to.y);
-        graphics.strokePath();
-      });
-    });
-  }
-
-  drawRepairModeFootprintOutline(graphics, building, color) {
-    const { tileW, tileH } = this.getIsoMetrics();
-    const halfW = tileW / 2;
-    const halfH = tileH / 2;
-    const footprintCells = this.getBuildingFootprintCells(building);
-    this.drawRepairModeFootprintFill(graphics, footprintCells, color, halfW, halfH);
-    graphics.lineStyle(REPAIR_OUTLINE_BACKING_WIDTH, REPAIR_OUTLINE_BACKING_COLOR, 0.82);
-    this.drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH);
-    graphics.lineStyle(REPAIR_OUTLINE_STROKE_WIDTH, color, 0.98);
-    this.drawRepairModeFootprintEdges(graphics, footprintCells, halfW, halfH);
-  }
-
-  updateRepairModeOutline() {
-    if (!this.state.repairMode || this.state.phase !== 'playing' || !this.player) {
-      this.clearRepairModeOutline();
-      return;
-    }
-    const building = this.getRepairModeTarget();
-    if (!building) {
-      this.clearRepairModeOutline();
-      return;
-    }
-    if (!this.repairModeOutline) {
-      this.repairModeOutline = this.add.graphics().setDepth(building.sprite.depth + 22);
-      this.effectsLayer.add(this.repairModeOutline);
-    }
-    const graphics = this.repairModeOutline;
-    const targetState = this.getRepairModeTargetState(building);
-    const color = REPAIR_OUTLINE_COLORS[targetState];
-    graphics.clear();
-    graphics.setVisible(true);
-    graphics.setDepth(building.sprite.depth + 22);
-    this.drawRepairModeFootprintOutline(graphics, building, color);
   }
 
   tryRepairBuilding() {
     if (this.state.phase !== 'playing') {return;}
     this.ensureAudio();
     if (this.time.now - this.lastRepairAt < REPAIR_COOLDOWN) {return;}
-    const building = this.getRepairModeTarget();
+    const building = this.getNearestDamagedBuilding();
     if (!building) {
       this.addGuildNote('No building close enough yet.');
-      this.pulseRepairModeIndicator();
       this.playTone('hit');
-      return;
-    }
-    const targetState = this.getRepairModeTargetState(building);
-    if (targetState === 'perfect') {
-      this.addGuildNote(`${building.name} is already in perfect condition.`);
-      this.pulseRepairModeIndicator();
-      this.playTone('sparkle');
       return;
     }
     if (this.state.gold < REPAIR_COST) {
       this.addGuildNote(`Repair supplies need ${REPAIR_COST} gold.`);
-      this.pulseRepairModeIndicator();
       this.playTone('hit');
       return;
     }
@@ -1970,7 +1796,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.spawnSparkleBurst(building.sprite.x, building.sprite.y - 22, 0xb8ffd5, 14, 0.82);
     this.playTone('repair');
     this.addGuildNote(`${building.name} repaired +${repaired} HP!`);
-    this.setRepairMode(false, false);
   }
 
   spawnRepairToolEffect(building, amount) {
@@ -1988,10 +1813,7 @@ class FairyGuildScene extends Phaser.Scene {
   startLevelCountdown() {
     this.clearLevelTimers();
     this.state.phase = 'countdown';
-    this.state.inventoryOpen = false;
-    this.setRepairMode(false, false);
     this.setMusicSoftened(false);
-    this.inventoryPanel?.setVisible(false);
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
     this.levelRequiredDefeats = 0;
@@ -2034,7 +1856,7 @@ class FairyGuildScene extends Phaser.Scene {
 
     const level = this.state.level;
     const isBossRound = this.state.bossRound;
-    _resetLevelRoundState(this as any, level, isBossRound);
+    _resetLevelRoundState(this as any, level, isBossRound, this.heroClass);
     if (this.generatedLevelActive) {
       this.buildGeneratedSpawnCache();
       if (!this.generatedValidSpawnPoints.length) {
@@ -2048,7 +1870,7 @@ class FairyGuildScene extends Phaser.Scene {
       this.addGuildNote(`Level ${level}: forest friends are on the move!`);
     }
     if (level === 1 && !isBossRound) {
-      this.addGuildNote('Tip: T readies repairs when buildings flash.');
+      this.addGuildNote('Tip: press E or Repair near damaged buildings.');
     }
 
     _scheduleLevelSpawns(this as any, level, this.levelSpawnsPending, isBossRound);
@@ -2063,7 +1885,6 @@ class FairyGuildScene extends Phaser.Scene {
       this.levelSpawnsPending,
       this.levelSpawnedCount,
       this.state.bossRound,
-      this.chests,
     )) {
       this.levelClearQueued = true;
       this.addLevelTimer(720, () => this.completeLevel());
@@ -2073,21 +1894,17 @@ class FairyGuildScene extends Phaser.Scene {
   completeLevel() {
     if (this.state.phase !== 'playing') {return;}
     this.state.phase = 'levelUp';
-    this.state.inventoryOpen = false;
-    this.setRepairMode(false, false);
-    this.inventoryPanel?.setVisible(false);
     this.clearProjectiles();
     this.clearRetreatingEnemies();
     const bossConfig = BOSS_CONFIGS[this.state.worldKey as SeasonPreset];
     const reward = calculateRoundReward(this.state.bossRound, this.state.level, this.state.worldCycle, this.state.worldKey);
     this.state.gold += reward.gold;
-    this.gainXp(reward.xp);
     this.addGuildNote(
       this.state.bossRound
         ? `${bossConfig.name} defeated! +${reward.gold} gold`
         : `Level ${this.state.level} clear! +${reward.gold} gold`,
     );
-    this.showLevelUpScreen('roundClear');
+    this.showLevelUpScreen();
   }
 
   getEnemyTarget(): any {
@@ -2198,12 +2015,13 @@ class FairyGuildScene extends Phaser.Scene {
       .filter(Boolean);
   }
 
-  selectGeneratedEnemyRoute(startIso) {
+  selectGeneratedEnemyRoute(startIso, preferredTarget = null) {
     const choices = this.getGeneratedRouteScores(startIso);
     if (!choices.length) {
       return null;
     }
-    const best = choices.reduce((winner, choice) => (choice.score > winner.score ? choice : winner), choices[0]);
+    const preferred = preferredTarget ? choices.find((choice) => choice.building === preferredTarget) : null;
+    const best = preferred ?? choices.reduce((winner, choice) => (choice.score > winner.score ? choice : winner), choices[0]);
     return {
       target: best.building,
       pathIso: best.path.map((cell) => ({ x: cell.x, y: cell.y })),
@@ -2217,8 +2035,8 @@ class FairyGuildScene extends Phaser.Scene {
     return _pickWeighted(items, Phaser.Math.FloatBetween(0, 1));
   }
 
-  getEnemyArchetype(level) {
-    return _getEnemyArchetype(level, this.getCurrentWorldTheme().preferredArchetypes, Phaser.Math.FloatBetween(0, 1));
+  getEnemyArchetype(role: EnemyRoleKey) {
+    return _getEnemyArchetype(role);
   }
 
   getEnemyVariant(level) {
@@ -2265,15 +2083,17 @@ class FairyGuildScene extends Phaser.Scene {
     );
   }
 
-  spawnRoundEnemy(level) {
-    return this.state.bossRound ? this.spawnBossEnemy(level) : this.spawnEnemy(level);
+  spawnRoundEnemy(level, role: EnemyRoleKey | 'boss' = 'sproutling') {
+    return role === 'boss' || this.state.bossRound ? this.spawnBossEnemy(level) : this.spawnEnemy(level, role);
   }
 
-  spawnEnemy(level) {
+  spawnEnemy(level, role: EnemyRoleKey = 'sproutling') {
     if (this.state.phase !== 'playing') {return false;}
-    const theme = this.getCurrentWorldTheme();
     let route = null;
-    let target = this.getEnemyTarget();
+    const weakestBuilding = role === 'leafSneak'
+      ? this.buildings.filter((building) => building.hp > 0).sort((a, b) => (a.hp / a.max) - (b.hp / b.max))[0]
+      : null;
+    let target = weakestBuilding ?? this.getEnemyTarget();
     if (!target) {return false;}
     let iso;
     if (this.generatedLevelActive) {
@@ -2284,7 +2104,7 @@ class FairyGuildScene extends Phaser.Scene {
       }
       for (const spawn of spawnCandidates) {
         iso = this.jitterGeneratedSpawnPoint(spawn);
-        route = this.selectGeneratedEnemyRoute(iso);
+        route = this.selectGeneratedEnemyRoute(iso, weakestBuilding);
         if (route) {
           break;
         }
@@ -2293,7 +2113,7 @@ class FairyGuildScene extends Phaser.Scene {
         const refreshedCandidates = this.buildGeneratedSpawnCache();
         for (const spawn of refreshedCandidates) {
           iso = this.jitterGeneratedSpawnPoint(spawn);
-          route = this.selectGeneratedEnemyRoute(iso);
+          route = this.selectGeneratedEnemyRoute(iso, weakestBuilding);
           if (route) {
             break;
           }
@@ -2312,9 +2132,9 @@ class FairyGuildScene extends Phaser.Scene {
       else if (side === 2) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 13.7 };}
       else {iso = { x: 1.1, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
     }
-    const archetype = this.getEnemyArchetype(level);
+    const archetype = this.getEnemyArchetype(role);
     const variant = this.getEnemyVariant(level);
-    const visual = this.getWorldEliteVisual(level, variant);
+    const visual = { frameSheetKey: 'monsterSheet', framePrefix: 'monster', frameRow: archetype.row, tint: variant.tint };
     const p = this.isoToScreen(iso.x, iso.y, 16);
     const levelBonus = Math.max(0, level - 1);
     const size = (archetype.size + Math.min(levelBonus, 6) * 1.4) * variant.scale;
@@ -2322,14 +2142,14 @@ class FairyGuildScene extends Phaser.Scene {
     const speed = Math.min(1.72, (archetype.speed + levelBonus * 0.035) * variant.speed);
     const buildingDamage = Math.max(1, Math.round((archetype.buildingDamage + Math.floor(levelBonus / 3)) * variant.buildingDamage));
     const contactDamage = Math.max(1, Math.round(archetype.contactDamage * variant.contactDamage));
-    const displayScaleX = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDisplayScaleX : 1;
-    const displayScaleY = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDisplayScaleY : 1;
+    const displayScaleX = 1;
+    const displayScaleY = 1;
     const shadow = this.add.ellipse(p.x, p.y + 13, size * displayScaleX * 0.42, size * displayScaleY * 0.22, 0x315133, 0.2);
     const frameRow = visual.frameRow ?? archetype.row;
     const framePrefix = visual.framePrefix ?? 'monster';
-    const idleFrames = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteIdleFrames : [0, 1, 2, 3];
+    const idleFrames = [0, 1, 2, 3];
     const initialFrame = Phaser.Utils.Array.GetRandom(idleFrames);
-    const defeatFrame = visual.frameSheetKey === theme.eliteAssetKey ? theme.eliteDefeatFrame : 7;
+    const defeatFrame = 7;
     const sprite = this.add.sprite(p.x, p.y, visual.frameSheetKey, `${framePrefix}-${frameRow}-${initialFrame}`)
       .setOrigin(0.5, 0.76)
       .setDisplaySize(size * displayScaleX, size * displayScaleY)
@@ -2353,7 +2173,6 @@ class FairyGuildScene extends Phaser.Scene {
       buildingDamage,
       contactDamage,
       rewardGold: archetype.rewardGold.map((value) => Math.round((value + levelBonus) * variant.reward)),
-      rewardXp: Math.round((archetype.rewardXp + levelBonus * 2) * variant.reward),
       touchCooldown: 0,
       heroTouchCooldown: 0,
       defeatFrame,
@@ -2367,12 +2186,15 @@ class FairyGuildScene extends Phaser.Scene {
       retreating: false,
       defeated: false,
       countedDefeat: false,
+      slowedUntil: 0,
+      ward: 0,
+      specialCooldown: 0,
     };
     this.enemies.push(enemy);
     this.levelSpawnedCount += 1;
     this.entityLayer.add([shadow, sprite]);
-    if (target.name === 'Bakery' && archetype.key === 'mushroom' && Phaser.Math.Between(0, 2) === 0) {
-      this.addGuildNote('Mushroom sprites are heading toward the bakery!');
+    if (target.name === 'Bakery' && archetype.key === 'mushroomBrute' && Phaser.Math.Between(0, 2) === 0) {
+      this.addGuildNote('A Mushroom Brute is heading toward the bakery!');
     } else if (variant.key !== 'normal' && Phaser.Math.Between(0, 5) === 0) {
       this.addGuildNote(`A ${this.getEnemyDisplayName(enemy)} joins Level ${level}!`);
     }
@@ -2423,7 +2245,7 @@ class FairyGuildScene extends Phaser.Scene {
     const p = this.isoToScreen(iso.x, iso.y, 18);
     const levelBonus = Math.max(0, level - 1);
     const cycleBonus = this.state.worldCycle * 0.18;
-    const maxHp = Math.round(bossConfig.hp + levelBonus * 3 + this.state.worldIndex * 3 + this.state.worldCycle * 8);
+    const maxHp = Math.round((bossConfig.hp + levelBonus * 3 + this.state.worldIndex * 3 + this.state.worldCycle * 8) * BOSS_HEALTH_MULTIPLIER);
     const size = bossConfig.size + this.state.worldIndex * 3 + this.state.worldCycle * 4;
     const displayScaleX = theme.bossDisplayScaleX;
     const displayScaleY = theme.bossDisplayScaleY;
@@ -2458,7 +2280,6 @@ class FairyGuildScene extends Phaser.Scene {
         bossConfig.rewardGold[0] + this.state.worldCycle * 4 + this.state.worldIndex * 2,
         bossConfig.rewardGold[1] + this.state.worldCycle * 6 + this.state.worldIndex * 3,
       ],
-      rewardXp: bossConfig.rewardXp + this.state.worldCycle * 12 + this.state.worldIndex * 6,
       touchCooldown: 0,
       heroTouchCooldown: 0,
       defeatFrame: theme.bossDefeatFrame,
@@ -2472,6 +2293,9 @@ class FairyGuildScene extends Phaser.Scene {
       retreating: false,
       defeated: false,
       countedDefeat: false,
+      slowedUntil: 0,
+      ward: 0,
+      specialCooldown: 0,
     };
     this.enemies.push(enemy);
     this.levelSpawnedCount += 1;
@@ -2482,6 +2306,23 @@ class FairyGuildScene extends Phaser.Scene {
 
   updateEnemies(dt, time) {
     this.enemies.slice().forEach((enemy) => {
+      if (enemy.archetype.key === 'leafSneak' && !enemy.retreating) {
+        const weakest = this.buildings
+          .filter((building) => building.hp > 0)
+          .sort((a, b) => (a.hp / a.max) - (b.hp / b.max))[0];
+        if (weakest && weakest !== enemy.target) {
+          if (this.generatedLevelActive) {
+            const route = this.selectGeneratedEnemyRoute(enemy.iso, weakest);
+            if (route) {
+              enemy.target = route.target;
+              enemy.path = route.pathIso;
+              enemy.pathIndex = route.pathIso.length > 1 ? 1 : 0;
+            }
+          } else {
+            enemy.target = weakest;
+          }
+        }
+      }
       if (!enemy.retreating && enemy.target.hp <= 0) {
         if (this.generatedLevelActive) {
           const route = this.selectGeneratedEnemyRoute(enemy.iso);
@@ -2504,6 +2345,30 @@ class FairyGuildScene extends Phaser.Scene {
           enemy.target = nextTarget;
         }
       }
+      const buildingDistance = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, enemy.target.iso.x, enemy.target.iso.y);
+      const isRangedAttacker = enemy.isBoss || enemy.archetype.key === 'spitter';
+      if (!enemy.retreating && isRangedAttacker && buildingDistance <= (enemy.isBoss ? 8 : 5) && buildingDistance > 0.55) {
+        const cooldown = enemy.isBoss ? BOSS_PROJECTILE_COOLDOWN : 2600;
+        if (time >= enemy.specialCooldown) {
+          enemy.specialCooldown = time + cooldown;
+          const target = enemy.target;
+          this.spawnSparkleBurst(enemy.sprite.x, enemy.sprite.y - 36, enemy.isBoss ? 0xffbd7a : 0x9fe98d, enemy.isBoss ? 12 : 7, enemy.isBoss ? 0.82 : 0.56);
+          this.time.delayedCall(enemy.isBoss ? 360 : 240, () => {
+            if (this.state.phase === 'playing' && !enemy.defeated && !enemy.retreating && target.hp > 0) {
+              _fireEnemyProjectile(this as any, enemy, target, enemy.isBoss ? BOSS_PROJECTILE_DAMAGE : 3, enemy.isBoss ? 'guardian' : 'spit');
+            }
+          });
+        }
+      }
+      if (!enemy.retreating && enemy.archetype.key === 'wispMage' && time >= enemy.specialCooldown) {
+        enemy.specialCooldown = time + 4000;
+        const ally = this.enemies.find((candidate) => candidate !== enemy && !candidate.defeated && !candidate.retreating
+          && Phaser.Math.Distance.Between(candidate.iso.x, candidate.iso.y, enemy.iso.x, enemy.iso.y) < 3);
+        if (ally) {
+          ally.ward = 2;
+          this.spawnSparkleBurst(ally.sprite.x, ally.sprite.y - 20, 0xa8f3ff, 8, 0.55);
+        }
+      }
       let targetIso = enemy.retreating ? this.getNearestForestExit(enemy.iso) : enemy.target.iso;
       if (!enemy.retreating && enemy.path?.length) {
         const progress = _getPathProgress(enemy.path, enemy.pathIndex, enemy.iso, 0.38);
@@ -2511,18 +2376,31 @@ class FairyGuildScene extends Phaser.Scene {
         targetIso = progress.targetIso;
       }
       const dist = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, targetIso.x, targetIso.y);
-      if (time > enemy.dazedUntil && dist > 0.35) {
+      const holdsRange = isRangedAttacker && buildingDistance <= (enemy.isBoss ? 8 : 5) && buildingDistance > 0.55;
+      const slowedFactor = time < (enemy.slowedUntil ?? 0) ? 0.55 : 1;
+      if (time > enemy.dazedUntil && dist > 0.35 && !holdsRange) {
         const vx = (targetIso.x - enemy.iso.x) / dist;
         const vy = (targetIso.y - enemy.iso.y) / dist;
-        enemy.iso.x += vx * enemy.speed * dt * (enemy.retreating ? 1.8 : 1);
-        enemy.iso.y += vy * enemy.speed * dt * (enemy.retreating ? 1.8 : 1);
+        enemy.iso.x += vx * enemy.speed * slowedFactor * dt * (enemy.retreating ? 1.8 : 1);
+        enemy.iso.y += vy * enemy.speed * slowedFactor * dt * (enemy.retreating ? 1.8 : 1);
         enemy.sprite.setFlipX(vx < -0.02);
       }
       const reachedAttackZone = !enemy.path?.length || enemy.pathIndex >= enemy.path.length - 1;
       if (!enemy.retreating && reachedAttackZone && dist <= 0.45 && time > enemy.touchCooldown) {
         enemy.touchCooldown = time + 1250;
-        this.bumpBuilding(enemy.target, enemy.buildingDamage);
+        this.damageProtectedBuilding(enemy.target, enemy.buildingDamage);
         this.playTone('hit');
+        if (enemy.archetype.key === 'bombBud') {
+          enemy.defeated = true;
+          enemy.retreating = true;
+          if (!enemy.countedDefeat) {
+            enemy.countedDefeat = true;
+            this.levelDefeatsThisRound += 1;
+            this.levelEnemiesRemaining = Math.max(0, this.levelRequiredDefeats - this.levelDefeatsThisRound);
+          }
+          this.spawnSparkleBurst(enemy.sprite.x, enemy.sprite.y - 18, 0xffb56c, 16, 0.9);
+          this.checkLevelClear();
+        }
       }
       const playerDist = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, this.player.iso.x, this.player.iso.y);
       if (!enemy.retreating && playerDist <= 0.58 && time > enemy.heroTouchCooldown) {
@@ -2558,18 +2436,6 @@ class FairyGuildScene extends Phaser.Scene {
         this.removeEnemy(enemy, true);
       }
     });
-  }
-
-  dropReward(x, y, enemy = null) {
-    _dropReward(this as any, x, y, enemy);
-  }
-
-  updatePickups(dt) {
-    _updatePickups(this as any, dt);
-  }
-
-  collectPickup(pickup) {
-    _collectPickup(this as any, pickup);
   }
 
   updateProjectiles(dt) {
@@ -2611,6 +2477,56 @@ class FairyGuildScene extends Phaser.Scene {
     building.healthBar.fill.width = Math.max(1, building.healthBar.width * ratio);
     building.healthBar.fill.setFillStyle(color, 0.96);
     building.healthBar.shine.width = Math.max(0, building.healthBar.shineWidth * ratio);
+  }
+
+  setMagicShield(shield) {
+    if (this.magicShield?.sprite) {
+      this.magicShield.sprite.destroy();
+    }
+    const targetSprite = shield.isBuilding ? shield.target.sprite : this.player.sprite;
+    const sprite = this.add.circle(targetSprite.x, targetSprite.y - 20, shield.isBuilding ? 48 : 34, 0x8ae7ff, 0.12)
+      .setStrokeStyle(3, 0xd7fbff, 0.82)
+      .setDepth(targetSprite.depth + 22);
+    this.fxLayer.add(sprite);
+    this.magicShield = { ...shield, sprite };
+  }
+
+  updateMagicShield(time) {
+    if (!this.magicShield) {
+      return;
+    }
+    const expired = time >= this.magicShield.expiresAt || this.magicShield.hp <= 0;
+    if (expired) {
+      if (this.heroClass === 'sorcerer' && this.state.level >= 9) {
+        const origin = this.magicShield.isBuilding ? this.magicShield.target.iso : this.player.iso;
+        this.enemies.forEach((enemy) => {
+          const dx = enemy.iso.x - origin.x;
+          const dy = enemy.iso.y - origin.y;
+          const distance = Math.hypot(dx, dy);
+          if (distance < 2 && distance > 0) {
+            enemy.iso.x += (dx / distance) * 0.5;
+            enemy.iso.y += (dy / distance) * 0.5;
+          }
+        });
+      }
+      this.magicShield.sprite.destroy();
+      this.magicShield = null;
+      return;
+    }
+    const targetSprite = this.magicShield.isBuilding ? this.magicShield.target.sprite : this.player.sprite;
+    this.magicShield.sprite.setPosition(targetSprite.x, targetSprite.y - 20);
+  }
+
+  damageProtectedBuilding(building, amount) {
+    if (this.magicShield?.isBuilding && this.magicShield.target === building && this.time.now < this.magicShield.expiresAt) {
+      const blocked = Math.min(amount, this.magicShield.hp);
+      this.magicShield.hp -= blocked;
+      amount -= blocked;
+      this.spawnSparkleBurst(building.sprite.x, building.sprite.y - 28, 0x9be7ff, 8, 0.55);
+    }
+    if (amount > 0) {
+      this.bumpBuilding(building, amount);
+    }
   }
 
   bumpBuilding(building, amount) {
@@ -2668,6 +2584,18 @@ class FairyGuildScene extends Phaser.Scene {
 
   takePlayerDamage(amount, enemy) {
     if (this.state.phase !== 'playing' || this.time.now < this.player.invulnerableUntil) {return;}
+    if (this.magicShield && !this.magicShield.isBuilding && this.time.now < this.magicShield.expiresAt) {
+      const blocked = Math.min(amount, this.magicShield.hp);
+      this.magicShield.hp -= blocked;
+      amount -= blocked;
+      if (amount <= 0) {
+        this.spawnSparkleBurst(this.player.sprite.x, this.player.sprite.y - 28, 0x9be7ff, 8, 0.55);
+        return;
+      }
+    }
+    if (this.heroClass === 'warrior' && this.time.now < this.guardUntil) {
+      amount = Math.max(0.5, amount * 0.5);
+    }
     this.state.health = Math.max(0, this.state.health - amount);
     this.player.invulnerableUntil = this.time.now + 1650;
     if (enemy) {
@@ -2701,9 +2629,6 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.state.phase === 'gameOver') {return;}
     this.state.phase = 'gameOver';
     this.state.gameOverReason = reason;
-    this.state.inventoryOpen = false;
-    this.setRepairMode(false, false);
-    this.inventoryPanel?.setVisible(false);
     this.countdownOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
     this.clearLevelTimers();
@@ -2711,14 +2636,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.showGameOverScreen(reason);
     this.setMusicSoftened(true);
     this.playTone('gameOver');
-  }
-
-  gainXp(amount) {
-    this.state.xp += amount;
-  }
-
-  regenMana(amount) {
-    this.state.mana = Math.min(this.playerStats.maxMana, this.state.mana + amount);
   }
 
   spawnSparkleBurst(x, y, color = 0xfff1a7, count = 10, scale = 1) {
@@ -2770,12 +2687,6 @@ class FairyGuildScene extends Phaser.Scene {
       enemy.shadow.setDepth(enemy.sprite.y + 5);
       enemy.sprite.setDepth(enemy.sprite.y + 70);
     });
-    this.chests.forEach((chest) => {
-      if (!chest.opened) {
-        chest.glow.setDepth(chest.sprite.y + 40);
-        chest.sprite.setDepth(chest.sprite.y + 58);
-      }
-    });
   }
 
   createPhaseOverlays() {
@@ -2801,31 +2712,33 @@ class FairyGuildScene extends Phaser.Scene {
 
   getSplashOverlayLayout() {
     const compact = this.isCompactOverlayLayout();
-    const panelHeight = compact ? 430 : 462;
+    const panelHeight = compact ? 472 : 500;
     return {
       compact,
-      panelWidth: compact ? 730 : 780,
+      panelWidth: compact ? 820 : 880,
       panelHeight,
       offsetY: this.getOverlayContentOffset(panelHeight),
       decorScale: compact ? 0.48 : 0.54,
-      titleY: compact ? -152 : -166,
+      titleY: compact ? -174 : -188,
       titleWidth: compact ? 470 : 520,
       titleTextWidth: compact ? 392 : 440,
       titleHeight: compact ? 54 : 58,
       titleSize: compact ? 26 : 28,
       titleMinSize: compact ? 20 : 22,
-      creditY: compact ? -108 : -118,
-      promptY: compact ? -70 : -80,
-      choiceY: compact ? -38 : -48,
-      cardY: compact ? 76 : 82,
-      cardX: compact ? 204 : 220,
-      cardWidth: compact ? 170 : 184,
-      cardHeight: compact ? 154 : 166,
-      heroY: compact ? 4 : 8,
-      heroSize: compact ? 66 : 72,
-      badgeY: compact ? -58 : -62,
-      captionY: compact ? 54 : 60,
-      startY: compact ? 184 : 200,
+      creditY: compact ? -132 : -142,
+      promptY: compact ? -96 : -104,
+      choiceY: compact ? -66 : -72,
+      cardY: compact ? 58 : 66,
+      cardX: compact ? 226 : 244,
+      cardWidth: compact ? 202 : 218,
+      cardHeight: compact ? 210 : 222,
+      heroY: compact ? -44 : -46,
+      heroSize: compact ? 60 : 66,
+      badgeY: compact ? -82 : -88,
+      captionY: compact ? 2 : 4,
+      detailY: compact ? 30 : 33,
+      actionsY: compact ? 65 : 70,
+      startY: compact ? 198 : 214,
       startWidth: compact ? 230 : 242,
       startHeight: compact ? 50 : 52,
     };
@@ -2925,10 +2838,6 @@ class FairyGuildScene extends Phaser.Scene {
     return createUiButton(this, x, y, width, height, label, onPress);
   }
 
-  createManaMeter(x, y, width, height) {
-    return createManaMeter(this, x, y, width, height);
-  }
-
   createSplashOverlay() {
     const layout = this.getSplashOverlayLayout();
     this.splashOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7900).setVisible(false);
@@ -2957,8 +2866,9 @@ class FairyGuildScene extends Phaser.Scene {
       ...this.uiTextStyle(layout.compact ? 14 : 15, '#31503b'),
       align: 'center',
     }).setOrigin(0.5);
-    const makeHeroCard = (choice: HeroChoice, x: number, label: string) => {
+    const makeHeroCard = (choice: HeroClass, x: number) => {
       const previewProfile = this.getHeroProfile(choice);
+      const classConfig = this.getHeroConfig(choice);
       this.ensureHeroAnimations(previewProfile);
       const card = this.add.container(x, layout.cardY);
       const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
@@ -2971,22 +2881,36 @@ class FairyGuildScene extends Phaser.Scene {
         .setDisplaySize(layout.heroSize, layout.heroSize)
         .setOrigin(0.5, 0.76)
         .play(`${previewProfile.animPrefix}-idle`);
-      const caption = this.add.text(0, layout.captionY, label, this.uiTextStyle(layout.compact ? 15 : 16, '#7d6039')).setOrigin(0.5);
+      if (previewProfile.tint) {
+        preview.setTint(previewProfile.tint);
+      }
+      const caption = this.add.text(0, layout.captionY, classConfig.label, this.uiTextStyle(layout.compact ? 15 : 16, '#7d6039')).setOrigin(0.5);
+      const detail = this.add.text(0, layout.detailY, classConfig.identity, {
+        ...this.uiTextStyle(layout.compact ? 11 : 12, '#31503b'),
+        align: 'center',
+      }).setOrigin(0.5);
+      const actions = this.add.text(0, layout.actionsY, `LEFT: ${classConfig.mainAttack}\nRIGHT: ${classConfig.skill}`, {
+        ...this.uiTextStyle(layout.compact ? 10 : 11, COLORS.uiInk),
+        align: 'center',
+        lineSpacing: 3,
+      }).setOrigin(0.5);
       const badge = this.add.text(0, layout.badgeY, 'Selected', this.uiTextStyle(layout.compact ? 11 : 12, '#5c7d3e'))
         .setOrigin(0.5)
         .setVisible(false);
-      hit.on('pointerup', () => this.selectHeroChoice(choice));
-      card.add([frame, selection, hit, preview, caption, badge]);
+      hit.on('pointerup', () => this.selectHeroClass(choice));
+      card.add([frame, selection, hit, preview, caption, detail, actions, badge]);
       return { card, frame, selection, hit, preview, label: caption, badge };
     };
-    const maleCard = makeHeroCard('male', -layout.cardX, 'Village Hero');
-    const princessCard = makeHeroCard('princess', layout.cardX, 'Princess Hero');
-    const startButton = this.createUiButton(0, layout.startY, layout.startWidth, layout.startHeight, 'START', () => this.startGameFromSplash());
+    const warriorCard = makeHeroCard('warrior', -layout.cardX);
+    const archerCard = makeHeroCard('archer', 0);
+    const sorcererCard = makeHeroCard('sorcerer', layout.cardX);
+    const startButton = this.createUiButton(0, layout.startY, layout.startWidth, layout.startHeight, 'Start Defense', () => this.startGameFromSplash());
     this.splashStartButton = startButton.hit;
     this.splashStartText = startButton.text;
     this.splashHeroCards = {
-      male: maleCard,
-      princess: princessCard,
+      warrior: warriorCard,
+      archer: archerCard,
+      sorcerer: sorcererCard,
     };
     content.add([
       panel,
@@ -2995,8 +2919,9 @@ class FairyGuildScene extends Phaser.Scene {
       credit,
       prompt,
       this.splashHeroChoiceText,
-      maleCard.card,
-      princessCard.card,
+      warriorCard.card,
+      archerCard.card,
+      sorcererCard.card,
       startButton.container,
     ]);
     this.splashOverlay.add([shade, content]);
@@ -3022,11 +2947,6 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   createLevelUpOverlay() {
-    this.levelUpChoices = LEVEL_UP_CHOICE_DEFS.map((def) => ({
-      ...def,
-      apply: () => def.apply(this),
-    }));
-
     const layout = this.getLevelUpOverlayLayout();
     this.levelUpOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7300).setVisible(false);
     const shade = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x17344f, 0.42);
@@ -3046,34 +2966,23 @@ class FairyGuildScene extends Phaser.Scene {
       this.levelUpTitleFit.maxSize,
       this.levelUpTitleFit.minSize,
     );
-    this.levelUpRewardText = this.add.text(0, layout.rewardY, 'Heart +1', this.uiTextStyle(layout.compact ? 19 : 21, '#bd415c')).setOrigin(0.5);
-    this.levelUpHelperText = this.add.text(0, layout.helperY, 'Choose your guild training', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
+    this.levelUpRewardText = this.add.text(0, layout.rewardY, '', this.uiTextStyle(layout.compact ? 19 : 21, '#bd415c')).setOrigin(0.5).setVisible(false);
+    this.levelUpHelperText = this.add.text(0, layout.helperY, 'Choose one village blessing', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
     content.add([panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
     this.levelUpProgressBars = [];
     this.levelUpChoiceCards = [];
-    this.levelUpChoices.forEach((choice, index) => {
+    CARD_DEFINITIONS.slice(0, 2).forEach((choice, index) => {
       const card = this.add.container(LEVEL_UP_CARD_XS[index] * layout.cardXScale, layout.cardY);
       const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
       const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
         .setInteractive({ useHandCursor: true });
       const stage = this.createLevelUpIconStage(choice);
       stage.setScale(layout.compact ? 0.86 : 0.92);
-      const evolutionGlow = this.add.circle(0, layout.iconY, layout.compact ? 42 : 46, 0xffd86e, 0.18)
-        .setStrokeStyle(3, 0xfff1a7, 0.75)
-        .setVisible(false);
       const icon = this.add.image(0, layout.iconY, choice.icon.texture, choice.icon.frame)
         .setDisplaySize(layout.compact ? 62 : 68, layout.compact ? 62 : 68);
-      const evolutionBadge = this.add.container(layout.compact ? 38 : 42, layout.iconY - (layout.compact ? 36 : 40))
-        .setVisible(false);
-      const badgeBacking = this.add.circle(0, 0, layout.compact ? 13 : 14, 0xfff0a4, 0.96)
-        .setStrokeStyle(2, 0xb56b1f, 0.82);
-      const badgeText = this.add.text(0, -1, 'UP', this.uiTextStyle(layout.compact ? 8 : 9, '#7a4513'))
-        .setOrigin(0.5);
-      evolutionBadge.add([badgeBacking, badgeText]);
       const label = this.add.text(0, layout.labelY, choice.label, this.uiTextStyle(layout.compact ? 15 : 17, COLORS.uiInk)).setOrigin(0.5);
-      const detailText = choice.detail.replace(' power', '');
-      const detail = this.add.text(0, layout.detailY, detailText, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
+      const detail = this.add.text(0, layout.detailY, choice.detail, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
       const pips = this.createLevelUpProgressPips(choice, layout.pipsY, layout.compact);
       hit.on('pointerover', () => {
         hit.setFillStyle(0xfff1b8, 0.16);
@@ -3086,11 +2995,10 @@ class FairyGuildScene extends Phaser.Scene {
         this.updateLevelUpProgressBars();
       });
       hit.on('pointerup', () => this.chooseLevelUpgrade(index));
-      card.add([frame, hit, stage, evolutionGlow, icon, evolutionBadge, ...pips, label, detail]);
+      card.add([frame, hit, stage, icon, ...pips, label, detail]);
       content.add(card);
-      this.levelUpChoiceCards.push({ choice, label, detail, icon, evolutionGlow, evolutionBadge });
+      this.levelUpChoiceCards.push({ label, detail, icon, pips });
     });
-    this.updateLevelUpChoicePresentation();
     this.levelUpOverlay.add([shade, content]);
     this.uiLayer.add(this.levelUpOverlay);
   }
@@ -3118,17 +3026,18 @@ class FairyGuildScene extends Phaser.Scene {
         .setStrokeStyle(1, 0x8c6023, 0.5);
       pips.push(pip);
     }
-    this.levelUpProgressBars.push({ pips, stat: choice.stat, color: choice.color, key: choice.key });
+    this.levelUpProgressBars.push({ pips, color: choice.color });
     return pips;
   }
 
   updateLevelUpProgressBars(previewIndex = null) {
     this.levelUpProgressBars.forEach((bar, index) => {
-      const current = this.getLevelUpStatProgress(bar.stat);
-      const preview = previewIndex === index ? Phaser.Math.Clamp(current + 1, 0, LEVEL_UP_MAX_PIPS) : current;
-      const evolvedRange = bar.key === 'range' && (this.playerStats.bowEvolved || this.isBowEvolutionReady());
-      const fillColor = evolvedRange ? 0xf2c94c : bar.color;
+      const choice = this.levelUpChoices[index];
+      const current = choice?.persistent ? this.cardTiers[choice.key] : 0;
+      const preview = choice?.persistent && previewIndex === index ? Phaser.Math.Clamp(current + 1, 0, LEVEL_UP_MAX_PIPS) : current;
+      const fillColor = choice?.color ?? bar.color;
       bar.pips.forEach((pip, pipIndex) => {
+        pip.setVisible(Boolean(choice?.persistent));
         if (pipIndex < current) {
           pip.setFillStyle(fillColor, 0.94);
           pip.setStrokeStyle(1, 0xffffff, 0.72);
@@ -3143,64 +3052,42 @@ class FairyGuildScene extends Phaser.Scene {
     });
   }
 
-  getLevelUpStatProgress(stat) {
-    if (stat === 'swordPower' || stat === 'bowPower' || stat === 'spellPower') {
-      return getLevelUpProgressForStat(this.playerStats, stat);
-    }
-    return Phaser.Math.Clamp(this.playerStats[stat] - PLAYER_BASE[stat], 0, LEVEL_UP_MAX_PIPS);
-  }
-
-  isBowEvolutionReady() {
-    return isBowEvolutionReadyForStats(this.playerStats);
-  }
-
-  getRangeLevelUpPresentation() {
-    return getRangeLevelUpPresentationForStats(this.playerStats);
-  }
-
   updateLevelUpChoicePresentation() {
-    this.levelUpChoiceCards?.forEach((card) => {
-      if (card.choice.key !== 'range') {
-        card.label.setText(card.choice.label);
-        card.detail.setText(card.choice.detail.replace(' power', ''));
-        card.icon.clearTint();
-        card.evolutionGlow?.setVisible(false);
-        card.evolutionBadge?.setVisible(false);
+    this.levelUpChoiceCards?.forEach((card, index) => {
+      const choice = this.levelUpChoices[index];
+      if (!choice) {
         return;
       }
-      const presentation = this.getRangeLevelUpPresentation();
-      card.label.setText(presentation.label);
-      card.detail.setText(presentation.detail);
-      card.evolutionGlow?.setVisible(presentation.evolved);
-      card.evolutionBadge?.setVisible(presentation.evolved);
-      if (presentation.evolved) {
-        card.icon.setTint(0xffdf75);
-      } else {
-        card.icon.clearTint();
-      }
+      const tier = choice.persistent ? this.cardTiers[choice.key] + 1 : null;
+      card.label.setText(tier ? `${choice.label} ${tier}` : choice.label);
+      card.detail.setText(choice.detail);
+      card.icon.setTexture(choice.icon.texture, choice.icon.frame);
     });
   }
 
   showSplashScreen() {
     this.clearLevelTimers();
     this.state.phase = 'splash';
-    this.state.inventoryOpen = false;
-    this.setRepairMode(false, false);
-    this.inventoryPanel?.setVisible(false);
     this.countdownOverlay?.setVisible(false);
     this.levelUpOverlay?.setVisible(false);
     this.gameOverOverlay?.setVisible(false);
     if (!this.forceFreshStart && this.shouldAutoStartFromParams()) {
-      this.pendingHeroChoice = this.resolveRequestedHeroChoice();
-      this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
+      this.pendingHeroClass = this.resolveRequestedHeroClass();
+      this.applyHeroClass(this.pendingHeroClass, { announce: false, restartIdle: true });
       this.splashOverlay?.setVisible(false).setAlpha(0);
       this.startGameFromSplash();
       return;
     }
-    const explicitHeroChoice = new URLSearchParams(window.location.search).get('hero');
-    this.pendingHeroChoice = !this.forceFreshStart && explicitHeroChoice ? this.resolveRequestedHeroChoice() : null;
-    if (this.pendingHeroChoice) {
-      this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
+    if (this.autoSelectHero) {
+      this.pendingHeroClass = this.heroClass;
+      this.applyHeroClass(this.heroClass, { announce: false, restartIdle: true });
+      this.startGameFromSplash();
+      return;
+    }
+    const explicitHeroChoice = new URLSearchParams(window.location.search).get('heroClass');
+    this.pendingHeroClass = this.preselectHero ? this.heroClass : (!this.forceFreshStart && explicitHeroChoice ? this.resolveRequestedHeroClass() : null);
+    if (this.pendingHeroClass) {
+      this.applyHeroClass(this.pendingHeroClass, { announce: false, restartIdle: true });
     }
     this.splashOverlay?.setVisible(true).setAlpha(0);
     this.updateSplashHeroChoiceUi();
@@ -3214,12 +3101,12 @@ class FairyGuildScene extends Phaser.Scene {
 
   startGameFromSplash() {
     if (this.state.phase !== 'splash') {return;}
-    if (!this.pendingHeroChoice) {
+    if (!this.pendingHeroClass) {
       this.addGuildNote('Choose a hero first.');
       this.playTone('hit');
       return;
     }
-    this.applyHeroChoice(this.pendingHeroChoice, { announce: false, restartIdle: true });
+    this.applyHeroClass(this.pendingHeroClass, { announce: false, restartIdle: true });
     this.ensureAudio();
     this.playTone('level');
     this.splashOverlay?.setVisible(false);
@@ -3244,7 +3131,9 @@ class FairyGuildScene extends Phaser.Scene {
       wordWrap: { width: layout.panelWidth - 140 },
     }).setOrigin(0.5);
     this.gameOverStatsText = this.add.text(0, layout.statsY, '', this.uiTextStyle(layout.compact ? 16 : 18, '#31503b')).setOrigin(0.5);
-    const restartButton = this.createUiButton(0, layout.buttonY, 246, 52, 'Restart (R)', () => this.restartGameFromBeginning());
+    const restartButton = this.createUiButton(-190, layout.buttonY, 174, 48, 'Restart', () => this.restartSameClass());
+    const chooseButton = this.createUiButton(0, layout.buttonY, 174, 48, 'New Hero', () => this.chooseNewHero());
+    const menuButton = this.createUiButton(190, layout.buttonY, 174, 48, 'Main Menu', () => this.restartGameFromBeginning());
     content.add([
       panel,
       titlePlaque,
@@ -3252,25 +3141,25 @@ class FairyGuildScene extends Phaser.Scene {
       this.gameOverReasonText,
       this.gameOverStatsText,
       restartButton.container,
+      chooseButton.container,
+      menuButton.container,
     ]);
     this.gameOverOverlay.add([shade, content]);
     this.uiLayer.add(this.gameOverOverlay);
   }
 
-  showLevelUpScreen(context: UpgradePauseContext = 'roundClear') {
-    this.upgradePauseContext = context;
-    const bossHeartReward = context === 'roundClear' && this.state.bossRound;
-    this.levelUpTitleText.setText(context === 'chestBonus' ? 'Cheerful Surprise!' : 'Level Up!');
+  showLevelUpScreen() {
+    this.levelUpChoices = chooseCardOffer(this.cardTiers, this.buildings, this.lastSelectedCard, this.lastOfferedCards);
+    this.lastOfferedCards = this.levelUpChoices.map((choice) => choice.key);
+    this.levelUpTitleText.setText('Level Up!');
     this.fitUiTextToWidth(
       this.levelUpTitleText,
       this.levelUpTitleFit.maxWidth,
       this.levelUpTitleFit.maxSize,
       this.levelUpTitleFit.minSize,
     );
-    this.levelUpRewardText
-      ?.setText(context === 'chestBonus' ? 'Choose a bonus strength point' : 'Boss reward: Heart +1')
-      .setVisible(context === 'chestBonus' || bossHeartReward);
-    this.levelUpHelperText?.setText(context === 'chestBonus' ? 'Pick a bonus combat lesson' : 'Choose your guild training');
+    this.levelUpRewardText?.setVisible(false);
+    this.levelUpHelperText?.setText('Choose one village blessing');
     this.updateLevelUpChoicePresentation();
     this.updateLevelUpProgressBars();
     this.levelUpOverlay.setVisible(true).setAlpha(0);
@@ -3288,22 +3177,12 @@ class FairyGuildScene extends Phaser.Scene {
     if (this.state.phase !== 'levelUp') {return;}
     const choice = this.levelUpChoices[index];
     if (!choice) {return;}
-    const pauseContext = (this.upgradePauseContext ?? 'roundClear') as UpgradePauseContext;
     const wasBossRound = this.state.bossRound;
-    if (pauseContext === 'roundClear' && wasBossRound) {
-      this.playerStats.maxHealth += 1;
-      this.state.health = Math.min(this.playerStats.maxHealth, this.state.health + 1);
-      this.addGuildNote('Boss victory training earned a new heart!');
-    }
-    choice.apply();
+    this.applyLevelUpCard(choice);
     this.updateLevelUpChoicePresentation();
     this.updateLevelUpProgressBars();
     this.spawnShieldGlow();
     this.playTone('level');
-    if (pauseContext === 'chestBonus') {
-      this.resumeRoundAfterChestBonus();
-      return;
-    }
     this.state.level += 1;
     const nextProgression = this.getNextWorldProgressionState();
     this.state.worldIndex = nextProgression.worldIndex;
@@ -3323,7 +3202,13 @@ class FairyGuildScene extends Phaser.Scene {
 
   showGameOverScreen(reason) {
     this.gameOverReasonText.setText(reason);
-    this.gameOverStatsText.setText(`Final Level ${this.state.level}   Gold ${this.state.gold}`);
+    const saved = this.buildings.filter((building) => building.hp > 0).length;
+    const highestTier = Math.max(0, ...Object.values(this.cardTiers) as number[]);
+    this.gameOverStatsText.setText([
+      `Final Level ${this.state.level}   Gold ${this.state.gold}   Hero ${this.getHeroConfig().label}`,
+      `Enemies Defeated ${this.runStats.enemiesDefeated}   Buildings Saved ${saved}   Highest Card Tier ${highestTier}`,
+      `Reached ${this.getCurrentWorldTheme().label} Round ${this.state.worldRound}`,
+    ].join('\n'));
     this.gameOverOverlay.setVisible(true).setAlpha(0);
     this.tweens.add({
       targets: this.gameOverOverlay,
@@ -3337,7 +3222,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.hud = {};
     this.createTopBar();
     this.createControlsHint();
-    this.createInventoryPanel();
     this.createDebugOverlay();
   }
 
@@ -3346,21 +3230,25 @@ class FairyGuildScene extends Phaser.Scene {
     const goldChip = this.createHudChip(184, 28, 92, 34);
     const levelChip = this.createHudChip(268, 28, 68, 34);
     const roundChip = this.createHudChip(376, 28, 124, 34);
+    const skillChip = this.createHudChip(550, 28, 202, 34);
     const coin = this.add.image(154, 28, 'gameUiAtlas', 'coin_badge_01')
       .setDisplaySize(30, 32);
     this.hud.hearts = this.add.container(16, 20);
     this.hud.goldText = this.add.text(198, 28, '', this.uiTextStyle(16, '#56330f')).setOrigin(0.5);
     this.hud.levelText = this.add.text(268, 28, '', this.uiTextStyle(15, '#1e3348')).setOrigin(0.5);
     this.hud.waveText = this.add.text(376, 28, '', this.uiTextStyle(12, '#224b31')).setOrigin(0.5);
+    this.hud.skillText = this.add.text(550, 28, '', this.uiTextStyle(12, '#224b50')).setOrigin(0.5);
     top.add([
       this.hud.hearts,
       goldChip,
       levelChip,
       roundChip,
+      skillChip,
       coin,
       this.hud.goldText,
       this.hud.levelText,
       this.hud.waveText,
+      this.hud.skillText,
     ]);
     this.uiLayer.add(top);
   }
@@ -3374,58 +3262,11 @@ class FairyGuildScene extends Phaser.Scene {
     const text = this.add.text(
       14,
       10,
-      'WASD/Arrows move   Space sword   Click/F bow   Q/R spell   T repair mode   Space/click/E repair nearby   I guild pack',
+      'WASD/Arrows move   Space/Click main attack   F class skill   E repair nearby building',
       this.uiTextStyle(13, '#ffffff'),
     );
     hint.add([bg, text]);
     this.uiLayer.add(hint);
-  }
-
-  createInventoryPanel() {
-    this.inventoryPanel = this.add.container(WIDTH - 346, 178).setDepth(6100).setVisible(false);
-    this.uiLayer.add(this.inventoryPanel);
-    this.rebuildInventoryPanel();
-  }
-
-  rebuildInventoryPanel() {
-    if (!this.inventoryPanel) {return;}
-    this.inventoryPanel.removeAll(true);
-    const bg = this.add.graphics();
-    bg.fillStyle(0xfff9e8, 0.95);
-    bg.lineStyle(2, 0xd0a24b, 0.7);
-    bg.fillRoundedRect(0, 0, 326, 306, 8);
-    bg.strokeRoundedRect(0, 0, 326, 306, 8);
-    const title = this.add.text(16, 12, 'Inventory & Upgrades', this.uiTextStyle(20, '#6a4618'));
-    const gold = this.add.text(18, 42, `Gold: ${this.state.gold}`, this.uiTextStyle(16, '#75521e'));
-    this.inventoryPanel.add([bg, title, gold]);
-    this.upgrades.forEach((upgrade, index) => {
-      const row = Math.floor(index / 2);
-      const col = index % 2;
-      const x = 16 + col * 150;
-      const y = 72 + row * 72;
-      const price = upgrade.cost + upgrade.level * 25;
-      const card = this.add.graphics();
-      card.fillStyle(0xffffff, 0.82);
-      card.lineStyle(2, this.state.gold >= price ? 0x79bd68 : 0xd4c2a1, 0.8);
-      card.fillRoundedRect(x, y, 136, 58, 7);
-      card.strokeRoundedRect(x, y, 136, 58, 7);
-      const icon = this.add.image(x + 24, y + 29, upgrade.icon).setDisplaySize(30, 30);
-      const name = this.add.text(x + 46, y + 8, `${index + 1}. ${upgrade.name}`, this.uiTextStyle(14, COLORS.uiInk));
-      const detail = this.add.text(x + 46, y + 28, `Lv ${upgrade.level}  ${price}g`, this.uiTextStyle(13, '#6d7b48'));
-      const small = this.add.text(x + 8, y + 58, upgrade.detail, this.uiTextStyle(11, '#765f42'));
-      this.inventoryPanel.add([card, icon, name, detail, small]);
-    });
-  }
-
-  toggleInventory() {
-    if (this.state.phase !== 'playing') {return;}
-    if (!this.state.inventoryOpen) {
-      this.setRepairMode(false, false);
-    }
-    this.state.inventoryOpen = !this.state.inventoryOpen;
-    this.inventoryPanel.setVisible(this.state.inventoryOpen);
-    this.rebuildInventoryPanel();
-    this.addGuildNote(this.state.inventoryOpen ? 'Guild pack opened. Press 1-6 to upgrade.' : 'Guild pack tucked away.');
   }
 
   isDebugOverlayRequested() {
@@ -3520,13 +3361,12 @@ class FairyGuildScene extends Phaser.Scene {
       ?? '';
     this.debugOverlay.text.setText([
       `Phase ${this.state.phase} | L${this.state.level} | ${this.getCurrentWorldTheme().label} R${this.state.worldRound}${this.state.bossRound ? ' Boss' : ''} | Safe ${this.state.villageSafety}%`,
-      `Hero ${this.state.health}/${this.playerStats.maxHealth} HP | Mana ${this.state.mana}/${this.playerStats.maxMana}`,
-      `Gold ${this.state.gold} | XP ${this.state.xp} | Mode ${this.state.repairMode ? 'repair' : 'combat'}`,
-      `Defeats ${this.levelDefeatsThisRound}/${this.levelRequiredDefeats} | pending ${this.levelSpawnsPending} | spawned ${this.levelSpawnedCount} | spawn skips ${this.levelSpawnFailures}`,
+      `Hero ${this.getHeroConfig().label} ${this.state.health}/${this.playerStats.maxHealth} HP | Gold ${this.state.gold}`,
+      `Resolved ${this.levelDefeatsThisRound}/${this.levelRequiredDefeats} | defeated ${this.runStats.enemiesDefeated} | pending ${this.levelSpawnsPending}`,
       `Enemies active ${activeEnemies} | remaining ${this.levelEnemiesRemaining}`,
       `Buildings ${buildingSummary}`,
       `Targets ${this.getLiveEnemyTargetSummary()}`,
-      `Atk S${this.playerStats.swordPower} B${this.playerStats.bowPower} M${this.playerStats.spellPower} | Bow ${this.playerStats.bowCooldown}ms`,
+      `Attack ${this.playerStats.attackDamage.toFixed(2)} | ${Math.round(this.playerStats.attackCooldown)}ms | Skill ${this.getHeroConfig().skill}`,
       this.generatedLevel ? `Config ${this.generatedLevelConfigId} | Seed ${this.generatedLevel.config.seed}` : '',
       this.generatedLevel ? `Tile ${this.generatedLevel.config.tileSize}px -> ${Math.round(metrics.tileW)}x${Math.round(metrics.tileH)}` : '',
       `${levelStatus} | Time ${this.getActiveTimeOfDay()} (N)`,
@@ -3551,13 +3391,11 @@ class FairyGuildScene extends Phaser.Scene {
     this.hud.goldText.setText(`${this.state.gold}`);
     this.hud.levelText.setText(`Lv ${this.state.level}`);
     this.hud.waveText.setText(`${this.getCurrentWorldTheme().label} R${this.state.worldRound}`);
-    if (this.state.inventoryOpen) {
-      const inventoryKey = `${this.state.gold}|${this.upgrades.map((upgrade) => upgrade.level).join(',')}`;
-      if (this.hud.inventoryKey !== inventoryKey) {
-        this.hud.inventoryKey = inventoryKey;
-        this.rebuildInventoryPanel();
-      }
-    }
+    const remaining = this.player
+      ? Math.max(0, (this.player.lastSkill + this.getSkillConfig().cooldown - this.time.now) / 1000)
+      : 0;
+    const skillStatus = remaining > 0 ? `${remaining.toFixed(1)}s` : 'Ready';
+    this.hud.skillText.setText(`${this.getHeroConfig().skill}: ${skillStatus}`);
   }
 
   renderHearts() {

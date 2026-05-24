@@ -140,50 +140,10 @@
         "h": 256
       }
     },
-    "chest_icon_01": {
+    "repair_icon_01": {
       "frame": {
         "x": 768,
         "y": 256,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "repair_icon_01": {
-      "frame": {
-        "x": 0,
-        "y": 512,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "inventory_icon_01": {
-      "frame": {
-        "x": 256,
-        "y": 512,
         "w": 256,
         "h": 256
       },
@@ -207,7 +167,7 @@
     "format": "RGBA8888",
     "size": {
       "w": 1024,
-      "h": 768
+      "h": 512
     },
     "scale": "1"
   }

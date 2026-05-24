@@ -280,29 +280,9 @@
         "h": 200
       }
     },
-    "mana_frame": {
-      "frame": {
-        "x": 209,
-        "y": 734,
-        "w": 286,
-        "h": 62
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 286,
-        "h": 62
-      },
-      "sourceSize": {
-        "w": 286,
-        "h": 62
-      }
-    },
     "coin_badge_01": {
       "frame": {
-        "x": 501,
+        "x": 209,
         "y": 734,
         "w": 194,
         "h": 203
@@ -322,7 +302,7 @@
     },
     "title_left": {
       "frame": {
-        "x": 701,
+        "x": 409,
         "y": 734,
         "w": 92,
         "h": 136
@@ -342,7 +322,7 @@
     },
     "title_mid": {
       "frame": {
-        "x": 799,
+        "x": 507,
         "y": 734,
         "w": 18,
         "h": 136
@@ -362,7 +342,7 @@
     },
     "title_right": {
       "frame": {
-        "x": 823,
+        "x": 531,
         "y": 734,
         "w": 92,
         "h": 136
@@ -382,7 +362,7 @@
     },
     "button_left": {
       "frame": {
-        "x": 921,
+        "x": 629,
         "y": 734,
         "w": 79,
         "h": 109
@@ -402,8 +382,8 @@
     },
     "button_right": {
       "frame": {
-        "x": 6,
-        "y": 943,
+        "x": 714,
+        "y": 734,
         "w": 79,
         "h": 109
       },
@@ -422,8 +402,8 @@
     },
     "button_mid": {
       "frame": {
-        "x": 91,
-        "y": 943,
+        "x": 799,
+        "y": 734,
         "w": 24,
         "h": 109
       },
@@ -442,8 +422,8 @@
     },
     "hud_chip_left": {
       "frame": {
-        "x": 121,
-        "y": 943,
+        "x": 829,
+        "y": 734,
         "w": 30,
         "h": 42
       },
@@ -462,8 +442,8 @@
     },
     "hud_chip_mid": {
       "frame": {
-        "x": 157,
-        "y": 943,
+        "x": 865,
+        "y": 734,
         "w": 18,
         "h": 42
       },
@@ -482,8 +462,8 @@
     },
     "hud_chip_right": {
       "frame": {
-        "x": 181,
-        "y": 943,
+        "x": 889,
+        "y": 734,
         "w": 30,
         "h": 42
       },
@@ -498,66 +478,6 @@
       "sourceSize": {
         "w": 30,
         "h": 42
-      }
-    },
-    "mana_left": {
-      "frame": {
-        "x": 217,
-        "y": 943,
-        "w": 57,
-        "h": 62
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 57,
-        "h": 62
-      },
-      "sourceSize": {
-        "w": 57,
-        "h": 62
-      }
-    },
-    "mana_right": {
-      "frame": {
-        "x": 280,
-        "y": 943,
-        "w": 57,
-        "h": 62
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 57,
-        "h": 62
-      },
-      "sourceSize": {
-        "w": 57,
-        "h": 62
-      }
-    },
-    "mana_mid": {
-      "frame": {
-        "x": 343,
-        "y": 943,
-        "w": 28,
-        "h": 62
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 28,
-        "h": 62
-      },
-      "sourceSize": {
-        "w": 28,
-        "h": 62
       }
     }
   },
@@ -567,7 +487,7 @@
     "format": "RGBA8888",
     "size": {
       "w": 1024,
-      "h": 1058
+      "h": 943
     },
     "scale": "1"
   }

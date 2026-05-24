@@ -3,7 +3,7 @@ import {
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
 } from './gameConfig';
-import type { EnemyArchetypeConfig, EnemyVariantConfig } from './gameConfig';
+import type { EnemyArchetypeConfig, EnemyRoleKey, EnemyVariantConfig } from './gameConfig';
 
 // ---- Pure helper functions (testable without scene) ----
 
@@ -23,17 +23,9 @@ export function pickWeighted<T extends { weight: number }>(items: T[], roll: num
 }
 
 export function getEnemyArchetype(
-  level: number,
-  preferredArchetypes: string[],
-  roll: number,
+  role: EnemyRoleKey,
 ): EnemyArchetypeConfig {
-  const weighted = ENEMY_ARCHETYPES
-    .filter((archetype) => archetype.unlockLevel <= level)
-    .map((archetype) => ({
-      ...archetype,
-      weight: archetype.weight + (preferredArchetypes.includes(archetype.key) ? 2.5 : 0),
-    }));
-  return pickWeighted(weighted, roll) || ENEMY_ARCHETYPES[0];
+  return ENEMY_ARCHETYPES.find((archetype) => archetype.key === role) ?? ENEMY_ARCHETYPES[0];
 }
 
 export function getEnemyVariant(level: number, roll: number): EnemyVariantConfig {
@@ -113,7 +105,6 @@ export interface EnemyStats {
   buildingDamage: number;
   contactDamage: number;
   rewardGold: number[];
-  rewardXp: number;
 }
 
 export function calculateEnemyStats(
@@ -133,8 +124,7 @@ export function calculateEnemyStats(
   const _displayScaleX = isEliteVisual ? eliteScaleX : 1;
   const _displayScaleY = isEliteVisual ? eliteScaleY : 1;
   const rewardGold = archetype.rewardGold.map((value) => Math.round((value + levelBonus) * variant.reward));
-  const rewardXp = Math.round((archetype.rewardXp + levelBonus * 2) * variant.reward);
-  return { size, maxHp, speed, buildingDamage, contactDamage, rewardGold, rewardXp };
+  return { size, maxHp, speed, buildingDamage, contactDamage, rewardGold };
 }
 
 export interface BossStats {
@@ -144,7 +134,6 @@ export interface BossStats {
   buildingDamage: number;
   contactDamage: number;
   rewardGold: [number, number];
-  rewardXp: number;
 }
 
 export function calculateBossStats(
@@ -157,7 +146,6 @@ export function calculateBossStats(
   bossBuildingDamage: number,
   bossContactDamage: number,
   bossRewardGold: [number, number],
-  bossRewardXp: number,
 ): BossStats {
   const levelBonus = calculateLevelBonus(level);
   const cycleBonus = worldCycle * 0.18;
@@ -171,6 +159,5 @@ export function calculateBossStats(
       bossRewardGold[0] + worldCycle * 4 + worldIndex * 2,
       bossRewardGold[1] + worldCycle * 6 + worldIndex * 3,
     ] as [number, number],
-    rewardXp: bossRewardXp + worldCycle * 12 + worldIndex * 6,
   };
 }

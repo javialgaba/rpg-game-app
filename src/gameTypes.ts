@@ -1,11 +1,8 @@
-import type { REPAIR_OUTLINE_COLORS, PLAYER_BASE, EnemyArchetypeConfig, EnemyVariantConfig } from './gameConfig';
+import type { PLAYER_BASE, EnemyArchetypeConfig, EnemyVariantConfig, HeroClass, PersistentCardKey } from './gameConfig';
 
-export type HeroChoice = 'male' | 'princess';
-export type TouchActionKey = 'melee' | 'bow' | 'spell' | 'repair' | 'repairConfirm' | 'repairCancel';
+export type TouchActionKey = 'mainAttack' | 'classSkill' | 'repair';
 export type TouchButtonSlot = 'left' | 'top' | 'right' | 'bottom';
-export type UpgradePauseContext = 'roundClear' | 'chestBonus';
 export type TouchActionIcon = { texture: string; frame?: string } | null;
-export type RepairModeTargetState = keyof typeof REPAIR_OUTLINE_COLORS;
 export type GeneratedSurroundAnchor =
   | 'topLeft'
   | 'topCenter'
@@ -72,22 +69,12 @@ export interface RunResumeStateSnapshot {
   playerStats?: Partial<typeof PLAYER_BASE>;
   state?: Partial<Record<string, any>>;
   buildings?: RunResumeBuildingSnapshot[];
-  heroChoice?: HeroChoice;
-  upgradeLevels?: number[];
+  heroClass?: HeroClass;
+  cardTiers?: Record<PersistentCardKey, number>;
+  lastSelectedCard?: string | null;
+  lastOfferedCards?: string[];
+  runStats?: { enemiesDefeated: number };
   note?: string;
-}
-
-export interface DroppedChest {
-  iso: { x: number; y: number };
-  sprite: Phaser.GameObjects.Image;
-  glow: Phaser.GameObjects.Arc;
-  reward: string;
-  opened: boolean;
-  bob: number;
-  source: 'enemyDrop';
-  spawnedAt: number;
-  despawnAt: number;
-  blinkAt: number;
 }
 
 // === 1. Core grid types ===
@@ -105,9 +92,7 @@ export type GamePhase = 'splash' | 'countdown' | 'playing' | 'levelUp' | 'gameOv
 
 export interface GameState {
   health: number;
-  mana: number;
   gold: number;
-  xp: number;
   level: number;
   worldIndex: number;
   worldKey: string;
@@ -117,9 +102,6 @@ export interface GameState {
   phase: GamePhase;
   villageSafety: number;
   equipped: string;
-  repairMode: boolean;
-  spell: string;
-  inventoryOpen: boolean;
   gameOverReason: string;
 }
 
@@ -129,8 +111,7 @@ export interface PlayerEntity {
   iso: GridPoint;
   facing: GridPoint;
   lastAttack: number;
-  lastBow: number;
-  lastSpell: number;
+  lastSkill: number;
   invulnerableUntil: number;
   actionLockUntil: number;
   sheetKey: string;
@@ -161,7 +142,6 @@ export interface EnemyEntity {
   buildingDamage: number;
   contactDamage: number;
   rewardGold: [number, number];
-  rewardXp: number;
   touchCooldown: number;
   heroTouchCooldown: number;
   defeatFrame: number;
@@ -175,6 +155,9 @@ export interface EnemyEntity {
   retreating: boolean;
   defeated: boolean;
   countedDefeat: boolean;
+  slowedUntil?: number;
+  ward?: number;
+  specialCooldown?: number;
 }
 
 // === 5. Building entity ===
@@ -196,12 +179,14 @@ export interface BuildingEntity {
   base?: Phaser.GameObjects.Image;
   hp: number;
   max: number;
+  baseMax?: number;
   importance?: number;
   levelPlacementId?: string;
   healthBar?: BuildingHealthBar;
   underAttackUntil?: number;
   spriteAlpha?: number;
   baseAlpha?: number;
+  shield?: { hp: number; expiresAt: number; sprite: Phaser.GameObjects.Arc };
 }
 
 // === 6. Route / spawn helpers ===
@@ -230,11 +215,4 @@ export interface EnemyVisualResult {
   framePrefix: string;
   frameRow: number | null;
   tint: number | null;
-}
-
-// === 8. Repair system types ===
-
-export interface RepairModeTargetInfo {
-  building: BuildingEntity;
-  distance: number;
 }

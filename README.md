@@ -1,19 +1,18 @@
 # Fairy Guild Defense
 
-A cheerful isometric Phaser minigame where a young guild hero protects a fairy-tale village from level-based rounds of cute, mischievous forest creatures. The game uses generated cartoon assets, playful nonviolent combat feedback, round-clear level-up choices, gold upgrades, treasure chests, building safety, and friendly live Guild Notes.
+A cheerful isometric Phaser minigame where a chosen village defender protects a fairy-tale village from waves of mischievous forest creatures. Choose Warrior, Archer, or Sorcerer, defend buildings with class abilities, and shape each run through common level-up cards.
 
 ## Features
 
 - Isometric-style fairy-tale village defense arena
-- Real-time hero movement with keyboard controls
-- Wooden sword melee attack, bow shot, and mana-based sparkle spell
-- Repair Kit mode for spending gold to restore damaged buildings
-- Charming monster rounds that target village buildings
-- Data-driven enemy archetypes and enhanced variants for easier balancing
+- Three playable classes: Warrior, Archer, and Sorcerer
+- Class attacks and skills: Sword Slash/Shield Guard, Bow Shot/Trap, and Wand Bolt/Magic Shield
+- Immediate paid repair action for restoring damaged buildings
+- Budget-built waves with seven readable forest enemy roles
 - Building health and village safety tracking
-- Round-clear level-up screen with melee, range, or magic damage choices and progress pips
-- XP score, gold drops, treasure chests, and upgrade progression
-- Inventory panel with six upgrade paths
+- Round-clear two-card choices with five-tier persistent progression
+- Gold-only enemy rewards credited automatically with fading coin feedback
+- Seasonal guardian rounds with building-targeted projectile volleys
 - Game over screen when the castle falls or the hero reaches 0 hearts
 - Designer-authored procedural level system with logical blockers, edge spawns, A* routes, decoration passes, and visual time-of-day profiles
 - Rich procedural Web Audio SFX and a gentle interaction-started village theme
@@ -25,21 +24,16 @@ A cheerful isometric Phaser minigame where a young guild hero protects a fairy-t
 | Action | Input |
 | --- | --- |
 | Move | `WASD` or arrow keys |
-| Melee attack | `Space` |
-| Bow attack | Mouse click or `F` |
-| Spell cast | `Q` or `R` |
-| Toggle Repair Kit | `T` |
-| Repair with kit | `Space`, mouse click, or `E` while Repair Kit is active |
-| Open chest | `E` outside Repair Kit mode |
-| Inventory | `I` |
-| Buy upgrade | `1` through `6` while inventory is open |
-| Pick level-up bonus | `1`, `2`, or `3` on the level-up screen |
+| Main attack | `Space` or left click |
+| Class skill | `F` |
+| Repair nearest damaged building | `E` |
+| Pick level-up card | `1` or `2` on the level-up screen |
 | Toggle level grid debug | `G` |
 | Cycle time-of-day preview | `N` |
 | Start game | Click/tap `START`, `Enter`, or `Space` on the title screen |
 | Restart after game over | `R` |
 
-On touch devices, the game shows a landscape-first mobile overlay with a left joystick and right-side action buttons for Sword, Bow, Spell, Repair Kit, Use, and Inventory. Bow and Spell auto-target nearby enemies on mobile. Portrait phones show a rotate hint.
+On touch devices, the game shows a landscape-first mobile overlay with a left joystick and exactly three actions: left main attack, right class skill, and bottom repair. Ranged attacks auto-target nearby enemies on mobile. Portrait phones show a rotate hint.
 
 ## Mobile & PWA
 
@@ -51,19 +45,22 @@ The PWA shell includes PNG app icons for iOS and installable browsers. Use `?deb
 
 ## Progression
 
-The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Press `START` to begin the Level 1 countdown. The hero starts with 3 hearts. Each level begins with a countdown, then a finite enemy round starts. Level clear is driven by the explicit player-defeat quota for the round, so retreat animations or skipped invalid spawns cannot block progression. When all required enemies are defeated, gameplay pauses and a level-up screen appears.
+The game opens on a title screen for `The Village Must Stand`, credited as `A minigame by Javier Algaba`. Choose a class and press `Start Defense` to begin the Level 1 countdown. The Warrior starts with 4 hearts; Archer and Sorcerer start with 3. Each cleared wave pauses gameplay for a two-card level-up choice. Wave completion counts resolved threats, including Bomb Bud detonations, without awarding defeat credit for enemies the player did not defeat.
 
-Every level-up grants `Heart +1` and one chosen training bonus:
+Persistent cards can be selected up to Tier V:
 
-- `1` Melee Damage: increases sword power
-- `2` Range Damage: increases bow power
-- `3` Magic Damage: increases spell power
+- `Swift Boots`: movement speed
+- `Stronger Strikes`: main-attack damage
+- `Quick Hands`: main-attack speed
+- `Reinforced Walls`: building maximum health
+- `Tough Heart`: maximum hearts and one immediate heal
+- `Magic Repair`: situational one-time full repair for surviving buildings
 
-Buildings keep their damage between levels. Press `T` to ready the Repair Kit, then use `Space`, mouse click, or `E` near a damaged building to spend 5 gold and restore 16 HP. Non-castle buildings at 0 HP can be repaired and become valid monster targets again once their HP rises above 0. If the castle reaches 0 HP, or the hero reaches 0 hearts, the game ends.
+Buildings keep their damage between levels. Press `E` near a damaged building to immediately spend 5 gold and restore 16 HP. Non-castle buildings at 0 HP can be repaired. Enemies grant gold immediately when defeated; there are no collectible rewards, XP, mana, inventory purchases, or reward chests.
 
-Early levels use a gentler spawn curve and a first-level repair tip so the player has more time to understand the defense loop. Enemy strength, round size, repair values, and compact Guild Notes behavior are configured in `src/gameConfig.ts`. Archetypes control base HP, speed, damage, rewards, unlock level, and spawn weight; variants add tint, scale, and stat multipliers for brighter or elder enemies in later levels.
+Early levels use class-specific enemy unlock curves and a first-level repair tip so the player has time to understand the defense loop. Enemy strength, wave budgets, repair values, class skills, cards, and guardian tuning are configured in `src/gameConfig.ts`.
 
-The procedural level foundation lives in `src/levels/`. Procedural maps are now the default game map on every fresh start. The default village is a larger 19x19 designer-authored matrix with `tileSize: 44`, a two-cell forest buffer, edge-only `SP` spawn cells, and protected buildings placed away from the border. `?generatedLevel=festival-village` renders a second catalog level using the same larger layout rules, while `?staticMap=1` temporarily restores the older painted board for comparison. Level catalog entries live in `levelCatalog.ts`; designers can also preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. Generated maps honor `tileSize` by scaling the isometric diamond spacing and generated object art while leaving the static painted board path unchanged. The generator validates edge spawns, protected-building edge padding, and spawn-to-target path length, then adds deterministic nonblocking flowers, mushrooms, saplings, sparkles, and magical plants around designer-authored structure. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the logical grid, blockers, protected building footprints, spawn points, attack cells, validation routes, chests, decorations, and live enemy paths. The `B` balance panel also shows defeat quota progress, pending spawns, live target counts, tile metrics, and route scores so designers can see why monsters prefer a building. In generated-level mode, large-object footprints block player movement and monsters route along A* paths toward protected buildings.
+The procedural level foundation lives in `src/levels/`. Procedural maps are the default map on every fresh start. The default village is a larger 19x19 designer-authored matrix with `tileSize: 44`, a two-cell forest buffer, edge-only `SP` spawn cells, and protected buildings placed away from the border. `?generatedLevel=festival-village` renders a second catalog level, while `?staticMap=1` temporarily restores the older painted board for comparison. Designers can preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the grid, blockers, protected building footprints, spawn points, attack cells, validation routes, decorations, and live enemy paths.
 
 ## Getting Started
 
@@ -207,10 +204,10 @@ The project-bound assets were generated with Image Gen / GPT Image 2 and copied 
 
 Atlas split rules:
 
-- `world_tiles_atlas`: playable terrain, full world props, and chests only.
+- `world_tiles_atlas`: playable terrain and world props.
 - `world_edges_atlas`: floating-island cliff rims, corner caps, a soft island shadow, fog surround bands, and sparse off-board decorative edge clusters.
 - `buildings_atlas`: castle, houses, market, bakery, and well frames.
-- `ui_atlas`: square gameplay and inventory icons only.
+- `ui_atlas`: square gameplay and card icons.
 - `touch_controls_atlas`: touch button icons only, used by the Phaser mobile overlay.
 - `hud_ui_atlas`: square/compact HUD badges such as coin, crown, and repair tool.
 - `hud_bars_atlas`: long HUD bar frames only, with a separate fixed rectangular cell size.

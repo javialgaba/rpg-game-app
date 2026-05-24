@@ -386,7 +386,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   const terrain: LevelPlacement[] = [];
   const objects: LevelPlacement[] = [];
   const decorations: LevelPlacement[] = [];
-  const chests: LevelPlacement[] = [];
   const spawnPoints: GridPoint[] = [];
   const protectedTargets: ProtectedTargetPlacement[] = [];
   const warnings: string[] = [];
@@ -470,9 +469,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
           }
         });
         objects.push(target);
-      } else if (entry.type === 'interactable') {
-        chests.push(placement);
-        objects.push(placement);
       } else {
         objects.push(placement);
       }
@@ -814,7 +810,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     terrain,
     objects,
     decorations,
-    chests,
     spawnPoints,
     playerSpawn,
     protectedTargets,
@@ -934,12 +929,6 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       }
     });
 
-    level.chests.forEach((chest) => {
-      const path = findGridPath(level.playerWalkableGrid, level.playerSpawn as GridPoint, [chest.grid]);
-      if (!path) {
-        warnings.push(`Chest ${chest.grid.x},${chest.grid.y} is not reachable from player spawn.`);
-      }
-    });
   }
 
   const blockedDecorationCells = level.decorations.filter((decoration) => (

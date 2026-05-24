@@ -4,8 +4,6 @@ import {
   getBuildingFootprintCells,
   getRepairDistanceToBuilding,
   getNearestDamagedBuilding,
-  getRepairModeTarget,
-  getRepairModeTargetState,
 } from './repairSystem';
 import type { BuildingEntity } from './gameTypes';
 
@@ -105,51 +103,5 @@ describe('getNearestDamagedBuilding', () => {
     const nearest = getNearestDamagedBuilding(buildings, { x: 0, y: 0 }, footprintCellsFn, 20);
     // building at (2,0) is distance 2, building at (10,0) is distance 10
     expect(nearest).toBe(buildings[1]);
-  });
-});
-
-// ---- getRepairModeTarget ----
-
-describe('getRepairModeTarget', () => {
-  it('prioritizes damaged building over perfect one', () => {
-    const buildings = [
-      makeBuilding({ iso: { x: 2, y: 0 }, hp: 100, max: 100 }),
-      makeBuilding({ iso: { x: 3, y: 0 }, hp: 50, max: 100 }),
-    ];
-    const target = getRepairModeTarget(buildings, { x: 0, y: 0 }, footprintCellsFn, 20);
-    expect(target).toBe(buildings[1]);
-  });
-
-  it('returns nearest perfect when no damaged', () => {
-    const buildings = [
-      makeBuilding({ iso: { x: 10, y: 0 }, hp: 100, max: 100 }),
-      makeBuilding({ iso: { x: 2, y: 0 }, hp: 100, max: 100 }),
-    ];
-    const target = getRepairModeTarget(buildings, { x: 0, y: 0 }, footprintCellsFn, 20);
-    expect(target).toBe(buildings[1]);
-  });
-
-  it('returns null when nothing in range', () => {
-    const buildings = [
-      makeBuilding({ iso: { x: 100, y: 0 }, hp: 50, max: 100 }),
-    ];
-    const target = getRepairModeTarget(buildings, { x: 0, y: 0 }, footprintCellsFn, 10);
-    expect(target).toBeNull();
-  });
-});
-
-// ---- getRepairModeTargetState ----
-
-describe('getRepairModeTargetState', () => {
-  it('returns perfect when hp is full', () => {
-    expect(getRepairModeTargetState(makeBuilding({ hp: 100, max: 100 }), 50)).toBe('perfect');
-  });
-
-  it('returns repairable when damaged and gold sufficient', () => {
-    expect(getRepairModeTargetState(makeBuilding({ hp: 50, max: 100 }), 500)).toBe('repairable');
-  });
-
-  it('returns unaffordable when damaged and gold insufficient', () => {
-    expect(getRepairModeTargetState(makeBuilding({ hp: 50, max: 100 }), 0)).toBe('unaffordable');
   });
 });

@@ -195,20 +195,3 @@ export function createUiButton(scene, x, y, width, height, label, onPress) {
   container.add([frame.container, hit, text]);
   return { container, hit, text, pieces };
 }
-
-export function createManaMeter(scene, x, y, width, height) {
-  const frame = createHorizontalSlicedFrame(scene, x, y, width, height, {
-    left: 'mana_left',
-    middle: 'mana_mid',
-    right: 'mana_right',
-  });
-  const insetX = Math.max(10, Math.round(height * 0.54));
-  const insetY = Math.max(6, Math.round(height * 0.32));
-  const fillWidth = Math.max(1, width - insetX * 2);
-  const fillHeight = Math.max(3, height - insetY * 2);
-  const fill = scene.add.rectangle(x - width / 2 + insetX, y - fillHeight / 2, fillWidth, fillHeight, 0x5bd5ff, 1)
-    .setOrigin(0, 0);
-  const shine = scene.add.rectangle(x - width / 2 + insetX + 2, y - fillHeight / 2 + 2, fillWidth - 4, 2, 0xffffff, 0.44)
-    .setOrigin(0, 0);
-  return { fill, shine, frame: frame.container, width: fillWidth, parts: [fill, shine, frame.container] };
-}

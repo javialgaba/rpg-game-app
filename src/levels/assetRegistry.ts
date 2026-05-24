@@ -120,15 +120,6 @@ export const ASSET_REGISTRY: AssetRegistry = {
       terrainStroke: 0xdf729f,
     },
   },
-  'chest': {
-    token: 'chest',
-    type: 'interactable',
-    label: 'Treasure Chest',
-    walkable: true,
-    blocksMovement: false,
-    footprint: { w: 1, h: 1 },
-    render: { textureKey: 'worldTilesAtlas', frameKey: 'chest_closed_01', displaySize: [101, 103], origin: [0.5, 0.78], z: 10 },
-  },
   'monster-spawn': {
     token: 'monster-spawn',
     type: 'spawn',

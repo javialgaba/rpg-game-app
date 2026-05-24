@@ -1,9 +1,6 @@
 import type { SceneAPI } from './sceneAPI';
-import type { GameState, DroppedChest } from './gameTypes';
+import type { GameState } from './gameTypes';
 import {
-  LEVEL_SPAWN_BASE,
-  LEVEL_SPAWN_PER_LEVEL,
-  LEVEL_SPAWN_MAX,
   LEVEL_FIRST_SPAWN_DELAY,
   LEVEL_SPAWN_INTERVAL_BASE,
   LEVEL_SPAWN_INTERVAL_STEP,
@@ -11,8 +8,11 @@ import {
   BOSS_ROUND_INDEX,
   WORLD_SEQUENCE,
   BOSS_CONFIGS,
+  type EnemyRoleKey,
+  type HeroClass,
 } from './gameConfig';
 import type { SeasonPreset } from './sceneVariants';
+import { buildWaveRoster } from './progression';
 
 // ---- Pure helper functions (testable without scene) ----
 
@@ -29,11 +29,11 @@ export interface WorldProgressionState {
   worldCycle: number;
 }
 
-export function calculateSpawnCount(level: number, isBossRound: boolean): number {
+export function calculateSpawnCount(level: number, isBossRound: boolean, heroClass: HeroClass = 'warrior'): number {
   if (isBossRound) {
     return 1;
   }
-  return Math.min(LEVEL_SPAWN_BASE + level * LEVEL_SPAWN_PER_LEVEL, LEVEL_SPAWN_MAX);
+  return buildWaveRoster(heroClass, level, () => 0).length;
 }
 
 export function calculateSpawnInterval(level: number): number {
@@ -78,30 +78,26 @@ export function getNextWorldProgressionState(
 export function createRunResumeSnapshot(
   playerStats: any,
   state: GameState,
-  heroChoice: string,
-  upgradeLevels: number[],
+  heroClass: HeroClass,
+  cardTiers: Record<string, number>,
   nextProgression: WorldProgressionState,
   note: string,
+  buildings: Array<{ id?: string; name: string; hp: number; max: number }> = [],
 ): any {
   return {
     playerStats: { ...playerStats },
     state: {
       health: state.health,
-      mana: state.mana,
       gold: state.gold,
-      xp: state.xp,
       level: state.level,
       villageSafety: 100,
       equipped: state.equipped,
-      repairMode: false,
-      spell: state.spell,
-      inventoryOpen: false,
       gameOverReason: '',
       ...nextProgression,
     },
-    buildings: [],
-    heroChoice,
-    upgradeLevels,
+    buildings: buildings.map((building) => ({ ...building })),
+    heroClass,
+    cardTiers,
     note,
   };
 }
@@ -109,27 +105,22 @@ export function createRunResumeSnapshot(
 export function checkLevelClearCondition(
   phase: string,
   levelClearQueued: boolean,
-  levelDefeatsThisRound: number,
-  levelRequiredDefeats: number,
+  levelResolvedEnemies: number,
+  levelRequiredResolutions: number,
   levelSpawnsPending: number,
   levelSpawnedCount: number,
   bossRound: boolean,
-  chests: DroppedChest[],
 ): boolean {
   if (phase !== 'playing' || levelClearQueued) {
     return false;
   }
-  const requiredDefeatsMet = levelDefeatsThisRound >= levelRequiredDefeats;
+  const resolved = levelResolvedEnemies >= levelRequiredResolutions;
   const hadRealSpawns = levelSpawnedCount > 0 || bossRound;
-  const pendingEnemyDropChests = chests.some(
-    (chest) => !chest.opened && chest.source === 'enemyDrop',
-  );
-  return levelSpawnsPending <= 0 && requiredDefeatsMet && hadRealSpawns && !pendingEnemyDropChests;
+  return levelSpawnsPending <= 0 && resolved && hadRealSpawns;
 }
 
 export interface RoundReward {
   gold: number;
-  xp: number;
 }
 
 export function calculateRoundReward(
@@ -142,12 +133,10 @@ export function calculateRoundReward(
     const bossConfig = BOSS_CONFIGS[worldKey as SeasonPreset];
     return {
       gold: bossConfig.clearGold + worldCycle * 10 + level * 4,
-      xp: bossConfig.clearXp + worldCycle * 12,
     };
   }
   return {
     gold: 20 + level * 8,
-    xp: 28 + level * 10,
   };
 }
 
@@ -189,8 +178,10 @@ export function showCountdownLabel(
   });
 }
 
-export function resetLevelRoundState(scene: SceneAPI, level: number, bossRound: boolean): number {
-  const count = calculateSpawnCount(level, bossRound);
+export function resetLevelRoundState(scene: SceneAPI, level: number, bossRound: boolean, heroClass: HeroClass): number {
+  const roster: Array<EnemyRoleKey | 'boss'> = bossRound ? ['boss'] : buildWaveRoster(heroClass, level);
+  scene.roundEnemyQueue = roster;
+  const count = roster.length;
   scene.levelSpawnsPending = count;
   scene.levelEnemiesRemaining = count;
   scene.levelRequiredDefeats = count;
@@ -209,7 +200,8 @@ export function spawnEnemyTimerCallback(
     return;
   }
   scene.levelSpawnsPending = Math.max(0, scene.levelSpawnsPending - 1);
-  const spawned = scene.spawnRoundEnemy(level);
+  const role = scene.roundEnemyQueue.shift();
+  const spawned = scene.spawnRoundEnemy(level, role);
   if (!spawned) {
     scene.levelSpawnFailures += 1;
     if (!isBossRound) {

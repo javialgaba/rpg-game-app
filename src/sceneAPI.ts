@@ -15,16 +15,17 @@ export interface SceneAPI {
   renderer: any;
 
   state: any;
+  heroClass: any;
   audio: any;
   player: any;
   enemies: any[];
   buildings: any[];
   projectiles: any[];
-  chests: any[];
-  pickups: any[];
+  traps: any[];
+  guardUntil: number;
+  runStats: any;
   effects: any[];
   notes: any[];
-  upgrades: any[];
   keys: Record<string, any>;
   parallaxSprites: any[];
   touchControls: any;
@@ -85,28 +86,30 @@ export interface SceneAPI {
   damageEnemy(target: any, power: number, type: string): void;
 
   // Combat / repair methods called from touch controls
-  swingSword(time: number): void;
-  fireBow(time: number, targetIso: { x: number; y: number }): void;
-  castSpell(time: number, targetIso: { x: number; y: number }): void;
+  useMainAttack(time: number, targetIso: { x: number; y: number }): void;
+  useClassSkill(time: number): void;
   tryRepairBuilding(): void;
-  toggleRepairMode(): void;
-  setRepairMode(enabled: boolean, announce: boolean): void;
   getAutoTargetIso(maxRange: number): { x: number; y: number };
-  gainXp(amount: number): void;
-  showLevelUpScreen(context: string): void;
+  getHeroConfig(): any;
+  getSkillConfig(): any;
+  getNearestDamagedBuilding(): any;
+  setMagicShield(shield: any): void;
+  updateMagicShield(time: number): void;
+  damageProtectedBuilding(building: any, amount: number): void;
+  showLevelUpScreen(): void;
   checkLevelClear(): void;
   spawnSparkleBurst(x: number, y: number, color: number, count: number, scale: number): void;
+  spawnShieldGlow(): void;
+  spawnRoundEnemy(level: number, role: any): boolean;
   getEnemyFrameKey(enemy: any, frame: number): string;
   getCurrentWorldTheme(): any;
 
-  // Scene properties referenced by chests
   playerStats: any;
-  upgradePauseContext: string;
-  inventoryPanel: any;
   levelTimers: any[];
   levelUpOverlay: any;
 
   // Combat state
+  roundEnemyQueue: any[];
   levelDefeatsThisRound: number;
   levelEnemiesRemaining: number;
   levelRequiredDefeats: number;

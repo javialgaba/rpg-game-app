@@ -117,10 +117,6 @@ export function drawGeneratedLevelDebug(scene) {
       drawDebugDiamond(gfx, tileW, tileH, cellCenter, 0x7dff9a, 0.18);
     });
   });
-  scene.generatedLevel.chests.forEach((chest) => {
-    const chestCenter = isoToScreen(scene, chest.grid.x, chest.grid.y);
-    drawDebugDiamond(gfx, tileW, tileH, chestCenter, 0xffb84f, 0.42);
-  });
   scene.generatedLevel.decorations.forEach((decoration) => {
     const decoCenter = isoToScreen(scene, decoration.grid.x, decoration.grid.y);
     drawDebugDiamond(gfx, tileW, tileH, decoCenter, getDecorationDebugColor(decoration.decorationKind), 0.20);
