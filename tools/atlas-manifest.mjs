@@ -1,5 +1,6 @@
 const worldSheet = 'public/assets/world-ui-sheet.png';
 const generatedUiSheet = 'public/assets/atlas-sources/generated/ui-touch-hud.png';
+const classCardIconsSheet = 'public/assets/atlas-sources/generated/class-card-icons.png';
 const generatedWorldEdgesStructuralSheet = 'public/assets/atlas-sources/generated/world-edges-structural.png';
 const generatedWorldEdgesAtmosphereSheet = 'public/assets/atlas-sources/generated/world-edges-atmosphere.png';
 const generatedWorldEdgesBackdropSheet = 'public/assets/atlas-sources/generated/world-edges-backdrop.png';
@@ -160,6 +161,15 @@ export const atlasManifest = {
       { name: 'boot_icon_01', source: worldSheet, crop: [770, 611, 135, 135], padding: 18, align: 'center' },
       { name: 'empty_slot_01', source: worldSheet, crop: [930, 590, 170, 180], padding: 10, align: 'center' },
       { name: 'repair_icon_01', source: generatedUiSheet, crop: [1014, 54, 229, 239], padding: 18, align: 'center' },
+      { name: 'guard_skill_icon_01', source: classCardIconsSheet, crop: [0, 0, 418, 418], padding: 18, align: 'center' },
+      { name: 'trap_skill_icon_01', source: classCardIconsSheet, crop: [418, 0, 418, 418], padding: 18, align: 'center' },
+      { name: 'magic_shield_skill_icon_01', source: classCardIconsSheet, crop: [836, 0, 418, 418], padding: 18, align: 'center' },
+      { name: 'card_swift_boots_01', source: classCardIconsSheet, crop: [0, 418, 418, 418], padding: 18, align: 'center' },
+      { name: 'card_stronger_strikes_01', source: classCardIconsSheet, crop: [418, 418, 418, 418], padding: 18, align: 'center' },
+      { name: 'card_quick_hands_01', source: classCardIconsSheet, crop: [836, 418, 418, 418], padding: 18, align: 'center' },
+      { name: 'card_reinforced_walls_01', source: classCardIconsSheet, crop: [0, 836, 418, 418], padding: 18, align: 'center' },
+      { name: 'card_tough_heart_01', source: classCardIconsSheet, crop: [418, 836, 418, 418], padding: 18, align: 'center' },
+      { name: 'card_magic_repair_01', source: classCardIconsSheet, crop: [836, 836, 418, 418], padding: 18, align: 'center' },
     ],
   },
   touchControls: {
@@ -172,6 +182,9 @@ export const atlasManifest = {
       { name: 'touch_bow_01', source: generatedUiSheet, crop: [306, 53, 230, 238], padding: 8, align: 'center' },
       { name: 'touch_spell_01', source: generatedUiSheet, crop: [547, 53, 229, 239], padding: 8, align: 'center' },
       { name: 'touch_repair_01', source: generatedUiSheet, crop: [1014, 54, 229, 239], padding: 8, align: 'center' },
+      { name: 'touch_guard_01', source: classCardIconsSheet, crop: [0, 0, 418, 418], padding: 8, align: 'center' },
+      { name: 'touch_trap_01', source: classCardIconsSheet, crop: [418, 0, 418, 418], padding: 8, align: 'center' },
+      { name: 'touch_magic_shield_01', source: classCardIconsSheet, crop: [836, 0, 418, 418], padding: 8, align: 'center' },
     ],
   },
   hudUi: {
@@ -208,6 +221,8 @@ export const atlasManifest = {
       { name: 'shield_glow_01', source: worldSheet, crop: [846, 760, 188, 220], padding: 8, align: 'center' },
       { name: 'hammer_badge_01', source: worldSheet, crop: [1204, 792, 156, 150], padding: 18, align: 'center' },
       { name: 'crossed_swords_01', source: worldSheet, crop: [1360, 820, 170, 190], padding: 18, align: 'center' },
+      { name: 'trap_ground_01', source: classCardIconsSheet, crop: [418, 0, 418, 418], padding: 38, align: 'center' },
+      { name: 'magic_shield_field_01', source: classCardIconsSheet, crop: [836, 0, 418, 418], padding: 18, align: 'center' },
     ],
   },
 };
@@ -314,12 +329,24 @@ export const requiredFrames = {
     'boot_icon_01',
     'empty_slot_01',
     'repair_icon_01',
+    'guard_skill_icon_01',
+    'trap_skill_icon_01',
+    'magic_shield_skill_icon_01',
+    'card_swift_boots_01',
+    'card_stronger_strikes_01',
+    'card_quick_hands_01',
+    'card_reinforced_walls_01',
+    'card_tough_heart_01',
+    'card_magic_repair_01',
   ],
   touchControls: [
     'touch_sword_01',
     'touch_bow_01',
     'touch_spell_01',
     'touch_repair_01',
+    'touch_guard_01',
+    'touch_trap_01',
+    'touch_magic_shield_01',
   ],
   hudUi: [
     'coin_panel_01',
@@ -335,5 +362,7 @@ export const requiredFrames = {
     'shield_glow_01',
     'hammer_badge_01',
     'crossed_swords_01',
+    'trap_ground_01',
+    'magic_shield_field_01',
   ],
 };

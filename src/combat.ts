@@ -105,8 +105,9 @@ export function useClassSkill(scene: SceneAPI, time: number) {
       scene.traps.shift()?.sprite.destroy();
     }
     const p = scene.isoToScreen(scene.player.iso.x, scene.player.iso.y, 4);
-    const sprite = scene.add.circle(p.x, p.y, 20, 0x90c35f, 0.35)
-      .setStrokeStyle(3, 0x5b7f3b, 0.85)
+    const sprite = scene.add.image(p.x, p.y, 'effectsAtlas', 'trap_ground_01')
+      .setDisplaySize(52, 52)
+      .setAlpha(0.92)
       .setDepth(p.y + 8);
     scene.effectsLayer.add(sprite);
     scene.traps.push({ iso: { ...scene.player.iso }, expiresAt: time + ARCHER_TRAP.lifetime, sprite });

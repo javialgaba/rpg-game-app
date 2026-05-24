@@ -147,10 +147,10 @@ function getClassActionPresentation(scene: SceneAPI) {
       ? { texture: 'touchControlsAtlas', frame: 'touch_bow_01' }
       : { texture: 'touchControlsAtlas', frame: 'touch_spell_01' };
   const skillIcon = scene.heroClass === 'warrior'
-    ? { texture: 'shieldIconTexture' }
+    ? { texture: 'touchControlsAtlas', frame: 'touch_guard_01' }
     : scene.heroClass === 'archer'
-      ? { texture: 'trapIconTexture' }
-      : { texture: 'touchControlsAtlas', frame: 'touch_spell_01' };
+      ? { texture: 'touchControlsAtlas', frame: 'touch_trap_01' }
+      : { texture: 'touchControlsAtlas', frame: 'touch_magic_shield_01' };
   return { hero, attackIcon, skillIcon };
 }
 

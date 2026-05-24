@@ -21,7 +21,6 @@ import {
   GENERATED_BUILDING_SPRITE_ALPHA,
   HEIGHT,
   LEVEL_UP_CARD_XS,
-  LEVEL_UP_MAX_PIPS,
   PLAYER_BASE,
   REPAIR_AMOUNT,
   REPAIR_COOLDOWN,
@@ -160,7 +159,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.guardUntil = 0;
     this.magicShield = null;
     this.roundEnemyQueue = [];
-    this.levelUpProgressBars = [];
     this.levelUpChoiceCards = [];
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
@@ -222,6 +220,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('villageBoard', '/assets/village-board.png');
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
+    this.load.image('archerHeroSheet', '/assets/archer-hero-sheet.png');
     this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
@@ -269,6 +268,9 @@ class FairyGuildScene extends Phaser.Scene {
       (window as typeof window & { __fairyGuildScene?: FairyGuildScene }).__fairyGuildScene = this;
     }
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
+    if (this.textures.exists('archerHeroSheet')) {
+      this.registerSheetFrames('archerHeroSheet', 8, 4, 'archer');
+    }
     if (this.textures.exists('princessHeroSheet')) {
       this.registerSheetFrames('princessHeroSheet', 8, 4, 'princess');
     }
@@ -386,7 +388,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.guardUntil = 0;
     this.magicShield = null;
     this.roundEnemyQueue = [];
-    this.levelUpProgressBars = [];
     this.lastPointerIso = { x: 7, y: 7 };
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
@@ -589,14 +590,15 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getHeroProfile(heroClass = this.heroClass) {
+    const archer = heroClass === 'archer' && this.textures.exists('archerHeroSheet');
     const sorcerer = heroClass === 'sorcerer' && this.textures.exists('princessHeroSheet');
     return {
       heroClass: heroClass as HeroClass,
       label: this.getHeroConfig(heroClass).label,
-      sheetKey: sorcerer ? 'princessHeroSheet' : 'heroSheet',
-      framePrefix: sorcerer ? 'princess' : 'hero',
-      animPrefix: sorcerer ? 'sorcerer-hero' : `${heroClass}-hero`,
-      tint: heroClass === 'archer' ? 0xb6ed9a : heroClass === 'sorcerer' ? 0xcfe7ff : null,
+      sheetKey: archer ? 'archerHeroSheet' : sorcerer ? 'princessHeroSheet' : 'heroSheet',
+      framePrefix: archer ? 'archer' : sorcerer ? 'princess' : 'hero',
+      animPrefix: `${heroClass}-hero`,
+      tint: heroClass === 'archer' && !archer ? 0xb6ed9a : heroClass === 'sorcerer' ? 0xcfe7ff : null,
       displaySize: [76, 76] as [number, number],
       origin: [0.5, 0.76] as [number, number],
     };
@@ -2484,8 +2486,9 @@ class FairyGuildScene extends Phaser.Scene {
       this.magicShield.sprite.destroy();
     }
     const targetSprite = shield.isBuilding ? shield.target.sprite : this.player.sprite;
-    const sprite = this.add.circle(targetSprite.x, targetSprite.y - 20, shield.isBuilding ? 48 : 34, 0x8ae7ff, 0.12)
-      .setStrokeStyle(3, 0xd7fbff, 0.82)
+    const sprite = this.add.image(targetSprite.x, targetSprite.y - 20, 'effectsAtlas', 'magic_shield_field_01')
+      .setDisplaySize(shield.isBuilding ? 108 : 78, shield.isBuilding ? 108 : 78)
+      .setAlpha(0.84)
       .setDepth(targetSprite.depth + 22);
     this.fxLayer.add(sprite);
     this.magicShield = { ...shield, sprite };
@@ -2766,7 +2769,8 @@ class FairyGuildScene extends Phaser.Scene {
       cardWidth: compact ? 176 : 188,
       cardHeight: compact ? 176 : 188,
       iconY: compact ? -38 : -42,
-      pipsY: compact ? 20 : 24,
+      badgeX: compact ? 48 : 52,
+      badgeY: compact ? -70 : -76,
       labelY: compact ? 48 : 52,
       detailY: compact ? 66 : 72,
     };
@@ -2970,7 +2974,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelUpHelperText = this.add.text(0, layout.helperY, 'Choose one village blessing', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
     content.add([panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
-    this.levelUpProgressBars = [];
     this.levelUpChoiceCards = [];
     CARD_DEFINITIONS.slice(0, 2).forEach((choice, index) => {
       const card = this.add.container(LEVEL_UP_CARD_XS[index] * layout.cardXScale, layout.cardY);
@@ -2981,23 +2984,21 @@ class FairyGuildScene extends Phaser.Scene {
       stage.setScale(layout.compact ? 0.86 : 0.92);
       const icon = this.add.image(0, layout.iconY, choice.icon.texture, choice.icon.frame)
         .setDisplaySize(layout.compact ? 62 : 68, layout.compact ? 62 : 68);
+      const tierBadge = this.createLevelUpTierBadge(layout.badgeX, layout.badgeY, layout.compact);
       const label = this.add.text(0, layout.labelY, choice.label, this.uiTextStyle(layout.compact ? 15 : 17, COLORS.uiInk)).setOrigin(0.5);
       const detail = this.add.text(0, layout.detailY, choice.detail, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
-      const pips = this.createLevelUpProgressPips(choice, layout.pipsY, layout.compact);
       hit.on('pointerover', () => {
         hit.setFillStyle(0xfff1b8, 0.16);
         frame.setTint(0xfff6cc);
-        this.updateLevelUpProgressBars(index);
       });
       hit.on('pointerout', () => {
         hit.setFillStyle(0xfff1b8, 0.001);
         frame.clearTint();
-        this.updateLevelUpProgressBars();
       });
       hit.on('pointerup', () => this.chooseLevelUpgrade(index));
-      card.add([frame, hit, stage, icon, ...pips, label, detail]);
+      card.add([frame, hit, stage, icon, tierBadge.container, label, detail]);
       content.add(card);
-      this.levelUpChoiceCards.push({ label, detail, icon, pips });
+      this.levelUpChoiceCards.push({ label, detail, icon, tierBadge });
     });
     this.levelUpOverlay.add([shade, content]);
     this.uiLayer.add(this.levelUpOverlay);
@@ -3016,40 +3017,20 @@ class FairyGuildScene extends Phaser.Scene {
     return stage;
   }
 
-  createLevelUpProgressPips(choice, y = 48, compact = false) {
-    const pips = [];
-    const pipW = compact ? 17 : 19;
-    const gap = compact ? 4 : 5;
-    const startX = -((LEVEL_UP_MAX_PIPS - 1) * (pipW + gap)) / 2;
-    for (let i = 0; i < LEVEL_UP_MAX_PIPS; i += 1) {
-      const pip = this.add.rectangle(startX + i * (pipW + gap), y, pipW, compact ? 8 : 9, 0xfff3c8, 0.46)
-        .setStrokeStyle(1, 0x8c6023, 0.5);
-      pips.push(pip);
-    }
-    this.levelUpProgressBars.push({ pips, color: choice.color });
-    return pips;
+  createLevelUpTierBadge(x, y, compact = false) {
+    const container = this.add.container(x, y).setVisible(false);
+    const backing = this.add.circle(0, 0, compact ? 17 : 19, 0x316ca8, 0.96)
+      .setStrokeStyle(2, 0xffdb75, 0.94);
+    const text = this.add.text(0, 0, '', {
+      ...this.uiTextStyle(compact ? 11 : 12, '#fff5cb'),
+      strokeThickness: 2,
+    }).setOrigin(0.5);
+    container.add([backing, text]);
+    return { container, text };
   }
 
-  updateLevelUpProgressBars(previewIndex = null) {
-    this.levelUpProgressBars.forEach((bar, index) => {
-      const choice = this.levelUpChoices[index];
-      const current = choice?.persistent ? this.cardTiers[choice.key] : 0;
-      const preview = choice?.persistent && previewIndex === index ? Phaser.Math.Clamp(current + 1, 0, LEVEL_UP_MAX_PIPS) : current;
-      const fillColor = choice?.color ?? bar.color;
-      bar.pips.forEach((pip, pipIndex) => {
-        pip.setVisible(Boolean(choice?.persistent));
-        if (pipIndex < current) {
-          pip.setFillStyle(fillColor, 0.94);
-          pip.setStrokeStyle(1, 0xffffff, 0.72);
-        } else if (pipIndex < preview) {
-          pip.setFillStyle(fillColor, 0.5);
-          pip.setStrokeStyle(1, 0xffffff, 0.64);
-        } else {
-          pip.setFillStyle(0xfff3c8, 0.46);
-          pip.setStrokeStyle(1, 0x8c6023, 0.5);
-        }
-      });
-    });
+  getLevelUpTierRoman(tier) {
+    return ['I', 'II', 'III', 'IV', 'V'][tier - 1] ?? '';
   }
 
   updateLevelUpChoicePresentation() {
@@ -3059,9 +3040,12 @@ class FairyGuildScene extends Phaser.Scene {
         return;
       }
       const tier = choice.persistent ? this.cardTiers[choice.key] + 1 : null;
-      card.label.setText(tier ? `${choice.label} ${tier}` : choice.label);
+      const roman = tier ? this.getLevelUpTierRoman(tier) : '';
+      card.label.setText(roman ? `${choice.label} ${roman}` : choice.label);
       card.detail.setText(choice.detail);
       card.icon.setTexture(choice.icon.texture, choice.icon.frame);
+      card.tierBadge.container.setVisible(Boolean(roman));
+      card.tierBadge.text.setText(roman);
     });
   }
 
@@ -3161,7 +3145,6 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelUpRewardText?.setVisible(false);
     this.levelUpHelperText?.setText('Choose one village blessing');
     this.updateLevelUpChoicePresentation();
-    this.updateLevelUpProgressBars();
     this.levelUpOverlay.setVisible(true).setAlpha(0);
     this.tweens.add({
       targets: this.levelUpOverlay,
@@ -3180,7 +3163,6 @@ class FairyGuildScene extends Phaser.Scene {
     const wasBossRound = this.state.bossRound;
     this.applyLevelUpCard(choice);
     this.updateLevelUpChoicePresentation();
-    this.updateLevelUpProgressBars();
     this.spawnShieldGlow();
     this.playTone('level');
     this.state.level += 1;

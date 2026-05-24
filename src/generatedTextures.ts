@@ -189,19 +189,6 @@ export function createGeneratedTextures(scene: Phaser.Scene) {
     gfx.fillTriangle(9, 24, 23, 18, 23, 30);
   });
 
-  make('trapIconTexture', 48, 48, (gfx) => {
-    gfx.fillStyle(0x92cf67, 0.32);
-    gfx.fillCircle(24, 27, 18);
-    gfx.lineStyle(4, 0x527d3a, 1);
-    gfx.strokeCircle(24, 27, 14);
-    gfx.beginPath();
-    gfx.moveTo(14, 17);
-    gfx.lineTo(34, 37);
-    gfx.moveTo(34, 17);
-    gfx.lineTo(14, 37);
-    gfx.strokePath();
-  });
-
   make('spellIconTexture', 48, 48, (gfx) => {
     gfx.fillStyle(0x8ae7ff, 1);
     gfx.fillCircle(24, 24, 13);
@@ -224,15 +211,4 @@ export function createGeneratedTextures(scene: Phaser.Scene) {
     gfx.strokeRoundedRect(15, 13, 15, 24, 5);
   });
 
-  make('shieldIconTexture', 48, 48, (gfx) => {
-    gfx.fillStyle(0x7ee0aa, 1);
-    gfx.fillTriangle(24, 7, 39, 15, 34, 34);
-    gfx.fillTriangle(24, 7, 9, 15, 14, 34);
-    gfx.fillTriangle(14, 34, 34, 34, 24, 43);
-    gfx.fillStyle(0xffffff, 0.45);
-    gfx.fillTriangle(24, 11, 31, 17, 24, 35);
-    gfx.lineStyle(3, 0x378c63, 0.8);
-    gfx.strokeTriangle(24, 7, 39, 15, 34, 34);
-    gfx.strokeTriangle(24, 7, 9, 15, 14, 34);
-  });
 }

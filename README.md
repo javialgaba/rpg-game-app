@@ -111,6 +111,8 @@ npm run build
 Rebuild or validate the fixed-cell atlas assets:
 
 ```bash
+npm run build:class-assets
+npm run validate:class-assets
 npm run build:atlases
 npm run validate:atlases
 npm run build:scene-variants
@@ -144,6 +146,8 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |   `-- generated/
 |       |-- buildings_atlas.json
 |       |-- buildings_atlas.png
+|       |-- archer-hero-sheet.png
+|       |-- archer-hero-sheet-source.png
 |       |-- effects_atlas.json
 |       |-- effects_atlas.png
 |       |-- game-over-ui.png
@@ -193,6 +197,7 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |-- tsconfig.json
 |-- tools/
 |   |-- atlas-manifest.mjs
+|   |-- build-class-assets.mjs
 |   `-- build-atlases.mjs
 |-- vercel.json
 `-- README.md
@@ -200,18 +205,18 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. Seasonal board visuals are built from chroma-key sheets under `public/assets/scene-variants/sources/<theme>/` into `scene_variant_terrain_atlas`, `scene_variant_props_atlas`, and `scene_variant_buildings_atlas`; the runtime themes are `spring`, `summer`, `twilight_autumn`, and `winter`. The existing `night_spring` world key intentionally renders with the `twilight_autumn` library. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD/world-edge source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png`, `world-edges-structural-source.png`, `world-edges-atmosphere-source.png`, and their transparent cutout sheets.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source sheets are kept alongside processed transparent versions where applicable. The Archer class uses `archer-hero-sheet-source.png`, processed by `npm run build:class-assets` into its transparent runtime sheet. That command also prepares `atlas-sources/generated/class-card-icons.png` from the generated source sheet for skill buttons, the Trap ground effect, and the six card illustrations. The current generated map uses deterministic fixed-cell atlases built from the original art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. Seasonal board visuals are built from chroma-key sheets under `public/assets/scene-variants/sources/<theme>/` into `scene_variant_terrain_atlas`, `scene_variant_props_atlas`, and `scene_variant_buildings_atlas`; the runtime themes are `spring`, `summer`, `twilight_autumn`, and `winter`. The existing `night_spring` world key intentionally renders with the `twilight_autumn` library. The older `world-ui-sheet.png` is now treated as source art for atlas rebuilding rather than a runtime crop target. Generated touch/HUD/world-edge source art lives under `public/assets/atlas-sources/generated/`, including `ui-touch-hud-source.png`, `class-card-icons-source.png`, `world-edges-structural-source.png`, `world-edges-atmosphere-source.png`, and their transparent cutout sheets.
 
 Atlas split rules:
 
 - `world_tiles_atlas`: playable terrain and world props.
 - `world_edges_atlas`: floating-island cliff rims, corner caps, a soft island shadow, fog surround bands, and sparse off-board decorative edge clusters.
 - `buildings_atlas`: castle, houses, market, bakery, and well frames.
-- `ui_atlas`: square gameplay and card icons.
-- `touch_controls_atlas`: touch button icons only, used by the Phaser mobile overlay.
+- `ui_atlas`: square gameplay and unique level-up card icons.
+- `touch_controls_atlas`: touch button icons, including distinct class-skill icons, used by the Phaser mobile overlay.
 - `hud_ui_atlas`: square/compact HUD badges such as coin, crown, and repair tool.
 - `hud_bars_atlas`: long HUD bar frames only, with a separate fixed rectangular cell size.
-- `effects_atlas`: smoke, sparkles, arrows, magic splashes, and shield glows.
+- `effects_atlas`: smoke, sparkles, arrows, magic splashes, shield glows, the placed Trap, and the active Magic Shield field.
 - `scene_variant_terrain_atlas`: theme-specific grass, path, and plaza diamond tiles.
 - `scene_variant_props_atlas`: theme-specific trees, rocks, ponds, vegetation, lamps, fences, and signs.
 - `scene_variant_buildings_atlas`: role-preserving seasonal castle and village building presentations.
