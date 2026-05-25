@@ -102,6 +102,27 @@ export function teleportPlayerToDebugTarget(scene, query) {
   return true;
 }
 
+export function teleportPlayerToDebugIso(scene, rawX, rawY) {
+  const x = Number(rawX);
+  const y = Number(rawY);
+  if (!scene.player || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return false;
+  }
+  scene.player.iso.x = x;
+  scene.player.iso.y = y;
+  scene.clampIso(scene.player.iso, 1.2);
+  if (!scene.isPlayerFootprintWalkable(scene.player.iso)) {
+    scene.recoverPlayerToSafeAnchor(true, true);
+  } else {
+    scene.rememberPlayerSafePosition();
+  }
+  scene.lastPointerIso = { x: scene.player.iso.x, y: scene.player.iso.y };
+  const position = scene.isoToGroundedEntityScreen(scene.player.iso.x, scene.player.iso.y);
+  scene.player.sprite.setPosition(position.x, position.y);
+  scene.player.shadow.setPosition(position.x, position.y + 15);
+  return true;
+}
+
 export function triggerDebugSeasonTransition(scene) {
   const nextIndex = (scene.state.worldIndex + 1) % WORLD_SEQUENCE.length;
   const looped = nextIndex === 0;
@@ -148,6 +169,7 @@ export function syncDevDiagnostics(scene) {
   host.setAttribute('data-level-spawned-count', String(scene.levelSpawnedCount));
   host.setAttribute('data-valid-spawn-points', String(scene.generatedValidSpawnPoints?.length ?? 0));
   host.setAttribute('data-board-seed', String(scene.generatedLevel?.config.seed ?? ''));
+  host.setAttribute('data-board-config-id', String(scene.generatedLevelConfigId ?? ''));
   host.setAttribute('data-building-summary', getDebugBuildingSummary(scene));
   const movementDebug = scene.getPlayerMovementDebugState?.();
   host.setAttribute('data-player-iso-x', String(scene.player?.iso.x ?? ''));
@@ -156,6 +178,14 @@ export function syncDevDiagnostics(scene) {
   host.setAttribute('data-player-recovery-anchor', movementDebug?.recoveryAnchor ? '1' : '0');
   host.setAttribute('data-player-visible-exits', movementDebug?.escapeDirections.join('|') ?? '');
   host.setAttribute('data-player-movement-rejected', movementDebug?.rejectedReason ?? '');
+  host.setAttribute('data-player-runtime-dead-end', movementDebug?.runtimeDeadEnd ? '1' : '0');
+  host.setAttribute('data-player-active-input', movementDebug?.activeIntent ? JSON.stringify(movementDebug.activeIntent.screen) : '');
+  host.setAttribute('data-player-selected-travel', movementDebug?.movementResult?.selectedScreen
+    ? JSON.stringify(movementDebug.movementResult.selectedScreen)
+    : '');
+  host.setAttribute('data-player-candidates', JSON.stringify(movementDebug?.movementResult?.candidates ?? []));
+  host.setAttribute('data-player-movement-trace', JSON.stringify(scene.playerMovementTrace ?? []));
+  host.setAttribute('data-debug-enemies-frozen', scene.debugEnemiesFrozen ? '1' : '0');
 }
 
 export function consumeDevCommand(scene) {
@@ -209,6 +239,16 @@ export function consumeDevCommand(scene) {
   } else if (command.startsWith('teleport:')) {
     const target = command.split(':')[1];
     result = teleportPlayerToDebugTarget(scene, target) ? `teleport:${toDebugSlug(target)}` : 'missing-teleport-target';
+  } else if (command.startsWith('teleportIso:')) {
+    const [, rawX, rawY] = command.split(':');
+    result = teleportPlayerToDebugIso(scene, rawX, rawY) ? `teleport-iso:${rawX}:${rawY}` : 'invalid-teleport-iso';
+  } else if (command === 'freezeEnemies') {
+    scene.debugEnemiesFrozen = true;
+    scene.clearProjectiles();
+    result = 'enemies:frozen';
+  } else if (command === 'resumeEnemies') {
+    scene.debugEnemiesFrozen = false;
+    result = 'enemies:resumed';
   } else if (command.startsWith('damageBuilding:')) {
     const [, rawTarget, rawAmount] = command.split(':');
     const building = findDebugBuilding(scene, rawTarget);

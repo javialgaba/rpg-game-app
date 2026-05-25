@@ -221,7 +221,7 @@ export function drawGeneratedLevelDebug(scene) {
   const movementDebug = scene.getPlayerMovementDebugState?.();
   if (movementDebug?.activeIntent && scene.player) {
     const start = isoToScreen(scene, scene.player.iso.x, scene.player.iso.y, -12);
-    const end = isoToScreen(
+    const intendedEnd = isoToScreen(
       scene,
       scene.player.iso.x + movementDebug.activeIntent.iso.x * 0.8,
       scene.player.iso.y + movementDebug.activeIntent.iso.y * 0.8,
@@ -230,12 +230,38 @@ export function drawGeneratedLevelDebug(scene) {
     gfx.lineStyle(4, movementDebug.rejectedReason ? DEBUG_COLORS.rawBlocked : DEBUG_COLORS.route, 0.88);
     gfx.beginPath();
     gfx.moveTo(start.x, start.y);
-    gfx.lineTo(end.x, end.y);
+    gfx.lineTo(intendedEnd.x, intendedEnd.y);
     gfx.strokePath();
+    const selectedIso = movementDebug.movementResult?.selectedIso;
+    if (selectedIso && movementDebug.movementResult?.reason?.endsWith('-slide')) {
+      const slideEnd = isoToScreen(
+        scene,
+        scene.player.iso.x + selectedIso.x * 0.8,
+        scene.player.iso.y + selectedIso.y * 0.8,
+        -12,
+      );
+      gfx.lineStyle(5, DEBUG_COLORS.clearance, 0.94);
+      gfx.beginPath();
+      gfx.moveTo(start.x, start.y);
+      gfx.lineTo(slideEnd.x, slideEnd.y);
+      gfx.strokePath();
+    }
+    movementDebug.movementResult?.candidates
+      .filter((candidate) => !candidate.accepted)
+      .forEach((candidate) => {
+        const rejected = isoToScreen(scene, candidate.position.x, candidate.position.y, -13);
+        gfx.fillStyle(DEBUG_COLORS.rawBlocked, 0.9);
+        gfx.fillCircle(rejected.x, rejected.y, 4);
+      });
   }
+  const selectedMove = movementDebug?.movementResult?.selectedScreen;
+  const selectedLabel = selectedMove
+    ? `${selectedMove.x.toFixed(2)},${selectedMove.y.toFixed(2)}`
+    : 'none';
   const movementLines = movementDebug ? [
     `Hero footprint: ${movementDebug.footprintWalkable ? 'OPEN' : 'BLOCKED'}  recovery anchor: ${movementDebug.recoveryAnchor ? 'YES' : 'NO'}`,
-    `Visible exits: ${movementDebug.escapeDirections.join(' / ') || 'NONE'}  rejected: ${movementDebug.rejectedReason ?? 'none'}`,
+    `Sustained exits: ${movementDebug.escapeDirections.join(' / ') || 'NONE'}  dead end: ${movementDebug.runtimeDeadEnd ? 'YES' : 'NO'}`,
+    `Selected travel: ${selectedLabel}  rejected: ${movementDebug.rejectedReason ?? 'none'} (red dots)`,
   ] : [];
   const legend = scene.add.text(14, 92, [
     'G COLLISION MAP',

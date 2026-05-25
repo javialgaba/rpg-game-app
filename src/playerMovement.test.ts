@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  probeScreenSpaceEscape,
   projectIsoMovementToScreen,
-  resolvePlayerMovement,
+  resolveScreenSpacePlayerMovement,
   screenDirectionToIsoMovement,
 } from './playerMovement';
 
@@ -45,8 +46,7 @@ describe('screen-relative isometric movement', () => {
 
 describe('continuous movement resolution', () => {
   it('allows an open screen-vertical escape beside a blocked neighbor', () => {
-    const movement = screenDirectionToIsoMovement({ x: 0, y: -1 }, metrics);
-    const result = resolvePlayerMovement({ x: 4, y: 4 }, movement, 0.2, (point) => (
+    const result = resolveScreenSpacePlayerMovement({ x: 4, y: 4 }, { x: 0, y: -1 }, metrics, 0.2, (point) => (
       point.x < 4 || point.y < 4
     ));
     expect(result.moved).toBe(true);
@@ -55,22 +55,49 @@ describe('continuous movement resolution', () => {
   });
 
   it('slides along a corner without accepting the blocked diagonal destination', () => {
-    const result = resolvePlayerMovement({ x: 2, y: 2 }, { x: 1, y: 1 }, 0.2, (point) => (
-      point.x <= 2 && point.y <= 2.2
+    const result = resolveScreenSpacePlayerMovement({ x: 2, y: 2 }, { x: 1, y: 1 }, metrics, 0.2, (point) => (
+      point.y < 2
     ));
-    expect(result).toEqual({
-      position: { x: 2, y: 2.2 },
-      moved: true,
-      blocked: false,
-    });
+    expect(result.moved).toBe(true);
+    expect(result.reason).toBe('horizontal-slide');
+    expect(result.selectedScreen).toEqual({ x: 1, y: 0 });
   });
 
   it('does not cross a fully blocking footprint', () => {
-    const result = resolvePlayerMovement({ x: 2, y: 2 }, { x: 1, y: 0 }, 0.2, () => false);
-    expect(result).toEqual({
-      position: { x: 2, y: 2 },
-      moved: false,
-      blocked: true,
-    });
+    const result = resolveScreenSpacePlayerMovement({ x: 2, y: 2 }, { x: 1, y: 0 }, metrics, 0.2, () => false);
+    expect(result.position).toEqual({ x: 2, y: 2 });
+    expect(result.moved).toBe(false);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toBe('blocked footprint');
+  });
+
+  it('preserves the previous valid screen-space slide around a corner', () => {
+    const result = resolveScreenSpacePlayerMovement(
+      { x: 2, y: 2 },
+      { x: 1, y: 1 },
+      metrics,
+      0.2,
+      (point) => point.x < 2.23,
+      { x: 0, y: 1 },
+    );
+    expect(result.reason).toBe('vertical-slide');
+    expect(result.selectedScreen).toEqual({ x: 0, y: 1 });
+  });
+});
+
+describe('sustained visible escape probing', () => {
+  it('advertises an exit only when it remains walkable over multiple steps', () => {
+    const clear = probeScreenSpaceEscape({ x: 2, y: 2 }, { x: 1, y: 0 }, metrics, 0.1, 4, () => true);
+    const blockedAfterOneStep = probeScreenSpaceEscape(
+      { x: 2, y: 2 },
+      { x: 1, y: 0 },
+      metrics,
+      0.1,
+      4,
+      (point) => point.x < 2.15,
+    );
+    expect(clear.escaped).toBe(true);
+    expect(clear.stepsMoved).toBe(4);
+    expect(blockedAfterOneStep.escaped).toBe(false);
   });
 });
