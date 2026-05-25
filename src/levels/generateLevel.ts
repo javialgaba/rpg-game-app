@@ -13,7 +13,7 @@ import type {
   ProtectedTargetPlacement,
 } from './levelTypes';
 import { findGridPath, pathCost } from './pathfinding';
-import { buildPlayerWalkableGrid } from './playerFootprint';
+import { buildPlayerReachableGrid, buildPlayerWalkableGrid, getPlayerPocketCells } from './playerFootprint';
 import { SeededRandom } from './seededRandom';
 
 const PROTECTED_EDGE_PADDING = 4;
@@ -563,6 +563,15 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     if (blocksMovement) {
       blockedGrid[grid.y][grid.x] = true;
       walkableGrid[grid.y][grid.x] = false;
+      const candidatePlayerGrid = buildPlayerWalkableGrid(walkableGrid, playableBounds);
+      const candidateReachableGrid = buildPlayerReachableGrid(candidatePlayerGrid, playerSpawn);
+      if (getPlayerPocketCells(candidatePlayerGrid, candidateReachableGrid).length > 0) {
+        blockedGrid[grid.y][grid.x] = false;
+        walkableGrid[grid.y][grid.x] = true;
+        decorationGrid[grid.y][grid.x] = null;
+        decorations.pop();
+        return false;
+      }
     }
     return true;
   };
@@ -793,6 +802,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   });
 
   const playerWalkableGrid = buildPlayerWalkableGrid(walkableGrid, playableBounds);
+  const playerReachableGrid = buildPlayerReachableGrid(playerWalkableGrid, playerSpawn);
+  const playerPocketCells = getPlayerPocketCells(playerWalkableGrid, playerReachableGrid);
 
   return {
     config: generatedConfig,
@@ -801,6 +812,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     playableBounds,
     walkableGrid,
     playerWalkableGrid,
+    playerReachableGrid,
+    playerPocketCells,
     blockedGrid,
     buildingGrid,
     decorationGrid,
@@ -929,6 +942,9 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
       }
     });
 
+  }
+  if (level.playerPocketCells.length > 0) {
+    errors.push(`Player clearance contains ${level.playerPocketCells.length} unreachable pocket cell(s).`);
   }
 
   const blockedDecorationCells = level.decorations.filter((decoration) => (

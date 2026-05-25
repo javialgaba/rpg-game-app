@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import type { SceneAPI } from './sceneAPI';
+import { getDirectionalProjectileRotation } from './projectilePresentation';
 
 interface CombatProjectile {
   owner: 'player' | 'enemy';
@@ -11,12 +12,21 @@ interface CombatProjectile {
   distance: number;
   sprite: Phaser.GameObjects.GameObject & {
     setPosition: (x: number, y: number) => unknown;
+    setRotation?: (angle: number) => unknown;
     destroy: () => void;
   };
   targetBuilding?: any;
 }
 
+export function faceDirectionalProjectile(scene: SceneAPI, projectile: CombatProjectile) {
+  const rotation = getDirectionalProjectileRotation(projectile.type, projectile.iso, projectile.velocity, scene.isoToScreen.bind(scene));
+  if (rotation !== null) {
+    projectile.sprite.setRotation?.(rotation);
+  }
+}
+
 export function addProjectile(scene: SceneAPI, projectile: CombatProjectile) {
+  faceDirectionalProjectile(scene, projectile);
   scene.projectiles.push(projectile);
 }
 
@@ -85,6 +95,7 @@ export function updateProjectiles(scene: SceneAPI, dt: number) {
         projectile.distance = 0;
         projectile.range = 8;
         projectile.power = projectile.type === 'guardian' ? 5 : 2;
+        faceDirectionalProjectile(scene, projectile);
       } else {
         destroyProjectile(scene, projectile);
       }

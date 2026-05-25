@@ -6,6 +6,7 @@ import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
 import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
 import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
 import { findGridPath, pathCost } from './levels/pathfinding';
+import { findNearestPlayerSafeCell, isPlayerSafeCell } from './levels/playerFootprint';
 
 
 import { resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
@@ -161,6 +162,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.roundEnemyQueue = [];
     this.levelUpChoiceCards = [];
     this.lastPointerIso = { x: 7, y: 7 };
+    this.lastPlayerSafeIso = null;
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
     this.levelRequiredDefeats = 0;
@@ -186,6 +188,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelSelectionWarnings = [];
     this.levelDebugLayer = null;
     this.levelDebugGraphics = null;
+    this.levelDebugLabels = [];
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
     this.generatedTerrainMask = null;
@@ -393,6 +396,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.magicShield = null;
     this.roundEnemyQueue = [];
     this.lastPointerIso = { x: 7, y: 7 };
+    this.lastPlayerSafeIso = null;
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
     this.levelRequiredDefeats = 0;
@@ -418,6 +422,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.generatedLevelSelectionWarnings = [];
     this.levelDebugLayer = null;
     this.levelDebugGraphics = null;
+    this.levelDebugLabels = [];
     this.levelDebugVisible = false;
     this.levelDebugLastRenderAt = 0;
     this.generatedTerrainMask = null;
@@ -1506,6 +1511,7 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.player.sprite.play(`${profile.animPrefix}-idle`);
     this.entityLayer.add([this.player.shadow, this.player.sprite]);
+    this.rememberPlayerSafePosition();
   }
 
   createControls() {
@@ -1689,8 +1695,48 @@ class FairyGuildScene extends Phaser.Scene {
     this.lastPointerIso = this.clampIso(this.screenToIso(this.input.activePointer.x, this.input.activePointer.y), 0.1);
   }
 
+  isPlayerSafePosition(point) {
+    if (!this.generatedLevelActive || !this.generatedLevel) {
+      return true;
+    }
+    return this.isGeneratedIsoWalkable(point)
+      && isPlayerSafeCell(this.generatedLevel.playerReachableGrid, point);
+  }
+
+  rememberPlayerSafePosition() {
+    if (this.player && this.isPlayerSafePosition(this.player.iso)) {
+      this.lastPlayerSafeIso = { ...this.player.iso };
+    }
+  }
+
+  ensurePlayerSafePosition(preferNearest = false) {
+    if (!this.player || this.isPlayerSafePosition(this.player.iso)) {
+      this.rememberPlayerSafePosition();
+      return false;
+    }
+    const previous = this.lastPlayerSafeIso;
+    if (!preferNearest && previous && this.isPlayerSafePosition(previous)) {
+      this.player.iso = { ...previous };
+      return true;
+    }
+    const nearest = this.generatedLevelActive && this.generatedLevel
+      ? findNearestPlayerSafeCell(this.generatedLevel.playerReachableGrid, this.player.iso)
+      : null;
+    if (nearest) {
+      this.player.iso = nearest;
+      this.rememberPlayerSafePosition();
+      return true;
+    }
+    if (previous) {
+      this.player.iso = { ...previous };
+      return true;
+    }
+    return false;
+  }
+
   updatePlayer(dt, time) {
     if (this.state.health <= 0) {return;}
+    this.ensurePlayerSafePosition();
     const movement = this.getMovementVector();
     const dx = movement.x;
     const dy = movement.y;
@@ -1703,7 +1749,7 @@ class FairyGuildScene extends Phaser.Scene {
         y: this.player.iso.y + dy * this.playerStats.speed * dt,
       };
       this.clampIso(fullStep, 1.2);
-      if (this.isGeneratedIsoWalkable(fullStep)) {
+      if (this.isPlayerSafePosition(fullStep)) {
         this.player.iso.x = fullStep.x;
         this.player.iso.y = fullStep.y;
       } else {
@@ -1717,14 +1763,16 @@ class FairyGuildScene extends Phaser.Scene {
         };
         this.clampIso(nextX, 1.2);
         this.clampIso(nextY, 1.2);
-        if (this.isGeneratedIsoWalkable(nextX)) {
+        if (this.isPlayerSafePosition(nextX)) {
           this.player.iso.x = nextX.x;
         }
-        if (this.isGeneratedIsoWalkable(nextY)) {
+        if (this.isPlayerSafePosition(nextY)) {
           this.player.iso.y = nextY.y;
         }
       }
       this.clampIso(this.player.iso, 1.2);
+      this.ensurePlayerSafePosition();
+      this.rememberPlayerSafePosition();
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.mainAttack)) {
@@ -2613,6 +2661,7 @@ class FairyGuildScene extends Phaser.Scene {
       this.player.iso.x += (dx / len) * 0.28;
       this.player.iso.y += (dy / len) * 0.28;
       this.clampIso(this.player.iso, 1.2);
+      this.ensurePlayerSafePosition();
     }
     this.playTone('hit');
     this.spawnSparkleBurst(this.player.sprite.x, this.player.sprite.y - 28, 0xffb3c1, 10, 0.66);

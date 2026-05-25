@@ -17,10 +17,9 @@ function startProjectile(
   const direction = { x: (targetIso.x - start.x) / length, y: (targetIso.y - start.y) / length };
   scene.player.facing = direction;
   const p = scene.isoToScreen(start.x, start.y, 18);
-  const color = type === 'arrow' ? 0xffe6a3 : 0x9be7ff;
   const sprite = type === 'arrow'
-    ? scene.add.rectangle(p.x, p.y - 24, 34, 5, color, 1).setDepth(p.y + 120)
-    : scene.add.circle(p.x, p.y - 24, 8, color, 0.94).setStrokeStyle(2, 0xffffff, 0.72).setDepth(p.y + 120);
+    ? scene.add.image(p.x, p.y - 24, 'effectsAtlas', 'arrow_01').setDisplaySize(38, 38).setDepth(p.y + 120)
+    : scene.add.circle(p.x, p.y - 24, 8, 0x9be7ff, 0.94).setStrokeStyle(2, 0xffffff, 0.72).setDepth(p.y + 120);
   scene.fxLayer.add(sprite);
   addProjectile(scene, {
     owner: 'player',

@@ -82,7 +82,7 @@ export function resolveDebugTeleportPoint(scene, query) {
     { x: (minX + maxX) / 2, y: minY - 1 },
     { x: minX - 1, y: (minY + maxY) / 2 },
   ];
-  return candidates.find((point) => !scene.generatedLevelActive || scene.isGeneratedIsoWalkable(point)) ?? candidates[0];
+  return candidates.find((point) => !scene.generatedLevelActive || scene.isPlayerSafePosition(point)) ?? candidates[0];
 }
 
 export function teleportPlayerToDebugTarget(scene, query) {
@@ -93,6 +93,8 @@ export function teleportPlayerToDebugTarget(scene, query) {
   scene.player.iso.x = point.x;
   scene.player.iso.y = point.y;
   scene.clampIso(scene.player.iso, 1.2);
+  scene.ensurePlayerSafePosition(true);
+  scene.rememberPlayerSafePosition();
   scene.lastPointerIso = { x: scene.player.iso.x, y: scene.player.iso.y };
   const position = scene.isoToGroundedEntityScreen(scene.player.iso.x, scene.player.iso.y);
   scene.player.sprite.setPosition(position.x, position.y);
