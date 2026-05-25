@@ -218,12 +218,32 @@ export function drawGeneratedLevelDebug(scene) {
         drawDebugDiamond(gfx, tileW, tileH, targetCenter, 0xfff15c, 0.42);
       }
     });
+  const movementDebug = scene.getPlayerMovementDebugState?.();
+  if (movementDebug?.activeIntent && scene.player) {
+    const start = isoToScreen(scene, scene.player.iso.x, scene.player.iso.y, -12);
+    const end = isoToScreen(
+      scene,
+      scene.player.iso.x + movementDebug.activeIntent.iso.x * 0.8,
+      scene.player.iso.y + movementDebug.activeIntent.iso.y * 0.8,
+      -12,
+    );
+    gfx.lineStyle(4, movementDebug.rejectedReason ? DEBUG_COLORS.rawBlocked : DEBUG_COLORS.route, 0.88);
+    gfx.beginPath();
+    gfx.moveTo(start.x, start.y);
+    gfx.lineTo(end.x, end.y);
+    gfx.strokePath();
+  }
+  const movementLines = movementDebug ? [
+    `Hero footprint: ${movementDebug.footprintWalkable ? 'OPEN' : 'BLOCKED'}  recovery anchor: ${movementDebug.recoveryAnchor ? 'YES' : 'NO'}`,
+    `Visible exits: ${movementDebug.escapeDirections.join(' / ') || 'NONE'}  rejected: ${movementDebug.rejectedReason ?? 'none'}`,
+  ] : [];
   const legend = scene.add.text(14, 92, [
     'G COLLISION MAP',
     'Yellow: building footprint  Orange: solid prop',
     'Red: blocking decoration  Cyan: visual/non-blocking decor',
     'Blue outline: player clearance  Pink: trapped pocket',
     'Green: attack/route cells',
+    ...movementLines,
   ], {
     color: '#ffffff',
     fontFamily: 'Arial, sans-serif',

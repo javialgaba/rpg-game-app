@@ -7,7 +7,7 @@ import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } fr
 import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
 import { findGridPath, pathCost } from './levels/pathfinding';
 import { findNearestPlayerSafeCell, isPlayerSafeCell } from './levels/playerFootprint';
-
+import { resolvePlayerMovement, screenDirectionToIsoMovement, SCREEN_CARDINAL_DIRECTIONS } from './playerMovement';
 
 import { resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
@@ -163,6 +163,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.levelUpChoiceCards = [];
     this.lastPointerIso = { x: 7, y: 7 };
     this.lastPlayerSafeIso = null;
+    this.lastPlayerMovementIntent = null;
+    this.lastRejectedMovementReason = null;
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
     this.levelRequiredDefeats = 0;
@@ -397,6 +399,8 @@ class FairyGuildScene extends Phaser.Scene {
     this.roundEnemyQueue = [];
     this.lastPointerIso = { x: 7, y: 7 };
     this.lastPlayerSafeIso = null;
+    this.lastPlayerMovementIntent = null;
+    this.lastRejectedMovementReason = null;
     this.levelSpawnsPending = 0;
     this.levelEnemiesRemaining = 0;
     this.levelRequiredDefeats = 0;
@@ -1511,7 +1515,7 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.player.sprite.play(`${profile.animPrefix}-idle`);
     this.entityLayer.add([this.player.shadow, this.player.sprite]);
-    this.rememberPlayerSafePosition();
+    this.recoverPlayerToSafeAnchor(true);
   }
 
   createControls() {
@@ -1626,7 +1630,7 @@ class FairyGuildScene extends Phaser.Scene {
     consumeDevCommand(this);
   }
 
-  getMovementVector() {
+  getScreenMovementVector() {
     let dx = 0;
     let dy = 0;
     if (this.keys.left.isDown || this.keys.a.isDown) {
@@ -1695,27 +1699,34 @@ class FairyGuildScene extends Phaser.Scene {
     this.lastPointerIso = this.clampIso(this.screenToIso(this.input.activePointer.x, this.input.activePointer.y), 0.1);
   }
 
-  isPlayerSafePosition(point) {
+  isPlayerFootprintWalkable(point) {
+    return this.isGeneratedIsoWalkable(point);
+  }
+
+  isPlayerRecoveryAnchor(point) {
     if (!this.generatedLevelActive || !this.generatedLevel) {
       return true;
     }
-    return this.isGeneratedIsoWalkable(point)
+    return this.isPlayerFootprintWalkable(point)
       && isPlayerSafeCell(this.generatedLevel.playerReachableGrid, point);
   }
 
   rememberPlayerSafePosition() {
-    if (this.player && this.isPlayerSafePosition(this.player.iso)) {
+    if (this.player && this.isPlayerFootprintWalkable(this.player.iso)) {
       this.lastPlayerSafeIso = { ...this.player.iso };
     }
   }
 
-  ensurePlayerSafePosition(preferNearest = false) {
-    if (!this.player || this.isPlayerSafePosition(this.player.iso)) {
+  recoverPlayerToSafeAnchor(requireRecoveryAnchor = false) {
+    const isValidPosition = (point) => (
+      requireRecoveryAnchor ? this.isPlayerRecoveryAnchor(point) : this.isPlayerFootprintWalkable(point)
+    );
+    if (!this.player || isValidPosition(this.player.iso)) {
       this.rememberPlayerSafePosition();
       return false;
     }
     const previous = this.lastPlayerSafeIso;
-    if (!preferNearest && previous && this.isPlayerSafePosition(previous)) {
+    if (previous && isValidPosition(previous)) {
       this.player.iso = { ...previous };
       return true;
     }
@@ -1734,45 +1745,55 @@ class FairyGuildScene extends Phaser.Scene {
     return false;
   }
 
+  getPlayerMovementDebugState() {
+    if (!this.player) {
+      return null;
+    }
+    const probeDistance = 0.18;
+    const metrics = this.getIsoMetrics();
+    const escapeDirections = Object.entries(SCREEN_CARDINAL_DIRECTIONS)
+      .filter(([, direction]) => {
+        const movement = screenDirectionToIsoMovement(direction, metrics);
+        return resolvePlayerMovement(
+          this.player.iso,
+          movement,
+          probeDistance,
+          (candidate) => this.isPlayerFootprintWalkable(candidate),
+        ).moved;
+      })
+      .map(([label]) => label);
+    return {
+      footprintWalkable: this.isPlayerFootprintWalkable(this.player.iso),
+      recoveryAnchor: this.isPlayerRecoveryAnchor(this.player.iso),
+      escapeDirections,
+      activeIntent: this.lastPlayerMovementIntent,
+      rejectedReason: this.lastRejectedMovementReason,
+    };
+  }
+
   updatePlayer(dt, time) {
     if (this.state.health <= 0) {return;}
-    this.ensurePlayerSafePosition();
-    const movement = this.getMovementVector();
-    const dx = movement.x;
-    const dy = movement.y;
-
-    const moving = dx !== 0 || dy !== 0;
+    const screenMovement = this.getScreenMovementVector();
+    const moving = screenMovement.x !== 0 || screenMovement.y !== 0;
     if (moving) {
-      this.player.facing = { x: dx, y: dy };
-      const fullStep = {
-        x: this.player.iso.x + dx * this.playerStats.speed * dt,
-        y: this.player.iso.y + dy * this.playerStats.speed * dt,
-      };
-      this.clampIso(fullStep, 1.2);
-      if (this.isPlayerSafePosition(fullStep)) {
-        this.player.iso.x = fullStep.x;
-        this.player.iso.y = fullStep.y;
-      } else {
-        const nextX = {
-          x: this.player.iso.x + dx * this.playerStats.speed * dt,
-          y: this.player.iso.y,
-        };
-        const nextY = {
-          x: this.player.iso.x,
-          y: this.player.iso.y + dy * this.playerStats.speed * dt,
-        };
-        this.clampIso(nextX, 1.2);
-        this.clampIso(nextY, 1.2);
-        if (this.isPlayerSafePosition(nextX)) {
-          this.player.iso.x = nextX.x;
-        }
-        if (this.isPlayerSafePosition(nextY)) {
-          this.player.iso.y = nextY.y;
-        }
-      }
+      const movement = screenDirectionToIsoMovement(screenMovement, this.getIsoMetrics());
+      this.player.facing = { ...movement };
+      this.lastPlayerMovementIntent = { screen: { ...screenMovement }, iso: { ...movement } };
+      const result = resolvePlayerMovement(
+        this.player.iso,
+        movement,
+        this.playerStats.speed * dt,
+        (candidate) => {
+          this.clampIso(candidate, 1.2);
+          return this.isPlayerFootprintWalkable(candidate);
+        },
+      );
+      this.player.iso = result.position;
       this.clampIso(this.player.iso, 1.2);
-      this.ensurePlayerSafePosition();
+      this.lastRejectedMovementReason = result.blocked ? 'blocked footprint' : null;
       this.rememberPlayerSafePosition();
+    } else {
+      this.lastPlayerMovementIntent = null;
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.mainAttack)) {
@@ -2661,7 +2682,7 @@ class FairyGuildScene extends Phaser.Scene {
       this.player.iso.x += (dx / len) * 0.28;
       this.player.iso.y += (dy / len) * 0.28;
       this.clampIso(this.player.iso, 1.2);
-      this.ensurePlayerSafePosition();
+      this.recoverPlayerToSafeAnchor(true);
     }
     this.playTone('hit');
     this.spawnSparkleBurst(this.player.sprite.x, this.player.sprite.y - 28, 0xffb3c1, 10, 0.66);

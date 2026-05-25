@@ -82,7 +82,7 @@ export function resolveDebugTeleportPoint(scene, query) {
     { x: (minX + maxX) / 2, y: minY - 1 },
     { x: minX - 1, y: (minY + maxY) / 2 },
   ];
-  return candidates.find((point) => !scene.generatedLevelActive || scene.isPlayerSafePosition(point)) ?? candidates[0];
+  return candidates.find((point) => !scene.generatedLevelActive || scene.isPlayerRecoveryAnchor(point)) ?? candidates[0];
 }
 
 export function teleportPlayerToDebugTarget(scene, query) {
@@ -93,7 +93,7 @@ export function teleportPlayerToDebugTarget(scene, query) {
   scene.player.iso.x = point.x;
   scene.player.iso.y = point.y;
   scene.clampIso(scene.player.iso, 1.2);
-  scene.ensurePlayerSafePosition(true);
+  scene.recoverPlayerToSafeAnchor(true);
   scene.rememberPlayerSafePosition();
   scene.lastPointerIso = { x: scene.player.iso.x, y: scene.player.iso.y };
   const position = scene.isoToGroundedEntityScreen(scene.player.iso.x, scene.player.iso.y);
@@ -149,6 +149,13 @@ export function syncDevDiagnostics(scene) {
   host.setAttribute('data-valid-spawn-points', String(scene.generatedValidSpawnPoints?.length ?? 0));
   host.setAttribute('data-board-seed', String(scene.generatedLevel?.config.seed ?? ''));
   host.setAttribute('data-building-summary', getDebugBuildingSummary(scene));
+  const movementDebug = scene.getPlayerMovementDebugState?.();
+  host.setAttribute('data-player-iso-x', String(scene.player?.iso.x ?? ''));
+  host.setAttribute('data-player-iso-y', String(scene.player?.iso.y ?? ''));
+  host.setAttribute('data-player-footprint-walkable', movementDebug?.footprintWalkable ? '1' : '0');
+  host.setAttribute('data-player-recovery-anchor', movementDebug?.recoveryAnchor ? '1' : '0');
+  host.setAttribute('data-player-visible-exits', movementDebug?.escapeDirections.join('|') ?? '');
+  host.setAttribute('data-player-movement-rejected', movementDebug?.rejectedReason ?? '');
 }
 
 export function consumeDevCommand(scene) {

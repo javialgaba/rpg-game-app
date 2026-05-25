@@ -27,6 +27,12 @@ Reference screenshots:
 - Level generation already provides a `playerWalkableGrid` representing player
   clearance, while runtime movement also performs continuous footprint walkability
   checks and axis sliding.
+- The reproduced stuck case is caused by screen-facing control input being applied
+  directly as isometric grid-axis movement. A visible up/down escape beside a
+  building can therefore request travel into a neighboring tree or building cell.
+- Applying rounded reachable-cell topology checks to every fractional movement step
+  can also reject legal edge sliding; that topology is suitable for validation and
+  forced-position recovery, not ordinary continuous input motion.
 
 ## Projectile Facing Fix
 
@@ -107,12 +113,15 @@ back into the reachable play area, except during intentional game-over locking.
 
 - Retain current continuous movement and axis-separated sliding for natural movement
   around obstacle edges.
-- Treat `playerWalkableGrid` as the authoritative clearance topology for safe-cell
-  and reachability checks, while retaining continuous footprint tests for final
-  movement precision.
-- Store the player's last valid safe position after successful movement.
-- Before accepting a candidate movement position, reject any destination that is not
-  footprint-walkable or that maps into an isolated player-clearance pocket.
+- Convert touch and keyboard screen-relative input through the isometric projection
+  before testing movement so visible cardinal controls follow visible cardinal paths.
+- Use continuous footprint tests as the authority for ordinary movement candidates
+  and sliding along blockers.
+- Treat `playerWalkableGrid` reachability as the authority for safe recovery anchors
+  after spawn, restoration, knockback, teleport/debug placement, or another forced
+  displacement, rather than as an additional per-frame motion gate.
+- Store the player's last valid continuous standing position after successful
+  movement.
 - If an external repositioning path leaves the player invalid or trapped, move the
   player to the last valid safe position; if unavailable, search for the nearest
   reachable safe cell and place the player there.
@@ -155,6 +164,8 @@ back into the reachable play area, except during intentional game-over locking.
   rocks, ponds, decorations, and player-clearance cells.
 - Add movement tests for obstacle corners, narrow paths, trapped-state rejection, and
   safe recovery after forced invalid placement.
+- Add movement-projection tests proving screen up/down/left/right map into the
+  intended isometric travel directions at equal visible speed.
 - Add deterministic procedural seed tests that fail when an accessible player area
   contains an inescapable collision pocket.
 - Manually reproduce the screenshot scenarios in `G` mode and verify arrows, visible
