@@ -221,6 +221,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
     this.load.image('archerHeroSheet', '/assets/archer-hero-sheet.png');
+    this.load.image('sorcererHeroSheet', '/assets/sorcerer-hero-sheet.png');
     this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
@@ -270,6 +271,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
     if (this.textures.exists('archerHeroSheet')) {
       this.registerSheetFrames('archerHeroSheet', 8, 4, 'archer');
+    }
+    if (this.textures.exists('sorcererHeroSheet')) {
+      this.registerSheetFrames('sorcererHeroSheet', 8, 4, 'sorcerer');
     }
     if (this.textures.exists('princessHeroSheet')) {
       this.registerSheetFrames('princessHeroSheet', 8, 4, 'princess');
@@ -591,14 +595,15 @@ class FairyGuildScene extends Phaser.Scene {
 
   getHeroProfile(heroClass = this.heroClass) {
     const archer = heroClass === 'archer' && this.textures.exists('archerHeroSheet');
-    const sorcerer = heroClass === 'sorcerer' && this.textures.exists('princessHeroSheet');
+    const sorcerer = heroClass === 'sorcerer' && this.textures.exists('sorcererHeroSheet');
+    const legacySorcerer = heroClass === 'sorcerer' && !sorcerer && this.textures.exists('princessHeroSheet');
     return {
       heroClass: heroClass as HeroClass,
       label: this.getHeroConfig(heroClass).label,
-      sheetKey: archer ? 'archerHeroSheet' : sorcerer ? 'princessHeroSheet' : 'heroSheet',
-      framePrefix: archer ? 'archer' : sorcerer ? 'princess' : 'hero',
+      sheetKey: archer ? 'archerHeroSheet' : sorcerer ? 'sorcererHeroSheet' : legacySorcerer ? 'princessHeroSheet' : 'heroSheet',
+      framePrefix: archer ? 'archer' : sorcerer ? 'sorcerer' : legacySorcerer ? 'princess' : 'hero',
       animPrefix: `${heroClass}-hero`,
-      tint: heroClass === 'archer' && !archer ? 0xb6ed9a : heroClass === 'sorcerer' ? 0xcfe7ff : null,
+      tint: heroClass === 'archer' && !archer ? 0xb6ed9a : legacySorcerer ? 0xcfe7ff : null,
       displaySize: [76, 76] as [number, number],
       origin: [0.5, 0.76] as [number, number],
     };

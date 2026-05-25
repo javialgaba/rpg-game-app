@@ -160,69 +160,9 @@
         "h": 256
       }
     },
-    "guard_skill_icon_01": {
-      "frame": {
-        "x": 0,
-        "y": 512,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "trap_skill_icon_01": {
-      "frame": {
-        "x": 256,
-        "y": 512,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
-    "magic_shield_skill_icon_01": {
-      "frame": {
-        "x": 512,
-        "y": 512,
-        "w": 256,
-        "h": 256
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 256,
-        "h": 256
-      },
-      "sourceSize": {
-        "w": 256,
-        "h": 256
-      }
-    },
     "card_swift_boots_01": {
       "frame": {
-        "x": 768,
+        "x": 0,
         "y": 512,
         "w": 256,
         "h": 256
@@ -242,8 +182,8 @@
     },
     "card_stronger_strikes_01": {
       "frame": {
-        "x": 0,
-        "y": 768,
+        "x": 256,
+        "y": 512,
         "w": 256,
         "h": 256
       },
@@ -262,8 +202,8 @@
     },
     "card_quick_hands_01": {
       "frame": {
-        "x": 256,
-        "y": 768,
+        "x": 512,
+        "y": 512,
         "w": 256,
         "h": 256
       },
@@ -282,8 +222,8 @@
     },
     "card_reinforced_walls_01": {
       "frame": {
-        "x": 512,
-        "y": 768,
+        "x": 768,
+        "y": 512,
         "w": 256,
         "h": 256
       },
@@ -302,7 +242,7 @@
     },
     "card_tough_heart_01": {
       "frame": {
-        "x": 768,
+        "x": 0,
         "y": 768,
         "w": 256,
         "h": 256
@@ -322,8 +262,8 @@
     },
     "card_magic_repair_01": {
       "frame": {
-        "x": 0,
-        "y": 1024,
+        "x": 256,
+        "y": 768,
         "w": 256,
         "h": 256
       },
@@ -347,7 +287,7 @@
     "format": "RGBA8888",
     "size": {
       "w": 1024,
-      "h": 1280
+      "h": 1024
     },
     "scale": "1"
   }
