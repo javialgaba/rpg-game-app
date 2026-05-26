@@ -48,7 +48,7 @@ import {
 import { createGeneratedTextures } from './generatedTextures';
 import { getWorldFogPieces, getWorldBackdropPieces, getWorldEdgeClusters } from './generatedWorldRenderData';
 import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDebugAutomationHost, toDebugSlug, getDebugBuildingSummary, setDebugCommandResult, findDebugBuilding, teleportPlayerToDebugTarget, triggerDebugSeasonTransition } from './devCommands';
-import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createSharedCardBox, createUiButton, uiTextStyle } from './uiFactory';
+import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createSharedCardBox, createUiButton, createUiText, debugTextStyle, uiTextStyle } from './uiFactory';
 import { drawGeneratedLevelDebug, toggleGeneratedLevelDebug, updateGeneratedLevelDebug } from './levelDebugRenderer';
 import { getActiveTimeOfDay, cycleTimeOfDay, getLampGlowIsoPoints, createTimeOfDayLayer } from './timeOfDayRenderer';
 import {
@@ -2942,6 +2942,10 @@ class FairyGuildScene extends Phaser.Scene {
     return createUiButton(this, x, y, width, height, label, onPress);
   }
 
+  createUiText(x, y, label, style) {
+    return createUiText(this, x, y, label, style);
+  }
+
   createSplashOverlay() {
     const layout = this.getSplashOverlayLayout();
     this.splashOverlay = this.add.container(WIDTH / 2, HEIGHT / 2).setDepth(7900).setVisible(false);
@@ -2957,16 +2961,16 @@ class FairyGuildScene extends Phaser.Scene {
       layout.titleSize,
       layout.titleMinSize,
     );
-    const credit = this.add.text(0, layout.creditY, 'A minigame by Javier Algaba', {
+    const credit = this.createUiText(0, layout.creditY, 'A minigame by Javier Algaba', {
       ...this.uiTextStyle(layout.compact ? 16 : 17, '#31503b'),
       strokeThickness: 3,
     }).setOrigin(0.5);
-    const prompt = this.add.text(0, layout.promptY, 'Defend the fairy-tale village from forest mischief.', {
+    const prompt = this.createUiText(0, layout.promptY, 'Defend the fairy-tale village from forest mischief.', {
       ...this.uiTextStyle(layout.compact ? 15 : 16, COLORS.uiInk),
       align: 'center',
       wordWrap: { width: layout.panelWidth - 180 },
     }).setOrigin(0.5);
-    this.splashHeroChoiceText = this.add.text(0, layout.choiceY, 'Choose your hero before you begin.', {
+    this.splashHeroChoiceText = this.createUiText(0, layout.choiceY, 'Choose your hero before you begin.', {
       ...this.uiTextStyle(layout.compact ? 14 : 15, '#31503b'),
       align: 'center',
     }).setOrigin(0.5);
@@ -3027,8 +3031,8 @@ class FairyGuildScene extends Phaser.Scene {
     panel.lineStyle(3, 0xffda73, 0.78);
     panel.fillRoundedRect(-210, -116, 420, 232, 8);
     panel.strokeRoundedRect(-210, -116, 420, 232, 8);
-    this.countdownLevelText = this.add.text(0, -54, '', this.uiTextStyle(34, '#31503b')).setOrigin(0.5);
-    this.countdownNumberText = this.add.text(0, 30, '', {
+    this.countdownLevelText = this.createUiText(0, -54, '', this.uiTextStyle(34, '#31503b')).setOrigin(0.5);
+    this.countdownNumberText = this.createUiText(0, 30, '', {
       ...this.uiTextStyle(72, '#7a4b16'),
       strokeThickness: 5,
     }).setOrigin(0.5);
@@ -3056,8 +3060,8 @@ class FairyGuildScene extends Phaser.Scene {
       this.levelUpTitleFit.maxSize,
       this.levelUpTitleFit.minSize,
     );
-    this.levelUpRewardText = this.add.text(0, layout.rewardY, '', this.uiTextStyle(layout.compact ? 19 : 21, '#bd415c')).setOrigin(0.5).setVisible(false);
-    this.levelUpHelperText = this.add.text(0, layout.helperY, 'Choose one village blessing', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
+    this.levelUpRewardText = this.createUiText(0, layout.rewardY, '', this.uiTextStyle(layout.compact ? 19 : 21, '#bd415c')).setOrigin(0.5).setVisible(false);
+    this.levelUpHelperText = this.createUiText(0, layout.helperY, 'Choose one village blessing', this.uiTextStyle(layout.compact ? 15 : 17, '#31503b')).setOrigin(0.5);
     content.add([panel, titlePlaque, this.levelUpTitleText, this.levelUpRewardText, this.levelUpHelperText]);
 
     this.levelUpChoiceCards = [];
@@ -3164,16 +3168,16 @@ class FairyGuildScene extends Phaser.Scene {
     const content = this.add.container(0, layout.offsetY);
     const panel = this.createUiPanelFrame(layout.panelWidth, layout.panelHeight, { decorScale: layout.decorScale });
     const titlePlaque = this.createUiTitleBanner(0, layout.titleY, layout.titleWidth, layout.titleHeight);
-    const title = this.add.text(0, layout.titleY - 3, 'Guild Rest Time', {
+    const title = this.createUiText(0, layout.titleY - 3, 'Guild Rest Time', {
       ...this.uiTextStyle(layout.titleSize, '#714617'),
       strokeThickness: 4,
     }).setOrigin(0.5);
-    this.gameOverReasonText = this.add.text(0, layout.reasonY, '', {
+    this.gameOverReasonText = this.createUiText(0, layout.reasonY, '', {
       ...this.uiTextStyle(layout.compact ? 18 : 20, COLORS.uiInk),
       align: 'center',
       wordWrap: { width: layout.panelWidth - 140 },
     }).setOrigin(0.5);
-    this.gameOverStatsText = this.add.text(0, layout.statsY, '', this.uiTextStyle(layout.compact ? 16 : 18, '#31503b')).setOrigin(0.5);
+    this.gameOverStatsText = this.createUiText(0, layout.statsY, '', this.uiTextStyle(layout.compact ? 16 : 18, '#31503b')).setOrigin(0.5);
     const restartButton = this.createUiButton(-190, layout.buttonY, 174, 48, 'Restart', () => this.restartSameClass());
     const chooseButton = this.createUiButton(0, layout.buttonY, 174, 48, 'New Hero', () => this.chooseNewHero());
     const menuButton = this.createUiButton(190, layout.buttonY, 174, 48, 'Main Menu', () => this.restartGameFromBeginning());
@@ -3275,10 +3279,10 @@ class FairyGuildScene extends Phaser.Scene {
     const coin = this.add.image(154, 28, 'gameUiAtlas', 'coin_badge_01')
       .setDisplaySize(30, 32);
     this.hud.hearts = this.add.container(16, 20);
-    this.hud.goldText = this.add.text(198, 28, '', this.uiTextStyle(16, '#56330f')).setOrigin(0.5);
-    this.hud.levelText = this.add.text(268, 28, '', this.uiTextStyle(15, '#1e3348')).setOrigin(0.5);
-    this.hud.waveText = this.add.text(376, 28, '', this.uiTextStyle(12, '#224b31')).setOrigin(0.5);
-    this.hud.skillText = this.add.text(550, 28, '', this.uiTextStyle(12, '#224b50')).setOrigin(0.5);
+    this.hud.goldText = this.createUiText(198, 28, '', this.uiTextStyle(16, '#56330f')).setOrigin(0.5);
+    this.hud.levelText = this.createUiText(268, 28, '', this.uiTextStyle(15, '#1e3348')).setOrigin(0.5);
+    this.hud.waveText = this.createUiText(376, 28, '', this.uiTextStyle(12, '#224b31')).setOrigin(0.5);
+    this.hud.skillText = this.createUiText(550, 28, '', this.uiTextStyle(12, '#224b50')).setOrigin(0.5);
     top.add([
       this.hud.hearts,
       goldChip,
@@ -3300,7 +3304,7 @@ class FairyGuildScene extends Phaser.Scene {
     const bg = this.add.graphics();
     bg.fillStyle(0x22324a, 0.62);
     bg.fillRoundedRect(0, 0, 792, 38, 8);
-    const text = this.add.text(
+    const text = this.createUiText(
       14,
       10,
       'WASD/Arrows move   Space/Click main attack   F class skill   E repair nearby building',
@@ -3329,11 +3333,11 @@ class FairyGuildScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setStrokeStyle(2, 0xffdf7c, 0.72);
     const title = this.add.text(12, 10, 'Balance Debug (B)', {
-      ...this.uiTextStyle(14, '#fff2b8'),
+      ...debugTextStyle(14, '#fff2b8'),
       strokeThickness: 2,
     });
     const text = this.add.text(12, 34, '', {
-      ...this.uiTextStyle(12, '#f7fff0'),
+      ...debugTextStyle(12, '#f7fff0'),
       lineSpacing: 3,
       wordWrap: { width: 380 },
     });
@@ -3460,7 +3464,7 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   uiTextStyle(size, color) {
-    return uiTextStyle(size, color);
+    return uiTextStyle(this, size, color);
   }
 
   addGuildNote(message) {

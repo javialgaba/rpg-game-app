@@ -1,4 +1,36 @@
-export function uiTextStyle(size, color) {
+const MIN_UI_TEXT_RESOLUTION = 1;
+const MAX_UI_TEXT_RESOLUTION = 3;
+
+export function calculateUiTextResolution(devicePixelRatio = 1, displayScale = 1) {
+  const requiredResolution = Math.max(devicePixelRatio, displayScale, MIN_UI_TEXT_RESOLUTION);
+  return Math.min(MAX_UI_TEXT_RESOLUTION, Math.max(MIN_UI_TEXT_RESOLUTION, Math.ceil(requiredResolution)));
+}
+
+export function getUiTextResolution(scene) {
+  const canvas = scene?.game?.canvas;
+  const canvasBounds = canvas?.getBoundingClientRect?.();
+  const gameSize = scene?.scale?.gameSize;
+  const logicalWidth = gameSize?.width ?? scene?.game?.config?.width ?? canvas?.width ?? 1;
+  const logicalHeight = gameSize?.height ?? scene?.game?.config?.height ?? canvas?.height ?? 1;
+  const displayScale = canvasBounds
+    ? Math.max(canvasBounds.width / logicalWidth, canvasBounds.height / logicalHeight)
+    : 1;
+  const devicePixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  return calculateUiTextResolution(devicePixelRatio, displayScale);
+}
+
+export function uiTextStyle(scene, size, color) {
+  return {
+    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+    fontSize: `${size}px`,
+    color,
+    stroke: 'rgba(255,255,255,0.55)',
+    strokeThickness: 2,
+    resolution: getUiTextResolution(scene),
+  };
+}
+
+export function debugTextStyle(size, color) {
   return {
     fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
     fontSize: `${size}px`,
@@ -6,6 +38,38 @@ export function uiTextStyle(size, color) {
     stroke: 'rgba(255,255,255,0.55)',
     strokeThickness: 2,
   };
+}
+
+function getTrackedUiTexts(scene) {
+  if (!scene.highResolutionUiTexts) {
+    scene.highResolutionUiTexts = new Set();
+  }
+  return scene.highResolutionUiTexts;
+}
+
+export function createUiText(scene, x, y, label, style) {
+  const text = scene.add.text(x, y, label, {
+    ...style,
+    resolution: getUiTextResolution(scene),
+  });
+  const trackedTexts = getTrackedUiTexts(scene);
+  trackedTexts.add(text);
+  text.once('destroy', () => trackedTexts.delete(text));
+  return text;
+}
+
+export function refreshUiTextResolution(scene) {
+  const resolution = getUiTextResolution(scene);
+  if (scene.highResolutionUiTextResolution === resolution) {
+    return false;
+  }
+  scene.highResolutionUiTextResolution = resolution;
+  getTrackedUiTexts(scene).forEach((text) => {
+    if (text.active !== false) {
+      text.setResolution(resolution);
+    }
+  });
+  return true;
 }
 
 export function getGameUiFrameSize(scene, frameName) {
@@ -148,8 +212,8 @@ export function fitUiTextToWidth(text, maxWidth, maxSize, minSize = 16) {
 }
 
 export function createFittedTitleText(scene, x, y, label, maxWidth, maxSize, minSize) {
-  const text = scene.add.text(x, y, label, {
-    ...uiTextStyle(maxSize, '#714617'),
+  const text = createUiText(scene, x, y, label, {
+    ...uiTextStyle(scene, maxSize, '#714617'),
     align: 'center',
     strokeThickness: 4,
   }).setOrigin(0.5);
@@ -199,18 +263,18 @@ export function createSharedCardBox(scene, x, y, layout: SharedCardBoxLayout, in
     .setOrigin(0.5);
   const art = scene.add.image(0, layout.artY, initial.art.texture, initial.art.frame)
     .setDisplaySize(layout.artSize, layout.artSize);
-  const title = scene.add.text(0, layout.titleY, initial.title, uiTextStyle(layout.titleSize, '#5f3b12'))
+  const title = createUiText(scene, 0, layout.titleY, initial.title, uiTextStyle(scene, layout.titleSize, '#5f3b12'))
     .setOrigin(0.5);
-  const description = scene.add.text(0, layout.descriptionY, initial.description, {
-    ...uiTextStyle(layout.descriptionSize, '#31503b'),
+  const description = createUiText(scene, 0, layout.descriptionY, initial.description, {
+    ...uiTextStyle(scene, layout.descriptionSize, '#31503b'),
     align: 'center',
     wordWrap: { width: layout.width - 42 },
   }).setOrigin(0.5, 0);
   const badge = scene.add.container(layout.badgeX, layout.badgeY);
   const badgeBacking = scene.add.circle(0, 0, layout.badgeSize, 0x316ca8, 0.98)
     .setStrokeStyle(2, 0xffdb75, 0.96);
-  const badgeText = scene.add.text(0, 0, initial.badgeText ?? '', {
-    ...uiTextStyle(Math.round(layout.badgeSize * 0.7), '#fff5cb'),
+  const badgeText = createUiText(scene, 0, 0, initial.badgeText ?? '', {
+    ...uiTextStyle(scene, Math.round(layout.badgeSize * 0.7), '#fff5cb'),
     strokeThickness: 2,
   }).setOrigin(0.5);
   badge.add([badgeBacking, badgeText]);
@@ -274,8 +338,8 @@ export function createUiButton(scene, x, y, width, height, label, onPress) {
   });
   const hit = scene.add.rectangle(0, 0, width, height, 0xfff1b8, 0.001)
     .setInteractive({ useHandCursor: true });
-  const text = scene.add.text(0, -2, label, {
-    ...uiTextStyle(Math.max(16, Math.round(height * 0.42)), '#684315'),
+  const text = createUiText(scene, 0, -2, label, {
+    ...uiTextStyle(scene, Math.max(16, Math.round(height * 0.42)), '#684315'),
     strokeThickness: 3,
   }).setOrigin(0.5);
   const pieces = frame.pieces;

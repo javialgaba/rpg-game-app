@@ -2,6 +2,7 @@ import * as Phaser from 'phaser';
 import type { SceneAPI } from './sceneAPI';
 import { WIDTH, HEIGHT } from './gameConfig';
 import type { TouchActionKey, TouchButtonSlot, TouchActionIcon } from './gameTypes';
+import { createUiText, refreshUiTextResolution } from './uiFactory';
 
 const TOUCH_CONTROL_SCALE = 1.5;
 const scaleTouchControl = (value: number) => value * TOUCH_CONTROL_SCALE;
@@ -116,13 +117,13 @@ function createTouchActionButton(
   const hit = scene.add.zone(0, 0, scaleTouchControl(78), scaleTouchControl(82))
     .setOrigin(0.5)
     .setInteractive({ useHandCursor: true });
-  const labelText = label ? scene.add.text(0, scaleTouchControl(34), label, {
+  const labelText = label ? createUiText(scene, 0, scaleTouchControl(34), label, {
     ...scene.uiTextStyle(scaleTouchControl(10), '#ffffff'),
     strokeThickness: scaleTouchControl(3),
   }).setOrigin(0.5) : null;
   const glyph = icon
     ? scene.add.image(0, -scaleTouchControl(3), icon.texture, icon.frame).setDisplaySize(scaleTouchControl(70), scaleTouchControl(70))
-    : scene.add.text(0, -scaleTouchControl(5), 'I', {
+    : createUiText(scene, 0, -scaleTouchControl(5), 'I', {
       ...scene.uiTextStyle(scaleTouchControl(24), '#fff0b8'),
       strokeThickness: scaleTouchControl(4),
     }).setOrigin(0.5);
@@ -178,11 +179,11 @@ function createPortraitOverlay(scene: SceneAPI) {
   panel.lineStyle(4, 0xffd36d, 0.86);
   panel.fillRoundedRect(WIDTH / 2 - 270, HEIGHT / 2 - 92, 540, 184, 10);
   panel.strokeRoundedRect(WIDTH / 2 - 270, HEIGHT / 2 - 92, 540, 184, 10);
-  const title = scene.add.text(WIDTH / 2, HEIGHT / 2 - 28, 'Turn your device sideways', {
+  const title = createUiText(scene, WIDTH / 2, HEIGHT / 2 - 28, 'Turn your device sideways', {
     ...scene.uiTextStyle(30, '#714617'),
     strokeThickness: 4,
   }).setOrigin(0.5);
-  const helper = scene.add.text(WIDTH / 2, HEIGHT / 2 + 32, 'Fairy Guild Defense plays best in landscape.', scene.uiTextStyle(17, '#31503b'))
+  const helper = createUiText(scene, WIDTH / 2, HEIGHT / 2 + 32, 'Fairy Guild Defense plays best in landscape.', scene.uiTextStyle(17, '#31503b'))
     .setOrigin(0.5);
   overlay.add([shade, panel, title, helper]);
   return overlay;
@@ -363,6 +364,7 @@ export function touchControlsCreate(scene: SceneAPI): void {
 export function setupMobileViewportHandlers(scene: SceneAPI): void {
   const refreshScale = () => {
     scene.scale.refresh();
+    refreshUiTextResolution(scene);
     updateTouchControlsInternal(scene);
     debugTouchControls(scene, 'viewport refreshed');
   };
