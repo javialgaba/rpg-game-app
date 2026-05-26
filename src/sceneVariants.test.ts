@@ -73,4 +73,14 @@ describe('seasonal scene variant assets', () => {
       expect(flowerAnchors.every((anchor) => !anchor.occludesPlayer)).toBe(true);
     });
   });
+
+  it('configures the expanded generated village presentation for each season', () => {
+    Object.values(SCENE_VARIANTS).forEach((variant) => {
+      expect(variant.playableBounds).toEqual({ minX: 3, minY: 3, maxX: 21, maxY: 21 });
+      expect(variant.cameraZoom).toBe(1.12);
+      expect(variant.scenicOverscan).toBeGreaterThan(1);
+      expect(variant.ambientEffect.maxParticles).toBeGreaterThan(0);
+      expect(variant.foregroundParallax).toBeGreaterThan(variant.backgroundParallax);
+    });
+  });
 });

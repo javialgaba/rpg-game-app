@@ -2,9 +2,9 @@ import type { LevelConfig, LevelToken } from './levelTypes';
 import { SCENE_VARIANTS, type OptionalBoardBuilding, type SeasonPreset } from '../sceneVariants';
 import { SeededRandom } from './seededRandom';
 
-const BOARD_SIZE = 19;
-const PLAYABLE_MIN = 2;
-const PLAYABLE_MAX = 16;
+const BOARD_SIZE = 25;
+const PLAYABLE_MIN = 3;
+const PLAYABLE_MAX = 21;
 
 type OptionalBuildingToken = 'market' | 'well' | 'house-2';
 type BoardBuildingToken = 'castle' | 'house-1' | OptionalBuildingToken;
@@ -35,40 +35,40 @@ const BUILDING_FOOTPRINTS: Record<BoardBuildingToken, { w: number; h: number }> 
 
 const LAYOUT_TEMPLATES: LayoutTemplate[] = [
   {
-    castle: { x: 9, y: 8 },
-    house: { x: 5, y: 13 },
-    playerSpawn: { x: 6, y: 7 },
-    villageCenters: [{ x: 8, y: 10 }, { x: 9, y: 11 }, { x: 7, y: 9 }],
+    castle: { x: 12, y: 11 },
+    house: { x: 7, y: 17 },
+    playerSpawn: { x: 9, y: 10 },
+    villageCenters: [{ x: 11, y: 12 }, { x: 12, y: 13 }, { x: 10, y: 11 }],
     extraSlots: {
-      market: [{ x: 10, y: 13 }, { x: 11, y: 13 }, { x: 12, y: 13 }, { x: 13, y: 13 }],
-      well: [{ x: 5, y: 9 }, { x: 10, y: 13 }, { x: 11, y: 13 }, { x: 5, y: 8 }],
-      'house-2': [{ x: 10, y: 13 }, { x: 11, y: 13 }, { x: 12, y: 13 }, { x: 13, y: 13 }],
+      market: [{ x: 15, y: 17 }, { x: 16, y: 17 }, { x: 17, y: 16 }, { x: 18, y: 16 }],
+      well: [{ x: 7, y: 12 }, { x: 16, y: 16 }, { x: 17, y: 15 }, { x: 7, y: 11 }],
+      'house-2': [{ x: 16, y: 17 }, { x: 17, y: 16 }, { x: 18, y: 16 }, { x: 16, y: 18 }],
     },
-    decorations: [{ x: 4, y: 6 }, { x: 14, y: 5 }, { x: 5, y: 14 }, { x: 14, y: 14 }],
+    decorations: [{ x: 5, y: 8 }, { x: 19, y: 7 }, { x: 6, y: 19 }, { x: 19, y: 19 }, { x: 5, y: 14 }, { x: 19, y: 13 }],
   },
   {
-    castle: { x: 8, y: 8 },
-    house: { x: 13, y: 6 },
-    playerSpawn: { x: 6, y: 12 },
-    villageCenters: [{ x: 9, y: 10 }, { x: 8, y: 11 }, { x: 10, y: 9 }],
+    castle: { x: 11, y: 11 },
+    house: { x: 17, y: 8 },
+    playerSpawn: { x: 8, y: 16 },
+    villageCenters: [{ x: 12, y: 13 }, { x: 11, y: 14 }, { x: 13, y: 12 }],
     extraSlots: {
-      market: [{ x: 9, y: 13 }, { x: 8, y: 13 }, { x: 10, y: 13 }, { x: 13, y: 10 }],
-      well: [{ x: 9, y: 13 }, { x: 8, y: 13 }, { x: 10, y: 13 }, { x: 13, y: 10 }],
-      'house-2': [{ x: 9, y: 13 }, { x: 8, y: 13 }, { x: 10, y: 13 }, { x: 13, y: 10 }],
+      market: [{ x: 14, y: 18 }, { x: 15, y: 18 }, { x: 16, y: 17 }, { x: 18, y: 14 }],
+      well: [{ x: 7, y: 12 }, { x: 14, y: 17 }, { x: 16, y: 15 }, { x: 7, y: 13 }],
+      'house-2': [{ x: 15, y: 18 }, { x: 16, y: 17 }, { x: 18, y: 14 }, { x: 16, y: 18 }],
     },
-    decorations: [{ x: 4, y: 5 }, { x: 14, y: 6 }, { x: 6, y: 15 }, { x: 15, y: 13 }],
+    decorations: [{ x: 5, y: 7 }, { x: 19, y: 8 }, { x: 7, y: 20 }, { x: 20, y: 17 }, { x: 5, y: 15 }, { x: 19, y: 12 }],
   },
   {
-    castle: { x: 10, y: 10 },
-    house: { x: 6, y: 6 },
-    playerSpawn: { x: 13, y: 13 },
-    villageCenters: [{ x: 9, y: 9 }, { x: 10, y: 8 }, { x: 8, y: 10 }],
+    castle: { x: 13, y: 13 },
+    house: { x: 7, y: 7 },
+    playerSpawn: { x: 17, y: 17 },
+    villageCenters: [{ x: 12, y: 12 }, { x: 13, y: 11 }, { x: 11, y: 13 }],
     extraSlots: {
-      market: [{ x: 5, y: 10 }, { x: 11, y: 6 }, { x: 5, y: 11 }, { x: 12, y: 6 }],
-      well: [{ x: 6, y: 10 }, { x: 11, y: 6 }, { x: 5, y: 10 }, { x: 6, y: 11 }],
-      'house-2': [{ x: 5, y: 10 }, { x: 11, y: 6 }, { x: 5, y: 11 }, { x: 12, y: 6 }],
+      market: [{ x: 6, y: 14 }, { x: 15, y: 7 }, { x: 6, y: 15 }, { x: 16, y: 7 }],
+      well: [{ x: 7, y: 13 }, { x: 15, y: 7 }, { x: 6, y: 13 }, { x: 7, y: 14 }],
+      'house-2': [{ x: 6, y: 14 }, { x: 15, y: 7 }, { x: 6, y: 15 }, { x: 16, y: 7 }],
     },
-    decorations: [{ x: 5, y: 5 }, { x: 14, y: 6 }, { x: 6, y: 14 }, { x: 14, y: 15 }],
+    decorations: [{ x: 5, y: 5 }, { x: 19, y: 8 }, { x: 7, y: 19 }, { x: 19, y: 20 }, { x: 5, y: 16 }, { x: 18, y: 14 }],
   },
 ];
 

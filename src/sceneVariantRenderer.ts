@@ -1,4 +1,3 @@
-import * as Phaser from 'phaser';
 import { WIDTH, HEIGHT } from './gameConfig';
 import {
   resolveSeasonalBuildingPresentation,
@@ -159,7 +158,7 @@ export function renderSceneVariantBackground(scene, config, bounds) {
     config.backgroundAssetKey,
     bounds.centerX,
     bounds.centerY - 24,
-    baseScale * 1.04 * (config.worldZoom ?? 1),
+    baseScale * 1.04 * (config.worldZoom ?? 1) * (config.scenicOverscan ?? 1),
     2,
     { alpha: 1 },
   );
@@ -174,7 +173,7 @@ export function renderSceneVariantFrame(scene, config, bounds) {
     config.exteriorFrameAssetKey,
     bounds.centerX,
     bounds.centerY - 20,
-    baseScale * 1.04 * (config.worldZoom ?? 1),
+    baseScale * 1.04 * (config.worldZoom ?? 1) * (config.scenicOverscan ?? 1),
     70,
     { alpha: 1 },
   );
@@ -192,7 +191,7 @@ export function renderSceneVariantForeground(scene, config, bounds) {
     config.foregroundFogAssetKey,
     bounds.centerX,
     bounds.centerY - 20,
-    baseScale * 1.04 * (config.worldZoom ?? 1),
+    baseScale * 1.04 * (config.worldZoom ?? 1) * (config.scenicOverscan ?? 1),
     4705,
     { alpha: config.key === 'night_spring' ? 0.9 : 0.72 },
   );
@@ -242,20 +241,16 @@ export function applySceneVariantAmbient(scene, config) {
 }
 
 export function updateCinematicParallax(scene) {
-  if (!scene.parallaxSprites?.length || !scene.player || !scene.generatedLevel) {
+  if (!scene.parallaxSprites?.length || !scene.worldCamera || !scene.cameraParallaxOrigin) {
     return;
   }
-  const { minX, minY, maxX, maxY } = scene.generatedLevel.playableBounds;
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const spanX = Math.max(1, (maxX - minX) / 2);
-  const spanY = Math.max(1, (maxY - minY) / 2);
-  const nx = Phaser.Math.Clamp((scene.player.iso.x - centerX) / spanX, -1, 1);
-  const ny = Phaser.Math.Clamp((scene.player.iso.y - centerY) / spanY, -1, 1);
+  const cameraCenter = scene.worldCamera.midPoint;
+  const travelX = cameraCenter.x - scene.cameraParallaxOrigin.x;
+  const travelY = cameraCenter.y - scene.cameraParallaxOrigin.y;
   scene.parallaxSprites.forEach((entry) => {
     entry.sprite.setPosition(
-      entry.baseX - nx * 46 * entry.factor,
-      entry.baseY - ny * 30 * entry.factor,
+      entry.baseX + travelX * entry.factor,
+      entry.baseY + travelY * entry.factor,
     );
   });
 }

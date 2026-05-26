@@ -122,6 +122,11 @@ const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
 const PLAYER_ESCAPE_PROBE_DISTANCE = 0.12;
 const PLAYER_ESCAPE_PROBE_STEPS = 5;
 const PLAYER_MOVEMENT_TRACE_LIMIT = 12;
+const GENERATED_CAMERA_FOLLOW_LERP = 0.075;
+const GENERATED_CAMERA_HORIZONTAL_PADDING_RATIO = 0.2;
+const GENERATED_CAMERA_VERTICAL_PADDING_RATIO = 0.18;
+const AMBIENT_MIN_SPAWN_INTERVAL = 150;
+const AMBIENT_BASE_SPAWN_INTERVAL = 360;
 
 class FairyGuildScene extends Phaser.Scene {
   [key: string]: any;
@@ -214,6 +219,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.autoSelectHero = false;
     this.preselectHero = false;
     this.parallaxSprites = [];
+    this.worldCamera = null;
+    this.uiCamera = null;
+    this.cameraParallaxOrigin = null;
+    this.ambientParticles = [];
+    this.ambientParticlePreset = null;
+    this.nextAmbientParticleAt = 0;
     this.audio = createAudioState();
   }
 
@@ -321,6 +332,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.setupMobileViewportHandlers();
     this.createCardProgression();
     this.createPhaseOverlays();
+    this.setupGeneratedWorldCamera();
     if (this.resumeRunState && this.resumeSkipSplash) {
       this.restoreRunStateFromResume();
       this.startLevelCountdown();
@@ -449,6 +461,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayOverride = null;
     this.sceneVariant = null;
     this.parallaxSprites = [];
+    this.worldCamera = null;
+    this.uiCamera = null;
+    this.cameraParallaxOrigin = null;
+    this.ambientParticles = [];
+    this.ambientParticlePreset = null;
+    this.nextAmbientParticleAt = 0;
   }
 
   update(time, delta) {
@@ -471,6 +489,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateDebugOverlay();
     this.updateGeneratedLevelDebug(time);
     this.updateCinematicParallax();
+    this.updateSeasonalAmbientEffects(time);
     this.syncDevDiagnostics();
     this.consumeDevCommand();
   }
@@ -559,6 +578,13 @@ class FairyGuildScene extends Phaser.Scene {
     const sceneVariant = this.sceneVariant ?? resolveSceneVariantFromParams(new URLSearchParams(window.location.search));
     this.sceneVariant = sceneVariant;
     const bg = this.add.graphics();
+    if (useGeneratedMap) {
+      bg.fillStyle(sceneVariant.scenicFallbackColor, 1);
+      bg.fillRect(-WIDTH, -HEIGHT, WIDTH * 3, HEIGHT * 3);
+      this.backgroundLayer.add(bg);
+      this.renderGeneratedScreenBackdropFill();
+      return;
+    }
     const topColor = useGeneratedMap ? 0xb2d9ec : 0x7fc8f4;
     const bottomColor = useGeneratedMap ? 0xe7f1ef : 0xd6f3ff;
     bg.fillGradientStyle(topColor, topColor, bottomColor, bottomColor, 1);
@@ -566,10 +592,6 @@ class FairyGuildScene extends Phaser.Scene {
     bg.fillStyle(sceneVariant.key === 'night_spring' ? 0x29345a : 0x67c176, useGeneratedMap ? 0.48 : 1);
     bg.fillEllipse(WIDTH / 2, 700, 1320, 316);
     this.backgroundLayer.add(bg);
-    if (useGeneratedMap) {
-      this.renderGeneratedScreenBackdropFill();
-      return;
-    }
     const board = this.add.image(WIDTH / 2, HEIGHT / 2, 'villageBoard')
       .setDisplaySize(WIDTH, HEIGHT)
       .setAlpha(0.88);
@@ -761,6 +783,115 @@ class FairyGuildScene extends Phaser.Scene {
 
   updateCinematicParallax() {
     updateCinematicParallax(this);
+  }
+
+  setupGeneratedWorldCamera() {
+    if (!this.generatedLevelActive || !this.generatedLevel || !this.player?.sprite) {
+      return;
+    }
+    const variant = this.getActiveSceneVariant();
+    const bounds = this.getGeneratedCameraBounds();
+    if (!bounds) {
+      return;
+    }
+    this.worldCamera = this.cameras.main;
+    this.worldCamera
+      .setBackgroundColor(variant.scenicFallbackColor)
+      .setZoom(variant.cameraZoom)
+      .setBounds(bounds.x, bounds.y, bounds.width, bounds.height)
+      .centerOn(this.player.sprite.x, this.player.sprite.y)
+      .startFollow(this.player.sprite, true, GENERATED_CAMERA_FOLLOW_LERP, GENERATED_CAMERA_FOLLOW_LERP);
+    this.worldCamera.ignore([this.hudLayer, this.touchLayer]);
+    this.cameraParallaxOrigin = { x: this.player.sprite.x, y: this.player.sprite.y };
+
+    this.uiCamera = this.cameras.add(0, 0, WIDTH, HEIGHT, false, 'ui-camera');
+    this.uiCamera.ignore([
+      this.backgroundLayer,
+      this.shadowLayer,
+      this.terrainBaseLayer,
+      this.edgeLayer,
+      this.waterLayer,
+      this.decorLayer,
+      this.buildingLayer,
+      this.characterLayer,
+      this.effectsLayer,
+      this.levelDebugLayer,
+      this.lightingLayer,
+    ]);
+  }
+
+  updateSeasonalAmbientEffects(time) {
+    if (!this.generatedLevelActive || !this.lightingLayer) {
+      return;
+    }
+    const ambient = this.getActiveSceneVariant().ambientEffect;
+    if (this.ambientParticlePreset !== ambient.preset) {
+      this.ambientParticles.forEach((particle) => particle.destroy());
+      this.ambientParticles = [];
+      this.ambientParticlePreset = ambient.preset;
+      this.nextAmbientParticleAt = 0;
+    }
+    if (this.state.phase !== 'playing' || time < this.nextAmbientParticleAt) {
+      return;
+    }
+    this.ambientParticles = this.ambientParticles.filter((particle) => particle.active);
+    if (this.ambientParticles.length < ambient.maxParticles) {
+      this.spawnSeasonalAmbientParticle(ambient.preset, ambient.intensity);
+    }
+    this.nextAmbientParticleAt = time + Math.max(
+      AMBIENT_MIN_SPAWN_INTERVAL,
+      AMBIENT_BASE_SPAWN_INTERVAL / ambient.intensity,
+    );
+  }
+
+  spawnSeasonalAmbientParticle(preset, intensity) {
+    const particle = this.add.graphics().setDepth(4708).setScrollFactor(0);
+    const startX = Phaser.Math.Between(-30, WIDTH + 30);
+    const startY = Phaser.Math.Between(-30, Math.floor(HEIGHT * 0.42));
+    const travel = { x: 0, y: HEIGHT * 0.7 };
+    let duration = Phaser.Math.Between(4600, 6700);
+    switch (preset) {
+      case 'summer_rain':
+        particle.lineStyle(2, 0xffedc7, 0.2 * intensity);
+        particle.lineBetween(0, 0, -9, 25);
+        travel.x = -110;
+        travel.y = HEIGHT * 0.85;
+        duration = Phaser.Math.Between(1600, 2400);
+        break;
+      case 'autumn_leaves':
+        particle.fillStyle(0xe69a54, 0.46 * intensity);
+        particle.fillEllipse(0, 0, 11, 6);
+        travel.x = Phaser.Math.Between(-68, 48);
+        travel.y = HEIGHT * 0.76;
+        break;
+      case 'winter_snow':
+        particle.fillStyle(0xffffff, 0.48 * intensity);
+        particle.fillCircle(0, 0, Phaser.Math.Between(2, 4));
+        travel.x = Phaser.Math.Between(-22, 22);
+        travel.y = HEIGHT * 0.64;
+        duration = Phaser.Math.Between(5900, 8400);
+        break;
+      case 'spring_petals':
+      default:
+        particle.fillStyle(0xf7c9e0, 0.5 * intensity);
+        particle.fillEllipse(0, 0, 10, 6);
+        travel.x = Phaser.Math.Between(-40, 56);
+        travel.y = HEIGHT * 0.72;
+        break;
+    }
+    particle.setPosition(startX, startY);
+    this.lightingLayer.add(particle);
+    this.ambientParticles.push(particle);
+    this.tweens.add({
+      targets: particle,
+      x: startX + travel.x,
+      y: startY + travel.y,
+      rotation: Phaser.Math.FloatBetween(-1.5, 1.5),
+      alpha: 0,
+      duration,
+      ease: 'Sine.easeInOut',
+      onComplete: () => particle.destroy(),
+    });
   }
 
   getCurrentWorldTheme() {
@@ -1275,6 +1406,25 @@ class FairyGuildScene extends Phaser.Scene {
     };
   }
 
+  getGeneratedCameraBounds() {
+    const { tileW, tileH } = this.getIsoMetrics();
+    const board = this.getGeneratedWorldBounds(tileW, tileH);
+    if (!board) {
+      return null;
+    }
+    const zoom = this.getActiveSceneVariant().cameraZoom;
+    const visibleWidth = WIDTH / zoom;
+    const visibleHeight = HEIGHT / zoom;
+    const horizontalPadding = visibleWidth * GENERATED_CAMERA_HORIZONTAL_PADDING_RATIO;
+    const verticalPadding = visibleHeight * GENERATED_CAMERA_VERTICAL_PADDING_RATIO;
+    return new Phaser.Geom.Rectangle(
+      board.left.x - horizontalPadding,
+      board.top.y - verticalPadding,
+      Math.max(visibleWidth, board.right.x - board.left.x + horizontalPadding * 2),
+      Math.max(visibleHeight, board.bottom.y - board.top.y + verticalPadding * 2),
+    );
+  }
+
   renderGeneratedWorldFog(bounds, tileW, tileH, texture) {
     const fogDepth = 8;
     getWorldFogPieces(bounds, tileW, tileH).forEach((piece) => {
@@ -1698,7 +1848,11 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updatePointerIso() {
-    this.lastPointerIso = this.clampIso(this.screenToIso(this.input.activePointer.x, this.input.activePointer.y), 0.1);
+    const pointer = this.input.activePointer;
+    const worldPoint = this.generatedLevelActive && this.worldCamera
+      ? this.worldCamera.getWorldPoint(pointer.x, pointer.y)
+      : { x: pointer.x, y: pointer.y };
+    this.lastPointerIso = this.clampIso(this.screenToIso(worldPoint.x, worldPoint.y), 0.1);
   }
 
   isPlayerFootprintWalkable(point) {
