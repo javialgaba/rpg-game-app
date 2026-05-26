@@ -1,5 +1,7 @@
 import type { EnemyVisualResult } from './gameTypes';
 import {
+  BOSS_LEVEL_SCALING,
+  ENEMY_LEVEL_SCALING,
   ENEMY_ARCHETYPES,
   ENEMY_VARIANTS,
 } from './gameConfig';
@@ -116,10 +118,24 @@ export function calculateEnemyStats(
   isEliteVisual: boolean,
 ): EnemyStats {
   const levelBonus = calculateLevelBonus(level);
-  const size = (archetype.size + Math.min(levelBonus, 6) * 1.4) * variant.scale;
-  const maxHp = Math.max(1, Math.round((archetype.hp + Math.floor(levelBonus / 2)) * variant.hp));
-  const speed = Math.min(1.72, (archetype.speed + levelBonus * 0.035) * variant.speed);
-  const buildingDamage = Math.max(1, Math.round((archetype.buildingDamage + Math.floor(levelBonus / 3)) * variant.buildingDamage));
+  const size = (
+    archetype.size + Math.min(levelBonus, ENEMY_LEVEL_SCALING.sizeLevelCap) * ENEMY_LEVEL_SCALING.sizePerLevel
+  ) * variant.scale;
+  const maxHp = Math.max(
+    1,
+    Math.round((archetype.hp + Math.floor(levelBonus / ENEMY_LEVEL_SCALING.hpLevelsPerBonus)) * variant.hp),
+  );
+  const speed = Math.min(
+    ENEMY_LEVEL_SCALING.maxSpeed,
+    (archetype.speed + levelBonus * ENEMY_LEVEL_SCALING.speedPerLevel) * variant.speed,
+  );
+  const buildingDamage = Math.max(
+    1,
+    Math.round(
+      (archetype.buildingDamage + Math.floor(levelBonus / ENEMY_LEVEL_SCALING.buildingDamageLevelsPerBonus))
+      * variant.buildingDamage,
+    ),
+  );
   const contactDamage = Math.max(1, Math.round(archetype.contactDamage * variant.contactDamage));
   const _displayScaleX = isEliteVisual ? eliteScaleX : 1;
   const _displayScaleY = isEliteVisual ? eliteScaleY : 1;
@@ -148,12 +164,18 @@ export function calculateBossStats(
   bossRewardGold: [number, number],
 ): BossStats {
   const levelBonus = calculateLevelBonus(level);
-  const cycleBonus = worldCycle * 0.18;
   return {
-    maxHp: Math.round(bossHp + levelBonus * 3 + worldIndex * 3 + worldCycle * 8),
-    size: bossSize + worldIndex * 3 + worldCycle * 4,
-    speed: bossSpeed + levelBonus * 0.018 + cycleBonus,
-    buildingDamage: bossBuildingDamage + Math.floor(levelBonus / 2) + worldCycle,
+    maxHp: Math.round(
+      bossHp
+      + levelBonus * BOSS_LEVEL_SCALING.hpPerLevel
+      + worldIndex * BOSS_LEVEL_SCALING.hpPerWorld
+      + worldCycle * BOSS_LEVEL_SCALING.hpPerCycle,
+    ),
+    size: bossSize + worldIndex * BOSS_LEVEL_SCALING.sizePerWorld + worldCycle * BOSS_LEVEL_SCALING.sizePerCycle,
+    speed: bossSpeed + levelBonus * BOSS_LEVEL_SCALING.speedPerLevel + worldCycle * BOSS_LEVEL_SCALING.speedPerCycle,
+    buildingDamage: bossBuildingDamage
+      + Math.floor(levelBonus / BOSS_LEVEL_SCALING.buildingDamageLevelsPerBonus)
+      + worldCycle * BOSS_LEVEL_SCALING.buildingDamagePerCycle,
     contactDamage: bossContactDamage,
     rewardGold: [
       bossRewardGold[0] + worldCycle * 4 + worldIndex * 2,

@@ -1,5 +1,5 @@
-import * as Phaser from 'phaser';
 import { WIDTH, HEIGHT } from './gameConfig';
+import type { AuthoredTerrainRole, GeneratedGate, GeneratedLevel } from './levels/levelTypes';
 import {
   resolveSeasonalBuildingPresentation,
   selectSeasonalFrame,
@@ -11,6 +11,90 @@ const SEASONAL_TERRAIN_ATLAS = 'sceneVariantTerrainAtlas';
 const SEASONAL_PROPS_ATLAS = 'sceneVariantPropsAtlas';
 const SEASONAL_BUILDINGS_ATLAS = 'sceneVariantBuildingsAtlas';
 const BUILDING_ROLES = new Set<SeasonalBuildingRole>(['castle', 'house-1', 'house-2', 'market', 'well']);
+const GATE_SIGHTLINE_CELL_WIDTH_RATIO = 0.9;
+const GATE_SIGHTLINE_CELL_HEIGHT_RATIO = 1.8;
+const AUTHORED_TERRAIN_FRAME_SUFFIX = {
+  grass: 'grass_01',
+  flower_grass: 'grass_03',
+  stone_road: 'path_01',
+  plaza: 'plaza_01',
+  forest_floor: 'grass_02',
+  gate_road: 'path_01',
+} as const;
+const AUTHORED_PROP_FRAME_SUFFIX = {
+  tree_broadleaf: 'broadleaf_01',
+  tree_conifer: 'conifer_01',
+  rock_large: 'rocks_large_01',
+  pond: 'pond_01',
+  bush: 'bush_01',
+  flowers: 'flowers_01',
+  grass_tuft: 'grass_tuft_01',
+  magic_patch: 'magic_patch_01',
+  lamp: 'lamp_01',
+  fence: 'fence_01',
+  sign: 'sign_01',
+} as const;
+const GATE_FRAME_DIRECTION: Record<GeneratedGate['direction'], 'n' | 'e' | 's' | 'w'> = {
+  north: 'n',
+  east: 'e',
+  south: 's',
+  west: 'w',
+};
+
+export type ScenicApronTerrainReason = 'authored-map' | 'gate-road' | 'forest-buffer';
+
+export interface ScenicApronTerrainResolution {
+  terrainRole: AuthoredTerrainRole;
+  reason: ScenicApronTerrainReason;
+}
+
+const isInsideGeneratedLevel = (x: number, y: number, level: Pick<GeneratedLevel, 'width' | 'height'>) => (
+  x >= 0 && y >= 0 && x < level.width && y < level.height
+);
+
+const isGateRoadApronCell = (
+  x: number,
+  y: number,
+  level: Pick<GeneratedLevel, 'width' | 'height' | 'gates'>,
+) => level.gates.some((gate) => {
+  if (gate.direction === 'north') {
+    return y < 0 && Math.abs(x - gate.threshold.x) <= 1;
+  }
+  if (gate.direction === 'south') {
+    return y >= level.height && Math.abs(x - gate.threshold.x) <= 1;
+  }
+  if (gate.direction === 'west') {
+    return x < 0 && Math.abs(y - gate.threshold.y) <= 1;
+  }
+  return x >= level.width && Math.abs(y - gate.threshold.y) <= 1;
+});
+
+export function resolveScenicApronTerrainRole(
+  x: number,
+  y: number,
+  level: Pick<GeneratedLevel, 'width' | 'height' | 'gates' | 'config'>,
+): ScenicApronTerrainResolution {
+  if (isInsideGeneratedLevel(x, y, level)) {
+    return {
+      terrainRole: level.config.authoredMap?.cells[y]?.[x]?.terrain ?? 'grass',
+      reason: 'authored-map',
+    };
+  }
+  if (isGateRoadApronCell(x, y, level)) {
+    return {
+      terrainRole: 'gate_road',
+      reason: 'gate-road',
+    };
+  }
+  return {
+    terrainRole: 'forest_floor',
+    reason: 'forest-buffer',
+  };
+}
+
+export function getSceneVariantTerrainFrameKey(visualTheme: string, terrainRole: AuthoredTerrainRole) {
+  return `${visualTheme}_${AUTHORED_TERRAIN_FRAME_SUFFIX[terrainRole]}`;
+}
 
 const getSelectionKey = (scene, placement, group: string) => {
   const variant = scene.getActiveSceneVariant();
@@ -30,6 +114,12 @@ const getPropTexture = (scene, placement, group: SeasonalPropGroup) => {
 
 export function getSceneVariantTerrainTexture(scene, placement) {
   const variant = scene.getActiveSceneVariant();
+  if (placement.authoredTerrainRole) {
+    return {
+      textureKey: SEASONAL_TERRAIN_ATLAS,
+      frameKey: getSceneVariantTerrainFrameKey(variant.visualTheme, placement.authoredTerrainRole),
+    };
+  }
   const token = placement.token;
   const palette = token === 'path'
     ? variant.tilePalette.path
@@ -63,6 +153,15 @@ export function getSceneVariantPropTexture(scene, placement) {
   if (placement.token === 'well') {
     return getSceneVariantBuildingTexture(scene, placement);
   }
+  const authoredFrame = placement.authoredObjectRole
+    ? AUTHORED_PROP_FRAME_SUFFIX[placement.authoredObjectRole]
+    : undefined;
+  if (authoredFrame) {
+    return {
+      textureKey: SEASONAL_PROPS_ATLAS,
+      frameKey: `${scene.getActiveSceneVariant().visualTheme}_${authoredFrame}`,
+    };
+  }
   if (placement.token === 'tree') {
     return getPropTexture(scene, placement, 'trees');
   }
@@ -82,6 +181,15 @@ export function getSceneVariantPropTexture(scene, placement) {
 }
 
 export function getSceneVariantDecorationTexture(scene, placement) {
+  const authoredFrame = placement.authoredObjectRole
+    ? AUTHORED_PROP_FRAME_SUFFIX[placement.authoredObjectRole]
+    : undefined;
+  if (authoredFrame) {
+    return {
+      textureKey: SEASONAL_PROPS_ATLAS,
+      frameKey: `${scene.getActiveSceneVariant().visualTheme}_${authoredFrame}`,
+    };
+  }
   switch (placement.decorationKind) {
     case 'flowers':
       return getPropTexture(scene, placement, 'flowers');
@@ -111,6 +219,46 @@ export function getSceneVariantDecorationTexture(scene, placement) {
     default:
       return null;
   }
+}
+
+export function renderSceneVariantGate(scene, gate: GeneratedGate) {
+  if (!scene.textures.exists(SEASONAL_PROPS_ATLAS)) {
+    return;
+  }
+  const variant = scene.getActiveSceneVariant();
+  const frameKey = getSceneVariantGateFrameKey(variant.visualTheme, gate.direction);
+  const texture = scene.textures.get(SEASONAL_PROPS_ATLAS);
+  if (!texture.has(frameKey)) {
+    return;
+  }
+  const p = scene.isoToScreen(gate.threshold.x, gate.threshold.y, 4);
+  const size = scene.scaleGeneratedSize([224, 224]);
+  const sprite = scene.add.image(p.x, p.y, SEASONAL_PROPS_ATLAS, frameKey)
+    .setOrigin(0.5, 0.84)
+    .setDisplaySize(size[0], size[1])
+    .setDepth(p.y + 18);
+  scene.decorLayer.add(sprite);
+}
+
+export function getSceneVariantGateFrameKey(visualTheme: string, direction: GeneratedGate['direction']) {
+  return `${visualTheme}_gate_${GATE_FRAME_DIRECTION[direction]}_01`;
+}
+
+export function spriteIntersectsGateSightline(scene, sprite) {
+  if (!scene.generatedLevel?.gates?.length || !sprite) {
+    return false;
+  }
+  const spriteBounds = sprite.getBounds();
+  const { tileW, tileH } = scene.getIsoMetrics();
+  const halfWidth = tileW * GATE_SIGHTLINE_CELL_WIDTH_RATIO * 0.5;
+  const halfHeight = tileH * GATE_SIGHTLINE_CELL_HEIGHT_RATIO * 0.5;
+  return scene.generatedLevel.gates.some((gate) => gate.sightlineCells.some((cell) => {
+    const point = scene.isoToScreen(cell.x, cell.y);
+    return spriteBounds.left < point.x + halfWidth
+      && spriteBounds.right > point.x - halfWidth
+      && spriteBounds.top < point.y + halfHeight
+      && spriteBounds.bottom > point.y - halfHeight;
+  }));
 }
 
 export function addSceneVariantImage(
@@ -159,7 +307,7 @@ export function renderSceneVariantBackground(scene, config, bounds) {
     config.backgroundAssetKey,
     bounds.centerX,
     bounds.centerY - 24,
-    baseScale * 1.04 * (config.worldZoom ?? 1),
+    baseScale * 1.04 * (config.worldZoom ?? 1) * (config.scenicOverscan ?? 1),
     2,
     { alpha: 1 },
   );
@@ -174,7 +322,7 @@ export function renderSceneVariantFrame(scene, config, bounds) {
     config.exteriorFrameAssetKey,
     bounds.centerX,
     bounds.centerY - 20,
-    baseScale * 1.04 * (config.worldZoom ?? 1),
+    baseScale * 1.04 * (config.worldZoom ?? 1) * (config.scenicOverscan ?? 1),
     70,
     { alpha: 1 },
   );
@@ -192,7 +340,7 @@ export function renderSceneVariantForeground(scene, config, bounds) {
     config.foregroundFogAssetKey,
     bounds.centerX,
     bounds.centerY - 20,
-    baseScale * 1.04 * (config.worldZoom ?? 1),
+    baseScale * 1.04 * (config.worldZoom ?? 1) * (config.scenicOverscan ?? 1),
     4705,
     { alpha: config.key === 'night_spring' ? 0.9 : 0.72 },
   );
@@ -217,6 +365,10 @@ export function renderSceneVariantOverlapDecor(scene, config, bounds, tileW, til
       .setScale(anchor.scale * atlasScale)
       .setDepth(bounds.centerY + anchor.depthBias)
       .setAlpha(anchor.alpha ?? 1);
+    if (anchor.group !== 'flowers' && spriteIntersectsGateSightline(scene, sprite)) {
+      sprite.destroy();
+      return;
+    }
     scene.edgeLayer.add(sprite);
     if (anchor.occludesPlayer) {
       scene.registerPlayerOccluder({
@@ -242,20 +394,16 @@ export function applySceneVariantAmbient(scene, config) {
 }
 
 export function updateCinematicParallax(scene) {
-  if (!scene.parallaxSprites?.length || !scene.player || !scene.generatedLevel) {
+  if (!scene.parallaxSprites?.length || !scene.worldCamera || !scene.cameraParallaxOrigin) {
     return;
   }
-  const { minX, minY, maxX, maxY } = scene.generatedLevel.playableBounds;
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const spanX = Math.max(1, (maxX - minX) / 2);
-  const spanY = Math.max(1, (maxY - minY) / 2);
-  const nx = Phaser.Math.Clamp((scene.player.iso.x - centerX) / spanX, -1, 1);
-  const ny = Phaser.Math.Clamp((scene.player.iso.y - centerY) / spanY, -1, 1);
+  const cameraCenter = scene.worldCamera.midPoint;
+  const travelX = cameraCenter.x - scene.cameraParallaxOrigin.x;
+  const travelY = cameraCenter.y - scene.cameraParallaxOrigin.y;
   scene.parallaxSprites.forEach((entry) => {
     entry.sprite.setPosition(
-      entry.baseX - nx * 46 * entry.factor,
-      entry.baseY - ny * 30 * entry.factor,
+      entry.baseX + travelX * entry.factor,
+      entry.baseY + travelY * entry.factor,
     );
   });
 }

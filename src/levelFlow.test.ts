@@ -17,13 +17,13 @@ describe('wave scheduling', () => {
   });
 
   it('uses the budgeted level-one Sproutling wave', () => {
-    expect(calculateSpawnCount(1, false, 'warrior')).toBe(6);
-    expect(calculateSpawnCount(1, false, 'archer')).toBe(6);
+    expect(calculateSpawnCount(1, false, 'warrior')).toBe(5);
+    expect(calculateSpawnCount(1, false, 'archer')).toBe(5);
   });
 
   it('maintains a minimum spawn interval', () => {
     expect(calculateSpawnInterval(5)).toBeLessThan(calculateSpawnInterval(1));
-    expect(calculateSpawnInterval(50)).toBeGreaterThanOrEqual(300);
+    expect(calculateSpawnInterval(50)).toBe(380);
   });
 });
 
@@ -52,10 +52,11 @@ describe('world flow', () => {
     const next = getNextWorldProgressionState(0, 4, 0);
     const snapshot = createRunResumeSnapshot({}, state, 'archer', { swiftBoots: 1 }, next, 'Summer rises.', [
       { id: 'bakery', name: 'Bakery', hp: 32, max: 115 },
-    ]);
+    ], 'village-crossroads-02');
     expect(snapshot.heroClass).toBe('archer');
     expect(snapshot.cardTiers.swiftBoots).toBe(1);
     expect(snapshot.buildings[0]).toEqual({ id: 'bakery', name: 'Bakery', hp: 32, max: 115 });
+    expect(snapshot.authoredMapId).toBe('village-crossroads-02');
   });
 });
 

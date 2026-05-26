@@ -13,6 +13,8 @@ const validateOnly = process.argv.includes('--validate-only');
 const ALPHA_THRESHOLD = 8;
 const EDGE_GUARD_PX = 2;
 const CHROMA_FRINGE_DISTANCE = 28;
+const TERRAIN_FLAT_RATIO_MIN = 1.75;
+const TERRAIN_FLAT_RATIO_MAX = 2.15;
 
 const WINTER_SOURCE_MAP = {
   'winter-grass-source.png': { output: 'winter-grass-01.png', mode: 'diamondTile' },
@@ -38,6 +40,11 @@ const PROP_NAMES = [
   'fence_01',
   'sign_01',
 ];
+const LEGACY_GATE_SOURCE_INDEXES = {
+  gate_n_01: 0,
+  gate_e_01: 2,
+  gate_s_01: 3,
+};
 const BUILDING_NAMES = [
   'castle_01',
   'cottage_01',
@@ -62,13 +69,47 @@ const createSheetFrames = (sheetName, columns, rows, names, padding, align) => (
   })))
 );
 
+const createTerrainFrames = () => VISUAL_THEMES.flatMap((theme) => TERRAIN_NAMES.map((name) => ({
+  name: `${theme}_${name}`,
+  source: path.join(SOURCES_DIR, theme, 'terrain', `${name}.png`),
+  columns: 1,
+  rows: 1,
+  index: 0,
+  padding: 8,
+  align: 'center',
+  preprocessed: true,
+  terrain: true,
+})));
+
+const createGateFrames = () => VISUAL_THEMES.flatMap((theme) => [
+  ...Object.entries(LEGACY_GATE_SOURCE_INDEXES).map(([name, index]) => ({
+    name: `${theme}_${name}`,
+    source: path.join(SOURCES_DIR, theme, 'gates-source.png'),
+    columns: 2,
+    rows: 2,
+    index,
+    padding: 20,
+    align: 'bottom',
+  })),
+  {
+    name: `${theme}_gate_w_01`,
+    source: path.join(SOURCES_DIR, theme, 'gate-w-source.png'),
+    columns: 1,
+    rows: 1,
+    index: 0,
+    padding: 20,
+    align: 'bottom',
+  },
+]);
+
 const SEASONAL_ATLASES = {
   terrain: {
     outputImage: path.join(OUTPUT_DIR, 'scene_variant_terrain_atlas.png'),
     outputJson: path.join(OUTPUT_DIR, 'scene_variant_terrain_atlas.json'),
     cellSize: 256,
     columns: 8,
-    frames: createSheetFrames('terrain', 3, 2, TERRAIN_NAMES, 8, 'center'),
+    terrain: true,
+    frames: createTerrainFrames(),
   },
   props: {
     outputImage: path.join(OUTPUT_DIR, 'scene_variant_props_atlas.png'),
@@ -78,6 +119,7 @@ const SEASONAL_ATLASES = {
     frames: [
       ...createSheetFrames('trees', 3, 2, TREE_NAMES, 16, 'bottom'),
       ...createSheetFrames('props', 4, 3, PROP_NAMES, 16, 'bottom'),
+      ...createGateFrames(),
     ],
   },
   buildings: {
@@ -107,11 +149,11 @@ const resizeCover = (input) => (
 const createPlayableCutoutSvg = () => {
   const { width, height } = SCENE_SIZE;
   const cx = width / 2;
-  const cy = height / 2 + 24;
-  const top = `${cx},${height * 0.305}`;
-  const right = `${width * 0.732},${cy}`;
-  const bottom = `${cx},${height * 0.775}`;
-  const left = `${width * 0.268},${cy}`;
+  const cy = height / 2;
+  const top = `${cx},${height * 0.055}`;
+  const right = `${width * 0.97},${cy}`;
+  const bottom = `${cx},${height * 0.955}`;
+  const left = `${width * 0.03},${cy}`;
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <polygon points="${top} ${right} ${bottom} ${left}" fill="white"/>
@@ -272,10 +314,29 @@ const readKeyedSource = async (sourcePath) => {
   return keyedSourceCache.get(sourcePath);
 };
 
+const getFrameSource = async (frame) => {
+  await fs.access(frame.source);
+  return {
+    source: frame.source,
+    columns: frame.columns,
+    rows: frame.rows,
+    index: frame.index,
+    preprocessed: frame.preprocessed,
+  };
+};
+
+const readFrameSource = async (frameSource) => {
+  if (frameSource.preprocessed) {
+    return fs.readFile(frameSource.source);
+  }
+  return readKeyedSource(frameSource.source);
+};
+
 const prepareSeasonalFrame = async (frame, cellSize) => {
-  const sourceBuffer = await readKeyedSource(frame.source);
+  const frameSource = await getFrameSource(frame);
+  const sourceBuffer = await readFrameSource(frameSource);
   const metadata = await sharp(sourceBuffer).metadata();
-  const crop = getGridCrop(metadata, frame.columns, frame.rows, frame.index);
+  const crop = getGridCrop(metadata, frameSource.columns, frameSource.rows, frameSource.index);
   const rawCropBuffer = await sharp(sourceBuffer).extract(crop).png().toBuffer();
   const cropBuffer = await keepPrimaryComponent(rawCropBuffer);
   const bounds = await getAlphaBounds(cropBuffer);
@@ -372,6 +433,10 @@ const validateSeasonalAtlas = async (name, atlas) => {
       .raw()
       .toBuffer({ resolveWithObject: true });
     let visiblePixels = 0;
+    let minX = info.width;
+    let minY = info.height;
+    let maxX = -1;
+    let maxY = -1;
     for (let y = 0; y < info.height; y += 1) {
       for (let x = 0; x < info.width; x += 1) {
         const index = (y * info.width + x) * info.channels;
@@ -380,6 +445,10 @@ const validateSeasonalAtlas = async (name, atlas) => {
           continue;
         }
         visiblePixels += 1;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
         const chromaDistance = Math.hypot(
           data[index] - CHROMA_KEY.r,
           data[index + 1] - CHROMA_KEY.g,
@@ -403,6 +472,13 @@ const validateSeasonalAtlas = async (name, atlas) => {
     }
     if (visiblePixels === 0) {
       errors.push(`${frameName} is empty.`);
+    } else if (atlas.terrain) {
+      const visibleWidth = maxX - minX + 1;
+      const visibleHeight = maxY - minY + 1;
+      const ratio = visibleWidth / visibleHeight;
+      if (ratio < TERRAIN_FLAT_RATIO_MIN || ratio > TERRAIN_FLAT_RATIO_MAX) {
+        errors.push(`${frameName} is ${visibleWidth}x${visibleHeight}; expected a flat 2:1 diamond.`);
+      }
     }
   }
   if (errors.length > 0) {

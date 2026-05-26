@@ -11,7 +11,7 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  background: #7fcaf3;
+  background: #a6c993;
   color: #22324a;
   font-family:
     Inter, ui-rounded, "SF Pro Rounded", system-ui, -apple-system, BlinkMacSystemFont,
@@ -26,6 +26,9 @@ body {
 }
 
 #game {
+  --game-backdrop-color: #a6c993;
+  --game-backdrop-image: url("/assets/scene-variants/day_spring-bg.png");
+  --game-frame-image: url("/assets/scene-variants/day_spring-frame.png");
   position: fixed;
   top: env(safe-area-inset-top, 0);
   right: env(safe-area-inset-right, 0);
@@ -39,9 +42,37 @@ body {
   user-select: none;
   -webkit-user-select: none;
   isolation: isolate;
+  background: var(--game-backdrop-color);
+}
+
+body:not(.map-editor-route) #game::before,
+body:not(.map-editor-route) #game::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+body:not(.map-editor-route) #game::before {
+  background-color: var(--game-backdrop-color);
+  background-image: var(--game-backdrop-image);
+  filter: saturate(1.03);
+  transform: scale(1.04);
+}
+
+body:not(.map-editor-route) #game::after {
+  z-index: -1;
+  background-image: var(--game-frame-image);
+  opacity: 0.95;
 }
 
 canvas {
+  position: relative;
+  z-index: 1;
   display: block;
   max-width: 100%;
   max-height: 100%;
@@ -49,4 +80,198 @@ canvas {
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+body.map-editor-route {
+  background: #6faed0;
+}
+
+body.map-editor-route #game {
+  background: #6faed0;
+}
+
+.map-editor-ui {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  color: #213044;
+  font-family:
+    Inter, ui-rounded, "SF Pro Rounded", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.map-editor-panel {
+  position: absolute;
+  pointer-events: auto;
+  border: 1px solid rgba(30, 48, 68, 0.16);
+  border-radius: 8px;
+  background: rgba(250, 252, 247, 0.94);
+  box-shadow: 0 14px 36px rgba(31, 43, 55, 0.18);
+  backdrop-filter: blur(8px);
+}
+
+.map-editor-topbar {
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.map-editor-sidebar {
+  top: 76px;
+  left: 14px;
+  width: min(330px, calc(100vw - 28px));
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.map-editor-topbar strong {
+  margin-right: 8px;
+  font-size: 15px;
+}
+
+.map-editor-ui button,
+.map-editor-ui select,
+.map-editor-ui textarea,
+.map-editor-ui input {
+  font: inherit;
+}
+
+.map-editor-ui button,
+.map-editor-ui select {
+  min-height: 34px;
+  border: 1px solid rgba(34, 48, 68, 0.2);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #213044;
+}
+
+.map-editor-ui button {
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.map-editor-ui button:hover:not(:disabled),
+.map-editor-ui button.is-active {
+  border-color: rgba(45, 111, 103, 0.72);
+  background: #e8f4ee;
+}
+
+.map-editor-ui button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.map-editor-palette {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.map-editor-palette button {
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+}
+
+.map-editor-palette button:active {
+  cursor: grabbing;
+}
+
+.map-editor-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  max-width: 180px;
+  padding: 7px 10px;
+  border: 1px solid rgba(45, 111, 103, 0.42);
+  border-radius: 7px;
+  pointer-events: none;
+  background: rgba(250, 252, 247, 0.96);
+  box-shadow: 0 10px 28px rgba(31, 43, 55, 0.2);
+  color: #213044;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  transform: translate(-9999px, -9999px);
+}
+
+body.map-editor-dragging,
+body.map-editor-dragging * {
+  cursor: grabbing;
+}
+
+.map-editor-import {
+  display: grid;
+  gap: 8px;
+}
+
+.map-editor-csv {
+  width: 100%;
+  min-height: 136px;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid rgba(34, 48, 68, 0.2);
+  border-radius: 7px;
+  padding: 8px;
+  color: #1e2d3f;
+  background: #fbfcf7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.map-editor-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.map-editor-status,
+.map-editor-validation,
+.map-editor-muted {
+  margin: 0;
+  border-radius: 7px;
+  padding: 8px;
+  background: rgba(80, 129, 177, 0.1);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.map-editor-validation {
+  background: rgba(180, 67, 57, 0.11);
+  color: #6e2b26;
+}
+
+.map-editor-validation.is-valid {
+  background: rgba(51, 133, 92, 0.12);
+  color: #24583e;
+}
+
+.map-editor-validation p {
+  margin: 6px 0 0;
+}
+
+@media (max-width: 760px) {
+  .map-editor-topbar {
+    flex-wrap: wrap;
+  }
+
+  .map-editor-sidebar {
+    top: 126px;
+  }
 }

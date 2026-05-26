@@ -14,6 +14,12 @@ const DEBUG_COLORS = {
   route: 0x60ffb2,
   occluder: 0xffbc42,
   activeOccluder: 0xfff15c,
+  scenicBoundary: 0x377c51,
+  gateAvenue: 0xd6a14f,
+  gateSightline: 0x86e8c6,
+  gateStructure: 0xffb340,
+  approachingEnemy: 0xff9b45,
+  cameraCoverage: 0xa56dff,
 };
 
 function getIsoMetrics(scene) {
@@ -60,19 +66,6 @@ function addDebugLabel(scene, cell, text, color) {
   }).setOrigin(0.5, 1).setDepth(1);
   scene.levelDebugLabels.push(label);
   scene.levelDebugLayer.add(label);
-}
-
-function labelForDecoration(decoration) {
-  if (decoration.decorationKind === 'puddle') {
-    return 'POND';
-  }
-  if (decoration.decorationKind === 'treeCluster' || decoration.decorationKind === 'fullTree' || decoration.decorationKind === 'sapling') {
-    return 'TREE';
-  }
-  if (decoration.decorationKind === 'rocks') {
-    return 'ROCK';
-  }
-  return String(decoration.decorationKind ?? 'DECOR').toUpperCase().slice(0, 6);
 }
 
 function getDecorationDebugColor(kind) {
@@ -137,9 +130,19 @@ export function drawGeneratedLevelDebug(scene) {
   const gfx = scene.add.graphics().setDepth(0);
   scene.levelDebugGraphics = gfx;
   const { tileW, tileH } = getIsoMetrics(scene);
+  const scenicBoundaryKeys = new Set(scene.generatedLevel.scenicTerrain.map((placement) => (
+    `${placement.grid.x},${placement.grid.y}`
+  )));
+  const gateAvenueKeys = new Set(scene.generatedLevel.gates
+    .flatMap((gate) => gate.roadCells)
+    .map((cell) => `${cell.x},${cell.y}`));
+  const gateSightlineKeys = new Set(scene.generatedLevel.gates
+    .flatMap((gate) => gate.sightlineCells)
+    .map((cell) => `${cell.x},${cell.y}`));
   for (let y = 0; y < scene.generatedLevel.height; y += 1) {
     for (let x = 0; x < scene.generatedLevel.width; x += 1) {
       const center = isoToScreen(scene, x, y);
+      const key = `${x},${y}`;
       drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.grid, 0.035);
       if (scene.generatedLevel.roadGrid[y]?.[x]) {
         drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.road, 0.18);
@@ -147,11 +150,38 @@ export function drawGeneratedLevelDebug(scene) {
       if (scene.generatedLevel.playerReachableGrid[y]?.[x]) {
         drawDebugOutline(gfx, tileW, tileH, center, DEBUG_COLORS.clearance, 0.43);
       }
-      if (scene.generatedLevel.blockedGrid[y][x]) {
+      if (gateAvenueKeys.has(key)) {
+        drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.gateAvenue, 0.38);
+      } else if (gateSightlineKeys.has(key)) {
+        drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.gateSightline, 0.2);
+      } else if (scenicBoundaryKeys.has(key)) {
+        drawDebugDiamond(
+          gfx,
+          tileW,
+          tileH,
+          center,
+          DEBUG_COLORS.scenicBoundary,
+          0.24,
+        );
+      } else if (scene.generatedLevel.blockedGrid[y][x]) {
         drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.rawBlocked, 0.16);
       }
     }
   }
+  scene.generatedApronDebugCells?.forEach((cell) => {
+    const center = isoToScreen(scene, cell.x, cell.y);
+    drawDebugDiamond(
+      gfx,
+      tileW,
+      tileH,
+      center,
+      cell.reason === 'gate-road' ? DEBUG_COLORS.gateAvenue : DEBUG_COLORS.scenicBoundary,
+      cell.reason === 'gate-road' ? 0.3 : 0.16,
+    );
+    if (cell.hasProp) {
+      drawDebugOutline(gfx, tileW, tileH, center, DEBUG_COLORS.environment, 0.58);
+    }
+  });
   scene.generatedLevel.playerPocketCells.forEach((cell) => {
     drawDebugDiamond(gfx, tileW, tileH, isoToScreen(scene, cell.x, cell.y), DEBUG_COLORS.pocket, 0.5);
     addDebugLabel(scene, cell, 'POCKET', '#ff77ad');
@@ -162,9 +192,20 @@ export function drawGeneratedLevelDebug(scene) {
   const left = isoToScreen(scene, 0, (scene.generatedLevel.height - 1) / 2, -8);
   gfx.lineStyle(3, 0xffffff, 0.38);
   gfx.strokePoints([top, right, bottom, left, top], false, true);
+  const cameraBounds = scene.getGeneratedCameraBounds?.();
+  if (cameraBounds) {
+    gfx.lineStyle(2, DEBUG_COLORS.cameraCoverage, 0.45);
+    gfx.strokeRect(cameraBounds.x, cameraBounds.y, cameraBounds.width, cameraBounds.height);
+  }
   scene.generatedLevel.spawnPoints.forEach((spawn) => {
     const spawnCenter = isoToScreen(scene, spawn.x, spawn.y);
     drawDebugDiamond(gfx, tileW, tileH, spawnCenter, 0xc678ff, 0.38);
+  });
+  scene.generatedLevel.gates.forEach((gate) => {
+    drawDebugOutline(gfx, tileW, tileH, isoToScreen(scene, gate.threshold.x, gate.threshold.y), DEBUG_COLORS.gateStructure, 0.95);
+    addDebugLabel(scene, gate.threshold, `${gate.direction.toUpperCase()} GATE`, '#ffc766');
+    const entryCenter = isoToScreen(scene, gate.visualEntry.x, gate.visualEntry.y);
+    drawDebugDiamond(gfx, tileW, tileH, entryCenter, DEBUG_COLORS.gateStructure, 0.44);
   });
   if (scene.generatedLevel.playerSpawn) {
     const playerSpawnCenter = isoToScreen(scene, scene.generatedLevel.playerSpawn.x, scene.generatedLevel.playerSpawn.y);
@@ -187,8 +228,12 @@ export function drawGeneratedLevelDebug(scene) {
       placement.cells.forEach((cell) => {
         drawDebugDiamond(gfx, tileW, tileH, isoToScreen(scene, cell.x, cell.y), DEBUG_COLORS.solidProp, 0.32);
       });
-      addDebugLabel(scene, placement.grid, placement.label.toUpperCase().slice(0, 8), '#ffad68');
     });
+  scene.generatedLevel.scenicObjects.forEach((placement) => {
+    placement.cells.forEach((cell) => {
+      drawDebugOutline(gfx, tileW, tileH, isoToScreen(scene, cell.x, cell.y), DEBUG_COLORS.scenicBoundary, 0.58);
+    });
+  });
   scene.generatedLevel.decorations.forEach((decoration) => {
     const color = decoration.blocksMovement ? DEBUG_COLORS.blockingDecoration : DEBUG_COLORS.environment;
     decoration.cells.forEach((cell) => {
@@ -196,9 +241,6 @@ export function drawGeneratedLevelDebug(scene) {
       drawDebugDiamond(gfx, tileW, tileH, decoCenter, color, decoration.blocksMovement ? 0.4 : 0.25);
       drawDebugOutline(gfx, tileW, tileH, decoCenter, getDecorationDebugColor(decoration.decorationKind), 0.8);
     });
-    if (decoration.blocksMovement || decoration.decorationKind === 'puddle') {
-      addDebugLabel(scene, decoration.grid, labelForDecoration(decoration), decoration.blocksMovement ? '#ff8282' : '#8be9ff');
-    }
   });
   scene.playerOccluders?.forEach((occluder) => {
     occluder.footprintCells?.forEach((cell) => {
@@ -226,7 +268,14 @@ export function drawGeneratedLevelDebug(scene) {
     .forEach((enemy) => {
       drawDebugPath(scene, gfx, enemy.path, 0xff5cc6, 0.82);
       const enemyCenter = isoToScreen(scene, enemy.iso.x, enemy.iso.y);
-      drawDebugDiamond(gfx, tileW, tileH, enemyCenter, 0xff5cc6, 0.42);
+      drawDebugDiamond(
+        gfx,
+        tileW,
+        tileH,
+        enemyCenter,
+        enemy.entranceState === 'approaching' ? DEBUG_COLORS.approachingEnemy : 0xff5cc6,
+        0.42,
+      );
       if (enemy.target?.iso) {
         const targetCenter = isoToScreen(scene, enemy.target.iso.x, enemy.target.iso.y);
         drawDebugDiamond(gfx, tileW, tileH, targetCenter, 0xfff15c, 0.42);
@@ -268,38 +317,6 @@ export function drawGeneratedLevelDebug(scene) {
         gfx.fillCircle(rejected.x, rejected.y, 4);
       });
   }
-  const selectedMove = movementDebug?.movementResult?.selectedScreen;
-  const selectedLabel = selectedMove
-    ? `${selectedMove.x.toFixed(2)},${selectedMove.y.toFixed(2)}`
-    : 'none';
-  const movementLines = movementDebug ? [
-    `Hero footprint: ${movementDebug.footprintWalkable ? 'OPEN' : 'BLOCKED'}  recovery anchor: ${movementDebug.recoveryAnchor ? 'YES' : 'NO'}`,
-    `Sustained exits: ${movementDebug.escapeDirections.join(' / ') || 'NONE'}  dead end: ${movementDebug.runtimeDeadEnd ? 'YES' : 'NO'}`,
-    `Selected travel: ${selectedLabel}  rejected: ${movementDebug.rejectedReason ?? 'none'} (red dots)`,
-  ] : [];
-  const occlusionDebug = scene.getPlayerOcclusionDebugState?.();
-  const occlusionLines = occlusionDebug ? [
-    `Occluders: ${occlusionDebug.registered}  faded: ${occlusionDebug.activeLabels.join(', ') || 'none'}`,
-  ] : [];
-  const legend = scene.add.text(14, 92, [
-    'G COLLISION MAP',
-    'Yellow: building footprint  Orange: solid prop',
-    'Red: blocking decoration  Cyan: visual/non-blocking decor',
-    'Blue outline: player clearance  Pink: trapped pocket',
-    'Green: attack/route cells',
-    'Gold outline: hero occluder  Bright gold: currently faded',
-    ...movementLines,
-    ...occlusionLines,
-  ], {
-    color: '#ffffff',
-    fontFamily: 'Arial, sans-serif',
-    fontSize: '12px',
-    lineSpacing: 3,
-    backgroundColor: 'rgba(14, 23, 32, 0.82)',
-    padding: { x: 8, y: 7 },
-  }).setDepth(3);
-  scene.levelDebugLabels.push(legend);
-  scene.levelDebugLayer.add(legend);
   scene.levelDebugLayer.add(gfx);
 }
 

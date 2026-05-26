@@ -8,6 +8,7 @@ import {
   MAGIC_SHIELD,
   ARCHER_TRAP,
   SHIELD_GUARD,
+  WAVE_BUDGET_GROWTH_AFTER_TABLE,
   WAVE_BUDGETS,
   type CardDefinition,
   type CardKey,
@@ -129,7 +130,7 @@ export function getWaveBudget(level: number): number {
   if (level <= WAVE_BUDGETS.length) {
     return WAVE_BUDGETS[Math.max(0, level - 1)];
   }
-  return WAVE_BUDGETS[WAVE_BUDGETS.length - 1] + (level - WAVE_BUDGETS.length) * 6;
+  return WAVE_BUDGETS[WAVE_BUDGETS.length - 1] + (level - WAVE_BUDGETS.length) * WAVE_BUDGET_GROWTH_AFTER_TABLE;
 }
 
 export function getAvailableEnemyRoles(heroClass: HeroClass, level: number): EnemyRoleKey[] {

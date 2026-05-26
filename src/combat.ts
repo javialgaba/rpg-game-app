@@ -2,8 +2,10 @@ import * as Phaser from 'phaser';
 import type { SceneAPI } from './sceneAPI';
 import { ARCHER_TRAP } from './gameConfig';
 import { spawnSparkleBurst, spawnSpellBloom } from './effects';
-import { addProjectile, awardGold } from './projectiles';
+import { addProjectile, awardGold, awardHeart } from './projectiles';
 import { getSkillMilestoneConfig } from './progression';
+import { getHeartDropHealAmount } from './rewardDrops';
+import { getNearestCombatTarget } from './combatTargeting';
 
 function startProjectile(
   scene: SceneAPI,
@@ -45,12 +47,14 @@ export function useMainAttack(scene: SceneAPI, time: number, targetIso: { x: num
   scene.player.sprite.play(`${scene.player.animPrefix}-${scene.heroClass === 'warrior' ? 'melee' : 'special'}`, true);
   if (scene.heroClass === 'archer') {
     scene.playTone('bow');
-    startProjectile(scene, 'arrow', targetIso, 8.8);
+    const target = getNearestCombatTarget(scene.enemies, scene.player.iso, scene.playerStats.attackRange);
+    startProjectile(scene, 'arrow', target?.iso ?? targetIso, 8.8);
     return;
   }
   if (scene.heroClass === 'sorcerer') {
     scene.playTone('level');
-    startProjectile(scene, 'bolt', targetIso, 6.5, true);
+    const target = getNearestCombatTarget(scene.enemies, scene.player.iso, scene.playerStats.attackRange);
+    startProjectile(scene, 'bolt', target?.iso ?? targetIso, 6.5, true);
     return;
   }
   scene.playTone('sparkle');
@@ -61,6 +65,9 @@ export function useMainAttack(scene: SceneAPI, time: number, targetIso: { x: num
   const screen = scene.isoToScreen(center.x, center.y, 20);
   spawnSparkleBurst(scene, screen.x, screen.y, 0xfff0a2, 9, 0.75);
   scene.enemies.forEach((enemy: any) => {
+    if (enemy.entranceState === 'approaching') {
+      return;
+    }
     const distance = Phaser.Math.Distance.Between(center.x, center.y, enemy.iso.x, enemy.iso.y);
     const enemyVector = { x: enemy.iso.x - scene.player.iso.x, y: enemy.iso.y - scene.player.iso.y };
     const enemyLength = Math.max(0.01, Math.hypot(enemyVector.x, enemyVector.y));
@@ -86,6 +93,9 @@ export function useClassSkill(scene: SceneAPI, time: number) {
   if (scene.heroClass === 'warrior') {
     scene.guardUntil = time + config.duration;
     scene.enemies.forEach((enemy: any) => {
+      if (enemy.entranceState === 'approaching') {
+        return;
+      }
       const distance = Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, scene.player.iso.x, scene.player.iso.y);
       if (distance < 1.35) {
         const dx = enemy.iso.x - scene.player.iso.x;
@@ -132,6 +142,7 @@ export function updateClassEffects(scene: SceneAPI, time: number) {
       return false;
     }
     const victim = scene.enemies.find((enemy: any) => !enemy.defeated
+      && enemy.entranceState !== 'approaching'
       && Phaser.Math.Distance.Between(trap.iso.x, trap.iso.y, enemy.iso.x, enemy.iso.y) <= scene.getSkillConfig().radius);
     if (!victim) {
       return true;
@@ -147,7 +158,7 @@ export function updateClassEffects(scene: SceneAPI, time: number) {
 }
 
 export function damageEnemy(scene: SceneAPI, enemy: any, amount: number, reason: string) {
-  if (!scene.enemies.includes(enemy) || enemy.defeated) {
+  if (!scene.enemies.includes(enemy) || enemy.defeated || enemy.entranceState === 'approaching') {
     return;
   }
   let remaining = amount;
@@ -175,7 +186,7 @@ export function damageEnemy(scene: SceneAPI, enemy: any, amount: number, reason:
   spawnSparkleBurst(scene, enemy.sprite.x, enemy.sprite.y - 18, reason === 'bolt' ? 0x9be7ff : 0xffed95, 7, 0.56);
   if (reason === 'bolt') {
     scene.enemies.forEach((splashTarget: any) => {
-      if (splashTarget !== enemy && !splashTarget.defeated
+      if (splashTarget !== enemy && !splashTarget.defeated && splashTarget.entranceState !== 'approaching'
         && Phaser.Math.Distance.Between(enemy.iso.x, enemy.iso.y, splashTarget.iso.x, splashTarget.iso.y) <= 0.65) {
         damageEnemy(scene, splashTarget, 1, 'splash');
       }
@@ -198,8 +209,22 @@ export function damageEnemy(scene: SceneAPI, enemy: any, amount: number, reason:
   enemy.speed += 0.55;
   const amountGold = Phaser.Math.Between(enemy.rewardGold[0], enemy.rewardGold[1]);
   awardGold(scene, enemy.iso.x, enemy.iso.y, amountGold);
+  scene.heartDropDefeatStreak = (scene.heartDropDefeatStreak ?? 0) + 1;
+  const heartHeal = getHeartDropHealAmount({
+    currentHealth: scene.state.health,
+    maxHealth: scene.playerStats.maxHealth,
+    defeatedSinceLastHeart: scene.heartDropDefeatStreak,
+    enemyRole: enemy.archetype.key,
+    isBoss: Boolean(enemy.isBoss),
+    random: () => Phaser.Math.FloatBetween(0, 1),
+  });
+  const healed = heartHeal > 0 ? awardHeart(scene, enemy.iso.x, enemy.iso.y, heartHeal) : 0;
+  if (healed > 0) {
+    scene.heartDropDefeatStreak = 0;
+  }
   scene.playTone('daze');
-  scene.addGuildNote(enemy.isBoss ? scene.getCurrentWorldTheme().bossDefeat : `${enemy.archetype.label} retreats! +${amountGold} gold`);
+  const heartText = healed > 0 ? `, +${healed} heart` : '';
+  scene.addGuildNote(enemy.isBoss ? scene.getCurrentWorldTheme().bossDefeat : `${enemy.archetype.label} retreats! +${amountGold} gold${heartText}`);
   scene.checkLevelClear();
 }
 

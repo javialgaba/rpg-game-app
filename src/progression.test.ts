@@ -22,9 +22,11 @@ describe('classes and persistent cards', () => {
   it('applies percentage card tiers to class base stats and caps at tier V', () => {
     const tiers = { ...createEmptyCardTiers(), swiftBoots: 5, strongerStrikes: 1, quickHands: 5, toughHeart: 2 };
     const stats = applyCardStats('warrior', tiers);
-    expect(percentageForTiers('swiftBoots', 8)).toBe(0.36);
+    expect(percentageForTiers('swiftBoots', 8)).toBe(0.44);
+    expect(percentageForTiers('strongerStrikes', 1)).toBe(0.22);
+    expect(percentageForTiers('quickHands', 5)).toBe(0.6);
     expect(stats.maxHealth).toBe(6);
-    expect(stats.attackDamage).toBeCloseTo(2.3);
+    expect(stats.attackDamage).toBeCloseTo(2.44);
     expect(stats.attackCooldown).toBeLessThan(HERO_CLASSES.warrior.attackCooldown);
   });
 });
@@ -53,9 +55,15 @@ describe('skill milestones and wave curves', () => {
   });
 
   it('unlocks class-specific pressure and builds exact budget waves', () => {
-    expect(getAvailableEnemyRoles('archer', 3)).toContain('leafSneak');
+    expect(getAvailableEnemyRoles('archer', 3)).not.toContain('leafSneak');
+    expect(getAvailableEnemyRoles('archer', 4)).toContain('leafSneak');
     expect(getAvailableEnemyRoles('warrior', 4)).not.toContain('spitter');
-    expect(getWaveBudget(10)).toBe(46);
+    expect(getWaveBudget(1)).toBe(5);
+    expect(getWaveBudget(2)).toBe(7);
+    expect(getWaveBudget(3)).toBe(9);
+    expect(getWaveBudget(5)).toBe(15);
+    expect(getWaveBudget(9)).toBe(31);
+    expect(getWaveBudget(10)).toBe(35);
     const roster = buildWaveRoster('sorcerer', 4, () => 0.99);
     const costs = new Map(ENEMY_ARCHETYPES.map((enemy) => [enemy.key, enemy.cost]));
     expect(roster.reduce((sum, enemy) => sum + (costs.get(enemy) ?? 0), 0)).toBe(getWaveBudget(4));

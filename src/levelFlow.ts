@@ -83,6 +83,7 @@ export function createRunResumeSnapshot(
   nextProgression: WorldProgressionState,
   note: string,
   buildings: Array<{ id?: string; name: string; hp: number; max: number }> = [],
+  authoredMapId?: string,
 ): any {
   return {
     playerStats: { ...playerStats },
@@ -98,6 +99,7 @@ export function createRunResumeSnapshot(
     buildings: buildings.map((building) => ({ ...building })),
     heroClass,
     cardTiers,
+    authoredMapId,
     note,
   };
 }

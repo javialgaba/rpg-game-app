@@ -12,6 +12,8 @@
     "build:game-ui": "node tools/build-game-ui-atlas.mjs",
     "build:world-enemies": "node tools/build-world-enemy-sheets.mjs",
     "build:scene-variants": "node tools/build-scene-variants.mjs",
+    "generate:scene-terrain": "node tools/generate-flat-terrain-sources.mjs",
+    "export:authored-levels": "node tools/export-authored-levels.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

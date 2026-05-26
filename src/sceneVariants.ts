@@ -7,6 +7,7 @@ export type SeasonPreset =
   | 'noon_winter';
 
 export type VisualTheme = 'spring' | 'summer' | 'twilight_autumn' | 'winter';
+export type AmbientEffectPreset = 'spring_petals' | 'summer_rain' | 'autumn_leaves' | 'winter_snow';
 export type OptionalBoardBuilding = 'market' | 'well' | 'house-2';
 export type SeasonalBuildingRole = Extract<LevelToken, 'castle' | 'house-1' | 'house-2' | 'market' | 'well'>;
 export type SeasonalPropGroup =
@@ -21,7 +22,8 @@ export type SeasonalPropGroup =
   | 'magicPatches'
   | 'lamps'
   | 'fences'
-  | 'signs';
+  | 'signs'
+  | 'gates';
 
 export interface SeasonalBuildingPresentation {
   frame: string;
@@ -48,9 +50,17 @@ export interface SceneVariantConfig {
   ambientTint: number;
   ambientAlpha: number;
   worldZoom: number;
+  cameraZoom: number;
+  scenicFallbackColor: number;
+  scenicOverscan: number;
   backgroundParallax: number;
   frameParallax: number;
   foregroundParallax: number;
+  ambientEffect: {
+    preset: AmbientEffectPreset;
+    intensity: number;
+    maxParticles: number;
+  };
   boardTileSizeMin: number;
   playableBounds: PlayableBounds;
   boardGeneration: {
@@ -69,10 +79,10 @@ export interface SceneVariantConfig {
 }
 
 export const DEFAULT_PLAYABLE_BOUNDS: PlayableBounds = {
-  minX: 2,
-  minY: 2,
-  maxX: 16,
-  maxY: 16,
+  minX: 3,
+  minY: 3,
+  maxX: 25,
+  maxY: 25,
 };
 
 const BASE_OVERLAP_DECOR_ANCHORS: SceneVariantOverlapAnchor[] = [
@@ -118,6 +128,7 @@ const createPropPalette = (theme: VisualTheme): Record<SeasonalPropGroup, string
   lamps: frames(theme, 'lamp_01'),
   fences: frames(theme, 'fence_01'),
   signs: frames(theme, 'sign_01'),
+  gates: frames(theme, 'gate_n_01', 'gate_e_01', 'gate_s_01', 'gate_w_01'),
 });
 
 const BUILDING_LABELS: Record<VisualTheme, Record<SeasonalBuildingRole, string[]>> = {
@@ -209,9 +220,13 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     ambientTint: 0xffffff,
     ambientAlpha: 0,
     worldZoom: 1.22,
-    backgroundParallax: 0.03,
-    frameParallax: 0.06,
-    foregroundParallax: 0.1,
+    cameraZoom: 1.12,
+    scenicFallbackColor: 0xa6c993,
+    scenicOverscan: 1.46,
+    backgroundParallax: 0.08,
+    frameParallax: 0.14,
+    foregroundParallax: 0.22,
+    ambientEffect: { preset: 'spring_petals', intensity: 0.8, maxParticles: 24 },
     boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     boardGeneration: {
@@ -234,9 +249,13 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     ambientTint: 0xffe4b5,
     ambientAlpha: 0.08,
     worldZoom: 1.24,
-    backgroundParallax: 0.032,
-    frameParallax: 0.065,
-    foregroundParallax: 0.11,
+    cameraZoom: 1.12,
+    scenicFallbackColor: 0xc79c69,
+    scenicOverscan: 1.46,
+    backgroundParallax: 0.09,
+    frameParallax: 0.15,
+    foregroundParallax: 0.24,
+    ambientEffect: { preset: 'summer_rain', intensity: 0.85, maxParticles: 22 },
     boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     boardGeneration: {
@@ -259,9 +278,13 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     ambientTint: 0x8ba7ff,
     ambientAlpha: 0.2,
     worldZoom: 1.21,
-    backgroundParallax: 0.025,
-    frameParallax: 0.055,
-    foregroundParallax: 0.095,
+    cameraZoom: 1.12,
+    scenicFallbackColor: 0x34405c,
+    scenicOverscan: 1.46,
+    backgroundParallax: 0.07,
+    frameParallax: 0.13,
+    foregroundParallax: 0.21,
+    ambientEffect: { preset: 'autumn_leaves', intensity: 0.95, maxParticles: 25 },
     boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     boardGeneration: {
@@ -284,9 +307,13 @@ export const SCENE_VARIANTS: Record<SeasonPreset, SceneVariantConfig> = {
     ambientTint: 0xe6f3ff,
     ambientAlpha: 0.06,
     worldZoom: 1.22,
-    backgroundParallax: 0.03,
-    frameParallax: 0.06,
-    foregroundParallax: 0.1,
+    cameraZoom: 1.12,
+    scenicFallbackColor: 0xb9d2db,
+    scenicOverscan: 1.46,
+    backgroundParallax: 0.06,
+    frameParallax: 0.12,
+    foregroundParallax: 0.2,
+    ambientEffect: { preset: 'winter_snow', intensity: 0.72, maxParticles: 28 },
     boardTileSizeMin: 60,
     playableBounds: DEFAULT_PLAYABLE_BOUNDS,
     boardGeneration: {
