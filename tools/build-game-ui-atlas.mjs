@@ -4,6 +4,7 @@ import sharp from 'sharp';
 
 const ROOT = process.cwd();
 const SOURCE = 'public/assets/atlas-sources/generated/game-ui-tiles-source.png';
+const SHARED_CARD_SOURCE = 'public/assets/atlas-sources/generated/card-ui/shared_card_box_01.png';
 const ATLAS_IMAGE = 'public/assets/game_ui_atlas.png';
 const ATLAS_JSON = 'public/assets/game_ui_atlas.json';
 const validateOnly = process.argv.includes('--validate-only');
@@ -29,21 +30,18 @@ const REQUIRED_FRAMES = [
   'button_right',
   'health_full_01',
   'health_empty_01',
-  'mana_frame',
-  'mana_left',
-  'mana_mid',
-  'mana_right',
   'hud_chip_left',
   'hud_chip_mid',
   'hud_chip_right',
   'coin_badge_01',
+  'shared_card_box_01',
 ];
 
 const SOURCE_CELLS = [
   ['panel_corner_tl', 'panel_edge_top', 'panel_corner_tr', 'panel_fill_source'],
   ['panel_edge_left', 'title_plaque', 'panel_edge_right', 'content_slot'],
   ['panel_corner_bl', 'panel_edge_bottom', 'panel_corner_br', 'button_frame'],
-  ['health_full_01', 'health_empty_01', 'mana_frame', 'coin_badge_01'],
+  ['health_full_01', 'health_empty_01', 'unused_source', 'coin_badge_01'],
 ];
 
 const resolvePath = (filePath) => path.resolve(ROOT, filePath);
@@ -133,6 +131,23 @@ const trimFrame = async (name, image, inset = 0) => {
     buffer,
     width: trimmedMetadata.width ?? right - left,
     height: trimmedMetadata.height ?? bottom - top,
+  };
+};
+
+const limitFrameHeight = async (frame, maxHeight) => {
+  if (frame.height <= maxHeight) {
+    return frame;
+  }
+  const buffer = await sharp(frame.buffer)
+    .resize({ height: maxHeight, fit: 'inside' })
+    .png()
+    .toBuffer();
+  const metadata = await sharp(buffer).metadata();
+  return {
+    ...frame,
+    buffer,
+    width: metadata.width ?? frame.width,
+    height: metadata.height ?? maxHeight,
   };
 };
 
@@ -299,6 +314,9 @@ const prepareFrames = async () => {
       const name = SOURCE_CELLS[row][col];
       const image = await cropCell(source.clone(), metadata, col, row);
       cellImages.set(name, image);
+      if (name === 'unused_source') {
+        continue;
+      }
       if (name === 'panel_fill_source') {
         frames.push(await averageColorFrame('panel_fill', image));
       } else {
@@ -307,9 +325,8 @@ const prepareFrames = async () => {
     }
   }
   const buttonFrame = frames.find((frame) => frame.name === 'button_frame');
-  const manaFrame = frames.find((frame) => frame.name === 'mana_frame');
   const titleFrame = frames.find((frame) => frame.name === 'title_plaque');
-  if (!buttonFrame || !manaFrame || !titleFrame) {
+  if (!buttonFrame || !titleFrame) {
     throw new Error('Missing derived slice source frames.');
   }
   frames.push(
@@ -323,11 +340,10 @@ const prepareFrames = async () => {
   ]));
   frames.push(await verticalAverageFrame(buttonFrame, 'button_mid', 112, 0, 58, buttonFrame.height, 24));
   frames.push(...await hudChipFrames());
-  frames.push(...await splitHorizontal(manaFrame, [
-    { name: 'mana_left', from: 0, to: 0.20 },
-    { name: 'mana_right', from: 0.80, to: 1 },
-  ]));
-  frames.push(await verticalAverageFrame(manaFrame, 'mana_mid', 104, 0, 78, manaFrame.height, 28));
+  frames.push(await limitFrameHeight(
+    await trimFrame('shared_card_box_01', sharp(resolvePath(SHARED_CARD_SOURCE))),
+    512,
+  ));
   return frames;
 };
 

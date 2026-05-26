@@ -1,5 +1,21 @@
 import { findGridPath } from './levels/pathfinding';
 
+const DEBUG_COLORS = {
+  grid: 0xffffff,
+  road: 0xe8d39c,
+  rawBlocked: 0xff5252,
+  building: 0xffd43d,
+  solidProp: 0xff8c42,
+  blockingDecoration: 0xf94144,
+  environment: 0x4cc9f0,
+  clearance: 0x59c3ff,
+  pocket: 0xff2e88,
+  attackArea: 0x7dff9a,
+  route: 0x60ffb2,
+  occluder: 0xffbc42,
+  activeOccluder: 0xfff15c,
+};
+
 function getIsoMetrics(scene) {
   return scene.getIsoMetrics();
 }
@@ -19,6 +35,44 @@ function drawDebugDiamond(gfx, tileW, tileH, center, color, alpha = 0.18) {
   gfx.closePath();
   gfx.fillPath();
   gfx.strokePath();
+}
+
+function drawDebugOutline(gfx, tileW, tileH, center, color, alpha = 0.38) {
+  gfx.lineStyle(1, color, alpha);
+  gfx.beginPath();
+  gfx.moveTo(center.x, center.y - tileH / 2 + 2);
+  gfx.lineTo(center.x + tileW / 2 - 3, center.y);
+  gfx.lineTo(center.x, center.y + tileH / 2 - 2);
+  gfx.lineTo(center.x - tileW / 2 + 3, center.y);
+  gfx.closePath();
+  gfx.strokePath();
+}
+
+function addDebugLabel(scene, cell, text, color) {
+  const position = isoToScreen(scene, cell.x, cell.y, -8);
+  const label = scene.add.text(position.x, position.y - 10, text, {
+    color,
+    fontFamily: 'Arial, sans-serif',
+    fontSize: '10px',
+    fontStyle: 'bold',
+    stroke: '#15222b',
+    strokeThickness: 3,
+  }).setOrigin(0.5, 1).setDepth(1);
+  scene.levelDebugLabels.push(label);
+  scene.levelDebugLayer.add(label);
+}
+
+function labelForDecoration(decoration) {
+  if (decoration.decorationKind === 'puddle') {
+    return 'POND';
+  }
+  if (decoration.decorationKind === 'treeCluster' || decoration.decorationKind === 'fullTree' || decoration.decorationKind === 'sapling') {
+    return 'TREE';
+  }
+  if (decoration.decorationKind === 'rocks') {
+    return 'ROCK';
+  }
+  return String(decoration.decorationKind ?? 'DECOR').toUpperCase().slice(0, 6);
 }
 
 function getDecorationDebugColor(kind) {
@@ -78,21 +132,30 @@ export function drawGeneratedLevelDebug(scene) {
     return;
   }
   scene.levelDebugGraphics?.destroy();
+  scene.levelDebugLabels?.forEach((label) => label.destroy());
+  scene.levelDebugLabels = [];
   const gfx = scene.add.graphics().setDepth(0);
   scene.levelDebugGraphics = gfx;
   const { tileW, tileH } = getIsoMetrics(scene);
   for (let y = 0; y < scene.generatedLevel.height; y += 1) {
     for (let x = 0; x < scene.generatedLevel.width; x += 1) {
       const center = isoToScreen(scene, x, y);
-      drawDebugDiamond(gfx, tileW, tileH, center, 0xffffff, 0.035);
+      drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.grid, 0.035);
       if (scene.generatedLevel.roadGrid[y]?.[x]) {
-        drawDebugDiamond(gfx, tileW, tileH, center, 0xe8d39c, 0.18);
+        drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.road, 0.18);
+      }
+      if (scene.generatedLevel.playerReachableGrid[y]?.[x]) {
+        drawDebugOutline(gfx, tileW, tileH, center, DEBUG_COLORS.clearance, 0.43);
       }
       if (scene.generatedLevel.blockedGrid[y][x]) {
-        drawDebugDiamond(gfx, tileW, tileH, center, 0xff6b6b, 0.22);
+        drawDebugDiamond(gfx, tileW, tileH, center, DEBUG_COLORS.rawBlocked, 0.16);
       }
     }
   }
+  scene.generatedLevel.playerPocketCells.forEach((cell) => {
+    drawDebugDiamond(gfx, tileW, tileH, isoToScreen(scene, cell.x, cell.y), DEBUG_COLORS.pocket, 0.5);
+    addDebugLabel(scene, cell, 'POCKET', '#ff77ad');
+  });
   const top = isoToScreen(scene, (scene.generatedLevel.width - 1) / 2, 0, -8);
   const right = isoToScreen(scene, scene.generatedLevel.width - 1, (scene.generatedLevel.height - 1) / 2, -8);
   const bottom = isoToScreen(scene, (scene.generatedLevel.width - 1) / 2, scene.generatedLevel.height - 1, -8);
@@ -110,27 +173,51 @@ export function drawGeneratedLevelDebug(scene) {
   scene.generatedLevel.protectedTargets.forEach((target) => {
     target.cells.forEach((cell) => {
       const cellCenter = isoToScreen(scene, cell.x, cell.y);
-      drawDebugDiamond(gfx, tileW, tileH, cellCenter, 0xffdf6a, 0.34);
+      drawDebugDiamond(gfx, tileW, tileH, cellCenter, DEBUG_COLORS.building, 0.38);
     });
+    addDebugLabel(scene, target.grid, target.label.toUpperCase(), '#ffe77d');
     target.attackCells.forEach((cell) => {
       const cellCenter = isoToScreen(scene, cell.x, cell.y);
-      drawDebugDiamond(gfx, tileW, tileH, cellCenter, 0x7dff9a, 0.18);
+      drawDebugDiamond(gfx, tileW, tileH, cellCenter, DEBUG_COLORS.attackArea, 0.18);
     });
   });
-  scene.generatedLevel.chests.forEach((chest) => {
-    const chestCenter = isoToScreen(scene, chest.grid.x, chest.grid.y);
-    drawDebugDiamond(gfx, tileW, tileH, chestCenter, 0xffb84f, 0.42);
-  });
+  scene.generatedLevel.objects
+    .filter((placement) => placement.type !== 'building')
+    .forEach((placement) => {
+      placement.cells.forEach((cell) => {
+        drawDebugDiamond(gfx, tileW, tileH, isoToScreen(scene, cell.x, cell.y), DEBUG_COLORS.solidProp, 0.32);
+      });
+      addDebugLabel(scene, placement.grid, placement.label.toUpperCase().slice(0, 8), '#ffad68');
+    });
   scene.generatedLevel.decorations.forEach((decoration) => {
-    const decoCenter = isoToScreen(scene, decoration.grid.x, decoration.grid.y);
-    drawDebugDiamond(gfx, tileW, tileH, decoCenter, getDecorationDebugColor(decoration.decorationKind), 0.20);
+    const color = decoration.blocksMovement ? DEBUG_COLORS.blockingDecoration : DEBUG_COLORS.environment;
+    decoration.cells.forEach((cell) => {
+      const decoCenter = isoToScreen(scene, cell.x, cell.y);
+      drawDebugDiamond(gfx, tileW, tileH, decoCenter, color, decoration.blocksMovement ? 0.4 : 0.25);
+      drawDebugOutline(gfx, tileW, tileH, decoCenter, getDecorationDebugColor(decoration.decorationKind), 0.8);
+    });
+    if (decoration.blocksMovement || decoration.decorationKind === 'puddle') {
+      addDebugLabel(scene, decoration.grid, labelForDecoration(decoration), decoration.blocksMovement ? '#ff8282' : '#8be9ff');
+    }
+  });
+  scene.playerOccluders?.forEach((occluder) => {
+    occluder.footprintCells?.forEach((cell) => {
+      drawDebugOutline(
+        gfx,
+        tileW,
+        tileH,
+        isoToScreen(scene, cell.x, cell.y),
+        occluder.occluding ? DEBUG_COLORS.activeOccluder : DEBUG_COLORS.occluder,
+        occluder.occluding ? 0.95 : 0.68,
+      );
+    });
   });
   const goals = scene.generatedLevel.protectedTargets.flatMap((target) => target.attackCells);
   scene.generatedLevel.spawnPoints.forEach((spawn) => {
     const path = findGridPath(scene.generatedLevel.walkableGrid, spawn, goals);
     path?.forEach((cell) => {
       const cellCenter = isoToScreen(scene, cell.x, cell.y);
-      drawDebugDiamond(gfx, tileW, tileH, cellCenter, 0x60ffb2, 0.16);
+      drawDebugDiamond(gfx, tileW, tileH, cellCenter, DEBUG_COLORS.route, 0.16);
     });
     drawDebugPath(scene, gfx, path, 0x60ffb2, 0.35);
   });
@@ -145,6 +232,74 @@ export function drawGeneratedLevelDebug(scene) {
         drawDebugDiamond(gfx, tileW, tileH, targetCenter, 0xfff15c, 0.42);
       }
     });
+  const movementDebug = scene.getPlayerMovementDebugState?.();
+  if (movementDebug?.activeIntent && scene.player) {
+    const start = isoToScreen(scene, scene.player.iso.x, scene.player.iso.y, -12);
+    const intendedEnd = isoToScreen(
+      scene,
+      scene.player.iso.x + movementDebug.activeIntent.iso.x * 0.8,
+      scene.player.iso.y + movementDebug.activeIntent.iso.y * 0.8,
+      -12,
+    );
+    gfx.lineStyle(4, movementDebug.rejectedReason ? DEBUG_COLORS.rawBlocked : DEBUG_COLORS.route, 0.88);
+    gfx.beginPath();
+    gfx.moveTo(start.x, start.y);
+    gfx.lineTo(intendedEnd.x, intendedEnd.y);
+    gfx.strokePath();
+    const selectedIso = movementDebug.movementResult?.selectedIso;
+    if (selectedIso && movementDebug.movementResult?.reason?.endsWith('-slide')) {
+      const slideEnd = isoToScreen(
+        scene,
+        scene.player.iso.x + selectedIso.x * 0.8,
+        scene.player.iso.y + selectedIso.y * 0.8,
+        -12,
+      );
+      gfx.lineStyle(5, DEBUG_COLORS.clearance, 0.94);
+      gfx.beginPath();
+      gfx.moveTo(start.x, start.y);
+      gfx.lineTo(slideEnd.x, slideEnd.y);
+      gfx.strokePath();
+    }
+    movementDebug.movementResult?.candidates
+      .filter((candidate) => !candidate.accepted)
+      .forEach((candidate) => {
+        const rejected = isoToScreen(scene, candidate.position.x, candidate.position.y, -13);
+        gfx.fillStyle(DEBUG_COLORS.rawBlocked, 0.9);
+        gfx.fillCircle(rejected.x, rejected.y, 4);
+      });
+  }
+  const selectedMove = movementDebug?.movementResult?.selectedScreen;
+  const selectedLabel = selectedMove
+    ? `${selectedMove.x.toFixed(2)},${selectedMove.y.toFixed(2)}`
+    : 'none';
+  const movementLines = movementDebug ? [
+    `Hero footprint: ${movementDebug.footprintWalkable ? 'OPEN' : 'BLOCKED'}  recovery anchor: ${movementDebug.recoveryAnchor ? 'YES' : 'NO'}`,
+    `Sustained exits: ${movementDebug.escapeDirections.join(' / ') || 'NONE'}  dead end: ${movementDebug.runtimeDeadEnd ? 'YES' : 'NO'}`,
+    `Selected travel: ${selectedLabel}  rejected: ${movementDebug.rejectedReason ?? 'none'} (red dots)`,
+  ] : [];
+  const occlusionDebug = scene.getPlayerOcclusionDebugState?.();
+  const occlusionLines = occlusionDebug ? [
+    `Occluders: ${occlusionDebug.registered}  faded: ${occlusionDebug.activeLabels.join(', ') || 'none'}`,
+  ] : [];
+  const legend = scene.add.text(14, 92, [
+    'G COLLISION MAP',
+    'Yellow: building footprint  Orange: solid prop',
+    'Red: blocking decoration  Cyan: visual/non-blocking decor',
+    'Blue outline: player clearance  Pink: trapped pocket',
+    'Green: attack/route cells',
+    'Gold outline: hero occluder  Bright gold: currently faded',
+    ...movementLines,
+    ...occlusionLines,
+  ], {
+    color: '#ffffff',
+    fontFamily: 'Arial, sans-serif',
+    fontSize: '12px',
+    lineSpacing: 3,
+    backgroundColor: 'rgba(14, 23, 32, 0.82)',
+    padding: { x: 8, y: 7 },
+  }).setDepth(3);
+  scene.levelDebugLabels.push(legend);
+  scene.levelDebugLayer.add(legend);
   scene.levelDebugLayer.add(gfx);
 }
 
@@ -164,6 +319,8 @@ export function toggleGeneratedLevelDebug(scene) {
   } else {
     scene.levelDebugGraphics?.destroy();
     scene.levelDebugGraphics = null;
+    scene.levelDebugLabels?.forEach((label) => label.destroy());
+    scene.levelDebugLabels = [];
     scene.addGuildNote('Level grid debug hidden.');
   }
   scene.updateDebugOverlay();

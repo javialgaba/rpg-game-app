@@ -94,7 +94,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     walkable: false,
     blocksMovement: true,
     footprint: { w: 2, h: 2 },
-    render: { textureKey: 'buildingsAtlas', frameKey: 'well_01', origin: [0.5, 1], floorFrameWidth: 260, floorFrameBottomPadding: 46, alpha: 1, z: 7 },
+    render: { textureKey: 'buildingsAtlas', frameKey: 'well_01', origin: [0.5, 1], floorFrameWidth: 260, floorFrameBottomPadding: 46, alpha: 1, z: 7, occludesPlayer: true },
   },
   'tree': {
     token: 'tree',
@@ -103,7 +103,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     walkable: false,
     blocksMovement: true,
     footprint: { w: 1, h: 1 },
-    render: { textureKey: 'worldTilesAtlas', frameKey: 'pine_tree_01', displaySize: [204, 175], origin: [0.5, 0.84], alpha: 1, z: 12 },
+    render: { textureKey: 'worldTilesAtlas', frameKey: 'pine_tree_01', displaySize: [204, 175], origin: [0.5, 0.84], alpha: 1, z: 12, occludesPlayer: true },
   },
   'decoration': {
     token: 'decoration',
@@ -119,15 +119,6 @@ export const ASSET_REGISTRY: AssetRegistry = {
       terrainFill: COLORS.garden,
       terrainStroke: 0xdf729f,
     },
-  },
-  'chest': {
-    token: 'chest',
-    type: 'interactable',
-    label: 'Treasure Chest',
-    walkable: true,
-    blocksMovement: false,
-    footprint: { w: 1, h: 1 },
-    render: { textureKey: 'worldTilesAtlas', frameKey: 'chest_closed_01', displaySize: [101, 103], origin: [0.5, 0.78], z: 10 },
   },
   'monster-spawn': {
     token: 'monster-spawn',
@@ -152,7 +143,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     walkable: false,
     blocksMovement: true,
     footprint: { w: 1, h: 1 },
-    render: { textureKey: 'worldTilesAtlas', frameKey: 'lamp_01', displaySize: [162, 124], origin: [0.5, 0.86], alpha: 1, z: 7 },
+    render: { textureKey: 'worldTilesAtlas', frameKey: 'lamp_01', displaySize: [162, 124], origin: [0.5, 0.86], alpha: 1, z: 7, occludesPlayer: true },
   },
   'fence': {
     token: 'fence',
@@ -161,7 +152,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     walkable: false,
     blocksMovement: true,
     footprint: { w: 1, h: 1 },
-    render: { textureKey: 'worldTilesAtlas', frameKey: 'fence_01', displaySize: [156, 103], origin: [0.5, 0.82], alpha: 1, z: 6 },
+    render: { textureKey: 'worldTilesAtlas', frameKey: 'fence_01', displaySize: [156, 103], origin: [0.5, 0.82], alpha: 1, z: 6, occludesPlayer: true },
   },
   'sign': {
     token: 'sign',
@@ -170,7 +161,7 @@ export const ASSET_REGISTRY: AssetRegistry = {
     walkable: false,
     blocksMovement: true,
     footprint: { w: 1, h: 1 },
-    render: { textureKey: 'worldTilesAtlas', frameKey: 'sign_01', displaySize: [144, 106], origin: [0.5, 0.86], alpha: 1, z: 7 },
+    render: { textureKey: 'worldTilesAtlas', frameKey: 'sign_01', displaySize: [144, 106], origin: [0.5, 0.86], alpha: 1, z: 7, occludesPlayer: true },
   },
   'blocker': {
     token: 'blocker',

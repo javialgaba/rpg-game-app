@@ -100,7 +100,7 @@
         "h": 256
       }
     },
-    "chest_open_01": {
+    "hammer_badge_01": {
       "frame": {
         "x": 256,
         "y": 256,
@@ -120,7 +120,7 @@
         "h": 256
       }
     },
-    "hammer_badge_01": {
+    "crossed_swords_01": {
       "frame": {
         "x": 512,
         "y": 256,
@@ -140,10 +140,30 @@
         "h": 256
       }
     },
-    "crossed_swords_01": {
+    "trap_ground_01": {
       "frame": {
         "x": 768,
         "y": 256,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      }
+    },
+    "magic_shield_field_01": {
+      "frame": {
+        "x": 0,
+        "y": 512,
         "w": 256,
         "h": 256
       },
@@ -167,7 +187,7 @@
     "format": "RGBA8888",
     "size": {
       "w": 1024,
-      "h": 512
+      "h": 768
     },
     "scale": "1"
   }

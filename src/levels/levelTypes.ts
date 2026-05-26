@@ -8,7 +8,6 @@ export type LevelToken =
   | 'well'
   | 'tree'
   | 'decoration'
-  | 'chest'
   | 'monster-spawn'
   | 'village-center'
   | 'lamp'
@@ -57,11 +56,12 @@ export interface AssetRenderMetadata {
   z?: number;
   terrainFill?: number;
   terrainStroke?: number;
+  occludesPlayer?: boolean;
 }
 
 export interface AssetRegistryEntry {
   token: LevelToken;
-  type: 'terrain' | 'path' | 'building' | 'prop' | 'interactable' | 'spawn' | 'marker' | 'blocker';
+  type: 'terrain' | 'path' | 'building' | 'prop' | 'spawn' | 'marker' | 'blocker';
   label: string;
   walkable: boolean;
   blocksMovement: boolean;
@@ -103,6 +103,8 @@ export interface GeneratedLevel {
   playableBounds: PlayableBounds;
   walkableGrid: boolean[][];
   playerWalkableGrid: boolean[][];
+  playerReachableGrid: boolean[][];
+  playerPocketCells: GridPoint[];
   blockedGrid: boolean[][];
   buildingGrid: (ProtectedTargetPlacement | null)[][];
   decorationGrid: (LevelPlacement | null)[][];
@@ -112,7 +114,6 @@ export interface GeneratedLevel {
   terrain: LevelPlacement[];
   objects: LevelPlacement[];
   decorations: LevelPlacement[];
-  chests: LevelPlacement[];
   spawnPoints: GridPoint[];
   playerSpawn: GridPoint | null;
   protectedTargets: ProtectedTargetPlacement[];

@@ -19,46 +19,6 @@
         "w": 1024,
         "h": 160
       }
-    },
-    "mana_bar_01": {
-      "frame": {
-        "x": 0,
-        "y": 160,
-        "w": 1024,
-        "h": 160
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 1024,
-        "h": 160
-      },
-      "sourceSize": {
-        "w": 1024,
-        "h": 160
-      }
-    },
-    "xp_bar_01": {
-      "frame": {
-        "x": 0,
-        "y": 320,
-        "w": 1024,
-        "h": 160
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 1024,
-        "h": 160
-      },
-      "sourceSize": {
-        "w": 1024,
-        "h": 160
-      }
     }
   },
   "meta": {
@@ -67,7 +27,7 @@
     "format": "RGBA8888",
     "size": {
       "w": 1024,
-      "h": 480
+      "h": 160
     },
     "scale": "1"
   }

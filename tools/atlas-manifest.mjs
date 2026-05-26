@@ -1,5 +1,9 @@
 const worldSheet = 'public/assets/world-ui-sheet.png';
 const generatedUiSheet = 'public/assets/atlas-sources/generated/ui-touch-hud.png';
+const generatedClassUiDir = 'public/assets/atlas-sources/generated/class-ui';
+const classUiAsset = (frameName) => `${generatedClassUiDir}/${frameName}.png`;
+const generatedCardUiDir = 'public/assets/atlas-sources/generated/card-ui';
+const cardUiAsset = (frameName) => `${generatedCardUiDir}/${frameName}.png`;
 const generatedWorldEdgesStructuralSheet = 'public/assets/atlas-sources/generated/world-edges-structural.png';
 const generatedWorldEdgesAtmosphereSheet = 'public/assets/atlas-sources/generated/world-edges-atmosphere.png';
 const generatedWorldEdgesBackdropSheet = 'public/assets/atlas-sources/generated/world-edges-backdrop.png';
@@ -41,7 +45,6 @@ export const atlasManifest = {
       { name: 'lamp_01', source: worldSheet, crop: [461, 336, 71, 221], padding: 34, align: 'bottom' },
       { name: 'fence_01', source: worldSheet, crop: [1223, 414, 144, 143], padding: 36, align: 'bottom' },
       { name: 'sign_01', source: worldSheet, crop: [1373, 377, 120, 193], padding: 34, align: 'bottom' },
-      { name: 'chest_closed_01', source: worldSheet, crop: [1018, 809, 183, 180], padding: 34, align: 'bottom' },
     ],
   },
   worldEdges: {
@@ -160,9 +163,16 @@ export const atlasManifest = {
       { name: 'shield_icon_01', source: worldSheet, crop: [625, 611, 135, 135], padding: 18, align: 'center' },
       { name: 'boot_icon_01', source: worldSheet, crop: [770, 611, 135, 135], padding: 18, align: 'center' },
       { name: 'empty_slot_01', source: worldSheet, crop: [930, 590, 170, 180], padding: 10, align: 'center' },
-      { name: 'chest_icon_01', source: generatedUiSheet, crop: [781, 54, 229, 239], padding: 18, align: 'center' },
       { name: 'repair_icon_01', source: generatedUiSheet, crop: [1014, 54, 229, 239], padding: 18, align: 'center' },
-      { name: 'inventory_icon_01', source: generatedUiSheet, crop: [1249, 53, 232, 240], padding: 18, align: 'center' },
+      { name: 'card_swift_boots_01', source: classUiAsset('card_swift_boots_01'), padding: 32, align: 'center' },
+      { name: 'card_stronger_strikes_01', source: classUiAsset('card_stronger_strikes_01'), padding: 32, align: 'center' },
+      { name: 'card_quick_hands_01', source: classUiAsset('card_quick_hands_01'), padding: 32, align: 'center' },
+      { name: 'card_reinforced_walls_01', source: classUiAsset('card_reinforced_walls_01'), padding: 32, align: 'center' },
+      { name: 'card_tough_heart_01', source: classUiAsset('card_tough_heart_01'), padding: 32, align: 'center' },
+      { name: 'card_magic_repair_01', source: classUiAsset('card_magic_repair_01'), padding: 32, align: 'center' },
+      { name: 'class_warrior_tile_01', source: cardUiAsset('class_warrior_tile_01'), padding: 32, align: 'center' },
+      { name: 'class_archer_tile_01', source: cardUiAsset('class_archer_tile_01'), padding: 32, align: 'center' },
+      { name: 'class_sorcerer_tile_01', source: cardUiAsset('class_sorcerer_tile_01'), padding: 32, align: 'center' },
     ],
   },
   touchControls: {
@@ -171,12 +181,13 @@ export const atlasManifest = {
     cellSize: 256,
     columns: 3,
     frames: [
-      { name: 'touch_sword_01', source: generatedUiSheet, crop: [54, 52, 231, 239], padding: 8, align: 'center' },
-      { name: 'touch_bow_01', source: generatedUiSheet, crop: [306, 53, 230, 238], padding: 8, align: 'center' },
-      { name: 'touch_spell_01', source: generatedUiSheet, crop: [547, 53, 229, 239], padding: 8, align: 'center' },
-      { name: 'touch_use_01', source: generatedUiSheet, crop: [781, 54, 229, 239], padding: 8, align: 'center' },
-      { name: 'touch_repair_01', source: generatedUiSheet, crop: [1014, 54, 229, 239], padding: 8, align: 'center' },
-      { name: 'touch_inventory_01', source: generatedUiSheet, crop: [1249, 53, 232, 240], padding: 8, align: 'center' },
+      { name: 'touch_sword_01', source: classUiAsset('touch_sword_01'), padding: 32, align: 'center' },
+      { name: 'touch_bow_01', source: classUiAsset('touch_bow_01'), padding: 32, align: 'center' },
+      { name: 'touch_spell_01', source: classUiAsset('touch_spell_01'), padding: 32, align: 'center' },
+      { name: 'touch_repair_01', source: classUiAsset('touch_repair_01'), padding: 32, align: 'center' },
+      { name: 'touch_guard_01', source: classUiAsset('touch_guard_01'), padding: 32, align: 'center' },
+      { name: 'touch_trap_01', source: classUiAsset('touch_trap_01'), padding: 32, align: 'center' },
+      { name: 'touch_magic_shield_01', source: classUiAsset('touch_magic_shield_01'), padding: 32, align: 'center' },
     ],
   },
   hudUi: {
@@ -198,8 +209,6 @@ export const atlasManifest = {
     columns: 1,
     frames: [
       { name: 'heart_bar_01', source: generatedUiSheet, crop: [280, 596, 975, 109], padding: 10, align: 'center' },
-      { name: 'mana_bar_01', source: generatedUiSheet, crop: [278, 722, 976, 109], padding: 10, align: 'center' },
-      { name: 'xp_bar_01', source: generatedUiSheet, crop: [277, 848, 977, 109], padding: 10, align: 'center' },
     ],
   },
   effects: {
@@ -208,14 +217,15 @@ export const atlasManifest = {
     cellSize: 256,
     columns: 4,
     frames: [
-      { name: 'smoke_puff_01', source: worldSheet, crop: [0, 780, 190, 220], padding: 12, align: 'center' },
-      { name: 'sparkle_burst_01', source: worldSheet, crop: [218, 780, 224, 220], padding: 8, align: 'center' },
-      { name: 'arrow_01', source: worldSheet, crop: [444, 780, 170, 190], padding: 18, align: 'center' },
-      { name: 'magic_splash_01', source: worldSheet, crop: [620, 780, 260, 202], padding: 8, align: 'center' },
-      { name: 'shield_glow_01', source: worldSheet, crop: [846, 760, 188, 220], padding: 8, align: 'center' },
-      { name: 'chest_open_01', source: worldSheet, crop: [1018, 809, 183, 180], padding: 18, align: 'center' },
-      { name: 'hammer_badge_01', source: worldSheet, crop: [1204, 792, 156, 150], padding: 18, align: 'center' },
-      { name: 'crossed_swords_01', source: worldSheet, crop: [1360, 820, 170, 190], padding: 18, align: 'center' },
+      { name: 'smoke_puff_01', source: classUiAsset('smoke_puff_01'), padding: 32, align: 'center' },
+      { name: 'sparkle_burst_01', source: classUiAsset('sparkle_burst_01'), padding: 32, align: 'center' },
+      { name: 'arrow_01', source: classUiAsset('arrow_01'), padding: 32, align: 'center' },
+      { name: 'magic_splash_01', source: classUiAsset('magic_splash_01'), padding: 32, align: 'center' },
+      { name: 'shield_glow_01', source: classUiAsset('shield_glow_01'), padding: 32, align: 'center' },
+      { name: 'hammer_badge_01', source: classUiAsset('hammer_badge_01'), padding: 32, align: 'center' },
+      { name: 'crossed_swords_01', source: classUiAsset('crossed_swords_01'), padding: 32, align: 'center' },
+      { name: 'trap_ground_01', source: classUiAsset('trap_ground_01'), padding: 32, align: 'center' },
+      { name: 'magic_shield_field_01', source: classUiAsset('magic_shield_field_01'), padding: 32, align: 'center' },
     ],
   },
 };
@@ -233,7 +243,6 @@ export const requiredFrames = {
     'lamp_01',
     'fence_01',
     'sign_01',
-    'chest_closed_01',
   ],
   worldEdges: [
     'edge_cliff_nw_01',
@@ -322,32 +331,41 @@ export const requiredFrames = {
     'shield_icon_01',
     'boot_icon_01',
     'empty_slot_01',
-    'chest_icon_01',
     'repair_icon_01',
-    'inventory_icon_01',
+    'card_swift_boots_01',
+    'card_stronger_strikes_01',
+    'card_quick_hands_01',
+    'card_reinforced_walls_01',
+    'card_tough_heart_01',
+    'card_magic_repair_01',
+    'class_warrior_tile_01',
+    'class_archer_tile_01',
+    'class_sorcerer_tile_01',
   ],
   touchControls: [
     'touch_sword_01',
     'touch_bow_01',
     'touch_spell_01',
-    'touch_use_01',
     'touch_repair_01',
-    'touch_inventory_01',
+    'touch_guard_01',
+    'touch_trap_01',
+    'touch_magic_shield_01',
   ],
   hudUi: [
     'coin_panel_01',
     'crown_badge_01',
     'repair_tool_01',
   ],
-  hudBars: ['heart_bar_01', 'mana_bar_01', 'xp_bar_01'],
+  hudBars: ['heart_bar_01'],
   effects: [
     'smoke_puff_01',
     'sparkle_burst_01',
     'arrow_01',
     'magic_splash_01',
     'shield_glow_01',
-    'chest_open_01',
     'hammer_badge_01',
     'crossed_swords_01',
+    'trap_ground_01',
+    'magic_shield_field_01',
   ],
 };
