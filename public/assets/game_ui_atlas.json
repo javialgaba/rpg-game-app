@@ -479,6 +479,26 @@
         "w": 30,
         "h": 42
       }
+    },
+    "shared_card_box_01": {
+      "frame": {
+        "x": 6,
+        "y": 943,
+        "w": 322,
+        "h": 512
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 322,
+        "h": 512
+      },
+      "sourceSize": {
+        "w": 322,
+        "h": 512
+      }
     }
   },
   "meta": {
@@ -487,7 +507,7 @@
     "format": "RGBA8888",
     "size": {
       "w": 1024,
-      "h": 943
+      "h": 1461
     },
     "scale": "1"
   }

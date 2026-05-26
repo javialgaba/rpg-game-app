@@ -4,6 +4,7 @@ import sharp from 'sharp';
 
 const ROOT = process.cwd();
 const GENERATED_CLASS_DIR = 'public/assets/atlas-sources/generated/class-ui';
+const GENERATED_CARD_DIR = 'public/assets/atlas-sources/generated/card-ui';
 const ALPHA_THRESHOLD = 8;
 const TRANSPARENT_DISTANCE = 34;
 const OPAQUE_DISTANCE = 150;
@@ -44,6 +45,22 @@ const ASSETS = [
     square: true,
     safeMarginRatio: SAFE_MARGIN_RATIO,
   })),
+  ...[
+    'class_warrior_tile_01',
+    'class_archer_tile_01',
+    'class_sorcerer_tile_01',
+  ].map((frameName) => ({
+    name: frameName,
+    source: `${GENERATED_CARD_DIR}/${frameName}-source.png`,
+    output: `${GENERATED_CARD_DIR}/${frameName}.png`,
+    square: true,
+    safeMarginRatio: SAFE_MARGIN_RATIO,
+  })),
+  {
+    name: 'shared card box',
+    source: `${GENERATED_CARD_DIR}/shared_card_box_01-source.png`,
+    output: `${GENERATED_CARD_DIR}/shared_card_box_01.png`,
+  },
   {
     name: 'archer hero sheet',
     source: 'public/assets/archer-hero-sheet-source.png',

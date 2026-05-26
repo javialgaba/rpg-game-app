@@ -2,6 +2,8 @@ const worldSheet = 'public/assets/world-ui-sheet.png';
 const generatedUiSheet = 'public/assets/atlas-sources/generated/ui-touch-hud.png';
 const generatedClassUiDir = 'public/assets/atlas-sources/generated/class-ui';
 const classUiAsset = (frameName) => `${generatedClassUiDir}/${frameName}.png`;
+const generatedCardUiDir = 'public/assets/atlas-sources/generated/card-ui';
+const cardUiAsset = (frameName) => `${generatedCardUiDir}/${frameName}.png`;
 const generatedWorldEdgesStructuralSheet = 'public/assets/atlas-sources/generated/world-edges-structural.png';
 const generatedWorldEdgesAtmosphereSheet = 'public/assets/atlas-sources/generated/world-edges-atmosphere.png';
 const generatedWorldEdgesBackdropSheet = 'public/assets/atlas-sources/generated/world-edges-backdrop.png';
@@ -168,6 +170,9 @@ export const atlasManifest = {
       { name: 'card_reinforced_walls_01', source: classUiAsset('card_reinforced_walls_01'), padding: 32, align: 'center' },
       { name: 'card_tough_heart_01', source: classUiAsset('card_tough_heart_01'), padding: 32, align: 'center' },
       { name: 'card_magic_repair_01', source: classUiAsset('card_magic_repair_01'), padding: 32, align: 'center' },
+      { name: 'class_warrior_tile_01', source: cardUiAsset('class_warrior_tile_01'), padding: 32, align: 'center' },
+      { name: 'class_archer_tile_01', source: cardUiAsset('class_archer_tile_01'), padding: 32, align: 'center' },
+      { name: 'class_sorcerer_tile_01', source: cardUiAsset('class_sorcerer_tile_01'), padding: 32, align: 'center' },
     ],
   },
   touchControls: {
@@ -333,6 +338,9 @@ export const requiredFrames = {
     'card_reinforced_walls_01',
     'card_tough_heart_01',
     'card_magic_repair_01',
+    'class_warrior_tile_01',
+    'class_archer_tile_01',
+    'class_sorcerer_tile_01',
   ],
   touchControls: [
     'touch_sword_01',

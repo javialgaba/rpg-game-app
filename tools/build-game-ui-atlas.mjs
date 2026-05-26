@@ -4,6 +4,7 @@ import sharp from 'sharp';
 
 const ROOT = process.cwd();
 const SOURCE = 'public/assets/atlas-sources/generated/game-ui-tiles-source.png';
+const SHARED_CARD_SOURCE = 'public/assets/atlas-sources/generated/card-ui/shared_card_box_01.png';
 const ATLAS_IMAGE = 'public/assets/game_ui_atlas.png';
 const ATLAS_JSON = 'public/assets/game_ui_atlas.json';
 const validateOnly = process.argv.includes('--validate-only');
@@ -33,6 +34,7 @@ const REQUIRED_FRAMES = [
   'hud_chip_mid',
   'hud_chip_right',
   'coin_badge_01',
+  'shared_card_box_01',
 ];
 
 const SOURCE_CELLS = [
@@ -129,6 +131,23 @@ const trimFrame = async (name, image, inset = 0) => {
     buffer,
     width: trimmedMetadata.width ?? right - left,
     height: trimmedMetadata.height ?? bottom - top,
+  };
+};
+
+const limitFrameHeight = async (frame, maxHeight) => {
+  if (frame.height <= maxHeight) {
+    return frame;
+  }
+  const buffer = await sharp(frame.buffer)
+    .resize({ height: maxHeight, fit: 'inside' })
+    .png()
+    .toBuffer();
+  const metadata = await sharp(buffer).metadata();
+  return {
+    ...frame,
+    buffer,
+    width: metadata.width ?? frame.width,
+    height: metadata.height ?? maxHeight,
   };
 };
 
@@ -321,6 +340,10 @@ const prepareFrames = async () => {
   ]));
   frames.push(await verticalAverageFrame(buttonFrame, 'button_mid', 112, 0, 58, buttonFrame.height, 24));
   frames.push(...await hudChipFrames());
+  frames.push(await limitFrameHeight(
+    await trimFrame('shared_card_box_01', sharp(resolvePath(SHARED_CARD_SOURCE))),
+    512,
+  ));
   return frames;
 };
 

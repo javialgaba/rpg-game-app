@@ -48,7 +48,7 @@ import {
 import { createGeneratedTextures } from './generatedTextures';
 import { getWorldFogPieces, getWorldBackdropPieces, getWorldEdgeClusters } from './generatedWorldRenderData';
 import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDebugAutomationHost, toDebugSlug, getDebugBuildingSummary, setDebugCommandResult, findDebugBuilding, teleportPlayerToDebugTarget, triggerDebugSeasonTransition } from './devCommands';
-import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createUiCardFrame, createUiButton, uiTextStyle } from './uiFactory';
+import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createSharedCardBox, createUiButton, uiTextStyle } from './uiFactory';
 import { drawGeneratedLevelDebug, toggleGeneratedLevelDebug, updateGeneratedLevelDebug } from './levelDebugRenderer';
 import { getActiveTimeOfDay, cycleTimeOfDay, getLampGlowIsoPoints, createTimeOfDayLayer } from './timeOfDayRenderer';
 import {
@@ -108,16 +108,12 @@ const BUILDING_OCCLUSION_PLAYER_Y_OFFSET_RATIO = 0.18;
 const BUILDING_OCCLUSION_VERTICAL_CLEARANCE = 6;
 const BUILDING_OCCLUSION_SPRITE_TOP_PADDING_RATIO = 0.12;
 const BUILDING_OCCLUSION_HORIZONTAL_PADDING = 12;
+const SPLASH_HERO_CARD_ART: Record<HeroClass, { texture: string; frame: string }> = {
+  warrior: { texture: 'uiAtlas', frame: 'class_warrior_tile_01' },
+  archer: { texture: 'uiAtlas', frame: 'class_archer_tile_01' },
+  sorcerer: { texture: 'uiAtlas', frame: 'class_sorcerer_tile_01' },
+};
 const SPLASH_HERO_CARD_FILL_COLOR = 0xfff1b8;
-const SPLASH_HERO_CARD_SELECTED_FILL_ALPHA = 0.18;
-const SPLASH_HERO_CARD_IDLE_FILL_ALPHA = 0.045;
-const SPLASH_HERO_CARD_SELECTION_STROKE_WIDTH = 3;
-const SPLASH_HERO_CARD_SELECTED_STROKE_COLOR = 0xffd26d;
-const SPLASH_HERO_CARD_IDLE_STROKE_COLOR = 0xd0a24b;
-const SPLASH_HERO_CARD_SELECTED_STROKE_ALPHA = 0.95;
-const SPLASH_HERO_CARD_IDLE_STROKE_ALPHA = 0.35;
-const SPLASH_HERO_CARD_SELECTED_LABEL_COLOR = '#5f3b12';
-const SPLASH_HERO_CARD_IDLE_LABEL_COLOR = '#7d6039';
 const SPLASH_START_BUTTON_READY_FILL_ALPHA = 0.1;
 const SPLASH_START_BUTTON_DISABLED_FILL_ALPHA = 0.035;
 const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
@@ -723,22 +719,7 @@ class FairyGuildScene extends Phaser.Scene {
         return;
       }
       const selected = activeChoice === choice;
-      card.hit.setFillStyle(
-        SPLASH_HERO_CARD_FILL_COLOR,
-        selected ? SPLASH_HERO_CARD_SELECTED_FILL_ALPHA : SPLASH_HERO_CARD_IDLE_FILL_ALPHA,
-      );
-      card.selection?.setStrokeStyle(
-        SPLASH_HERO_CARD_SELECTION_STROKE_WIDTH,
-        selected ? SPLASH_HERO_CARD_SELECTED_STROKE_COLOR : SPLASH_HERO_CARD_IDLE_STROKE_COLOR,
-        selected ? SPLASH_HERO_CARD_SELECTED_STROKE_ALPHA : SPLASH_HERO_CARD_IDLE_STROKE_ALPHA,
-      );
-      if (selected) {
-        card.frame.setTint(0xffffff);
-      } else {
-        card.frame.clearTint();
-      }
-      card.label.setColor(selected ? SPLASH_HERO_CARD_SELECTED_LABEL_COLOR : SPLASH_HERO_CARD_IDLE_LABEL_COLOR);
-      card.badge?.setVisible(selected);
+      card.setSelected(selected);
     });
     const ready = Boolean(activeChoice);
     if (this.splashStartButton) {
@@ -2835,33 +2816,31 @@ class FairyGuildScene extends Phaser.Scene {
 
   getSplashOverlayLayout() {
     const compact = this.isCompactOverlayLayout();
-    const panelHeight = compact ? 472 : 500;
+    const panelHeight = compact ? 552 : 576;
     return {
       compact,
       panelWidth: compact ? 820 : 880,
       panelHeight,
       offsetY: this.getOverlayContentOffset(panelHeight),
       decorScale: compact ? 0.48 : 0.54,
-      titleY: compact ? -174 : -188,
+      titleY: compact ? -212 : -224,
       titleWidth: compact ? 470 : 520,
       titleTextWidth: compact ? 392 : 440,
       titleHeight: compact ? 54 : 58,
       titleSize: compact ? 26 : 28,
       titleMinSize: compact ? 20 : 22,
-      creditY: compact ? -132 : -142,
-      promptY: compact ? -96 : -104,
-      choiceY: compact ? -66 : -72,
-      cardY: compact ? 58 : 66,
-      cardX: compact ? 226 : 244,
-      cardWidth: compact ? 202 : 218,
-      cardHeight: compact ? 210 : 222,
-      heroY: compact ? -44 : -46,
-      heroSize: compact ? 60 : 66,
-      badgeY: compact ? -82 : -88,
-      captionY: compact ? 2 : 4,
-      detailY: compact ? 30 : 33,
-      actionsY: compact ? 65 : 70,
-      startY: compact ? 198 : 214,
+      creditY: compact ? -172 : -182,
+      promptY: compact ? -139 : -148,
+      choiceY: compact ? -111 : -118,
+      cardY: compact ? 32 : 38,
+      cardX: compact ? 206 : 222,
+      cardWidth: compact ? 160 : 172,
+      cardHeight: compact ? 252 : 270,
+      artY: compact ? -55 : -59,
+      artSize: compact ? 150 : 162,
+      captionY: compact ? 38 : 42,
+      detailY: compact ? 65 : 71,
+      startY: compact ? 218 : 236,
       startWidth: compact ? 230 : 242,
       startHeight: compact ? 50 : 52,
     };
@@ -2869,30 +2848,31 @@ class FairyGuildScene extends Phaser.Scene {
 
   getLevelUpOverlayLayout() {
     const compact = this.isCompactOverlayLayout();
-    const panelHeight = compact ? 390 : 430;
+    const panelHeight = compact ? 492 : 520;
     return {
       compact,
       panelWidth: compact ? 720 : 780,
       panelHeight,
       offsetY: this.getOverlayContentOffset(panelHeight),
       decorScale: compact ? 0.48 : 0.54,
-      titleY: compact ? -140 : -154,
+      titleY: compact ? -188 : -200,
       titleWidth: compact ? 360 : 390,
       titleTextWidth: compact ? 292 : 318,
       titleHeight: compact ? 66 : 72,
       titleSize: compact ? 30 : 32,
       titleMinSize: compact ? 21 : 23,
-      rewardY: compact ? -94 : -104,
-      helperY: compact ? -70 : -76,
-      cardY: compact ? 44 : 48,
+      rewardY: compact ? -143 : -154,
+      helperY: compact ? -116 : -126,
+      cardY: compact ? 36 : 42,
       cardXScale: compact ? 0.88 : 0.94,
-      cardWidth: compact ? 176 : 188,
-      cardHeight: compact ? 176 : 188,
-      iconY: compact ? -38 : -42,
-      badgeX: compact ? 48 : 52,
-      badgeY: compact ? -70 : -76,
-      labelY: compact ? 48 : 52,
-      detailY: compact ? 66 : 72,
+      cardWidth: compact ? 166 : 178,
+      cardHeight: compact ? 258 : 278,
+      iconY: compact ? -56 : -62,
+      iconSize: compact ? 116 : 124,
+      badgeX: compact ? 52 : 57,
+      badgeY: compact ? -98 : -107,
+      labelY: compact ? 39 : 43,
+      detailY: compact ? 65 : 70,
     };
   }
 
@@ -2954,8 +2934,8 @@ class FairyGuildScene extends Phaser.Scene {
     return createHudChip(this, x, y, width, height);
   }
 
-  createUiCardFrame(x, y, width, height) {
-    return createUiCardFrame(this, x, y, width, height);
+  createSharedCardBox(x, y, layout, content) {
+    return createSharedCardBox(this, x, y, layout, content);
   }
 
   createUiButton(x, y, width, height, label, onPress) {
@@ -2991,39 +2971,25 @@ class FairyGuildScene extends Phaser.Scene {
       align: 'center',
     }).setOrigin(0.5);
     const makeHeroCard = (choice: HeroClass, x: number) => {
-      const previewProfile = this.getHeroProfile(choice);
       const classConfig = this.getHeroConfig(choice);
-      this.ensureHeroAnimations(previewProfile);
-      const card = this.add.container(x, layout.cardY);
-      const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
-      const selection = this.add.rectangle(0, 0, layout.cardWidth - 4, layout.cardHeight - 4, 0xfff1b8, 0.001)
-        .setStrokeStyle(3, 0xffd26d, 0)
-        .setOrigin(0.5);
-      const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
-        .setInteractive({ useHandCursor: true });
-      const preview = this.add.sprite(0, layout.heroY, previewProfile.sheetKey, `${previewProfile.framePrefix}-0-0`)
-        .setDisplaySize(layout.heroSize, layout.heroSize)
-        .setOrigin(0.5, 0.76)
-        .play(`${previewProfile.animPrefix}-idle`);
-      if (previewProfile.tint) {
-        preview.setTint(previewProfile.tint);
-      }
-      const caption = this.add.text(0, layout.captionY, classConfig.label, this.uiTextStyle(layout.compact ? 15 : 16, '#7d6039')).setOrigin(0.5);
-      const detail = this.add.text(0, layout.detailY, classConfig.identity, {
-        ...this.uiTextStyle(layout.compact ? 11 : 12, '#31503b'),
-        align: 'center',
-      }).setOrigin(0.5);
-      const actions = this.add.text(0, layout.actionsY, `LEFT: ${classConfig.mainAttack}\nRIGHT: ${classConfig.skill}`, {
-        ...this.uiTextStyle(layout.compact ? 10 : 11, COLORS.uiInk),
-        align: 'center',
-        lineSpacing: 3,
-      }).setOrigin(0.5);
-      const badge = this.add.text(0, layout.badgeY, 'Selected', this.uiTextStyle(layout.compact ? 11 : 12, '#5c7d3e'))
-        .setOrigin(0.5)
-        .setVisible(false);
-      hit.on('pointerup', () => this.selectHeroClass(choice));
-      card.add([frame, selection, hit, preview, caption, detail, actions, badge]);
-      return { card, frame, selection, hit, preview, label: caption, badge };
+      return this.createSharedCardBox(x, layout.cardY, {
+        width: layout.cardWidth,
+        height: layout.cardHeight,
+        artY: layout.artY,
+        artSize: layout.artSize,
+        titleY: layout.captionY,
+        descriptionY: layout.detailY,
+        titleSize: layout.compact ? 15 : 16,
+        descriptionSize: layout.compact ? 11 : 12,
+        badgeX: 0,
+        badgeY: 0,
+        badgeSize: 0,
+      }, {
+        art: SPLASH_HERO_CARD_ART[choice],
+        title: classConfig.label,
+        description: classConfig.identity,
+        onSelect: () => this.selectHeroClass(choice),
+      });
     };
     const warriorCard = makeHeroCard('warrior', -layout.cardX);
     const archerCard = makeHeroCard('archer', 0);
@@ -3043,9 +3009,9 @@ class FairyGuildScene extends Phaser.Scene {
       credit,
       prompt,
       this.splashHeroChoiceText,
-      warriorCard.card,
-      archerCard.card,
-      sorcererCard.card,
+      warriorCard.container,
+      archerCard.container,
+      sorcererCard.container,
       startButton.container,
     ]);
     this.splashOverlay.add([shade, content]);
@@ -3096,57 +3062,29 @@ class FairyGuildScene extends Phaser.Scene {
 
     this.levelUpChoiceCards = [];
     CARD_DEFINITIONS.slice(0, 2).forEach((choice, index) => {
-      const card = this.add.container(LEVEL_UP_CARD_XS[index] * layout.cardXScale, layout.cardY);
-      const frame = this.createUiCardFrame(0, 0, layout.cardWidth, layout.cardHeight);
-      const hit = this.add.rectangle(0, 0, layout.cardWidth, layout.cardHeight, 0xfff1b8, 0.001)
-        .setInteractive({ useHandCursor: true });
-      const stage = this.createLevelUpIconStage(choice);
-      stage.setScale(layout.compact ? 0.86 : 0.92);
-      const icon = this.add.image(0, layout.iconY, choice.icon.texture, choice.icon.frame)
-        .setDisplaySize(layout.compact ? 62 : 68, layout.compact ? 62 : 68);
-      const tierBadge = this.createLevelUpTierBadge(layout.badgeX, layout.badgeY, layout.compact);
-      const label = this.add.text(0, layout.labelY, choice.label, this.uiTextStyle(layout.compact ? 15 : 17, COLORS.uiInk)).setOrigin(0.5);
-      const detail = this.add.text(0, layout.detailY, choice.detail, this.uiTextStyle(layout.compact ? 12 : 13, '#5e7b4a')).setOrigin(0.5);
-      hit.on('pointerover', () => {
-        hit.setFillStyle(0xfff1b8, 0.16);
-        frame.setTint(0xfff6cc);
+      const card = this.createSharedCardBox(LEVEL_UP_CARD_XS[index] * layout.cardXScale, layout.cardY, {
+        width: layout.cardWidth,
+        height: layout.cardHeight,
+        artY: layout.iconY,
+        artSize: layout.iconSize,
+        titleY: layout.labelY,
+        descriptionY: layout.detailY,
+        titleSize: layout.compact ? 14 : 15,
+        descriptionSize: layout.compact ? 11 : 12,
+        badgeX: layout.badgeX,
+        badgeY: layout.badgeY,
+        badgeSize: layout.compact ? 16 : 18,
+      }, {
+        art: choice.icon,
+        title: choice.label,
+        description: choice.detail,
+        onSelect: () => this.chooseLevelUpgrade(index),
       });
-      hit.on('pointerout', () => {
-        hit.setFillStyle(0xfff1b8, 0.001);
-        frame.clearTint();
-      });
-      hit.on('pointerup', () => this.chooseLevelUpgrade(index));
-      card.add([frame, hit, stage, icon, tierBadge.container, label, detail]);
-      content.add(card);
-      this.levelUpChoiceCards.push({ label, detail, icon, tierBadge });
+      content.add(card.container);
+      this.levelUpChoiceCards.push(card);
     });
     this.levelUpOverlay.add([shade, content]);
     this.uiLayer.add(this.levelUpOverlay);
-  }
-
-  createLevelUpIconStage(choice) {
-    const stage = this.add.graphics();
-    stage.fillStyle(choice.stageColor, 0.22);
-    stage.fillRoundedRect(-58, -72, 116, 94, 10);
-    stage.lineStyle(2, choice.stageAccent, 0.36);
-    stage.strokeRoundedRect(-58, -72, 116, 94, 10);
-    stage.fillStyle(choice.stageColor, 0.34);
-    stage.fillEllipse(0, 18, 112, 22);
-    stage.fillStyle(choice.stageAccent, 0.18);
-    stage.fillRoundedRect(-50, -66, 100, 16, 8);
-    return stage;
-  }
-
-  createLevelUpTierBadge(x, y, compact = false) {
-    const container = this.add.container(x, y).setVisible(false);
-    const backing = this.add.circle(0, 0, compact ? 17 : 19, 0x316ca8, 0.96)
-      .setStrokeStyle(2, 0xffdb75, 0.94);
-    const text = this.add.text(0, 0, '', {
-      ...this.uiTextStyle(compact ? 11 : 12, '#fff5cb'),
-      strokeThickness: 2,
-    }).setOrigin(0.5);
-    container.add([backing, text]);
-    return { container, text };
   }
 
   getLevelUpTierRoman(tier) {
@@ -3161,11 +3099,12 @@ class FairyGuildScene extends Phaser.Scene {
       }
       const tier = choice.persistent ? this.cardTiers[choice.key] + 1 : null;
       const roman = tier ? this.getLevelUpTierRoman(tier) : '';
-      card.label.setText(roman ? `${choice.label} ${roman}` : choice.label);
-      card.detail.setText(choice.detail);
-      card.icon.setTexture(choice.icon.texture, choice.icon.frame);
-      card.tierBadge.container.setVisible(Boolean(roman));
-      card.tierBadge.text.setText(roman);
+      card.setContent({
+        art: choice.icon,
+        title: choice.label,
+        description: choice.detail,
+        badgeText: roman,
+      });
     });
   }
 

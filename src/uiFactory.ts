@@ -164,9 +164,105 @@ export function createHudChip(scene, x, y, width, height) {
   }, { alpha: 0.92 }).container;
 }
 
-export function createUiCardFrame(scene, x, y, width, height) {
-  const slice = Math.max(12, Math.min(42, Math.floor(width / 3), Math.floor(height / 3)));
-  return scene.add.nineslice(x, y, 'gameUiAtlas', 'content_slot', width, height, slice, slice, slice, slice);
+export interface SharedCardBoxContent {
+  art: { texture: string; frame: string };
+  title: string;
+  description: string;
+  badgeText?: string;
+  selected?: boolean;
+  interactive?: boolean;
+  onSelect?: () => void;
+}
+
+export interface SharedCardBoxLayout {
+  width: number;
+  height: number;
+  artY: number;
+  artSize: number;
+  titleY: number;
+  descriptionY: number;
+  titleSize: number;
+  descriptionSize: number;
+  badgeX: number;
+  badgeY: number;
+  badgeSize: number;
+}
+
+export function createSharedCardBox(scene, x, y, layout: SharedCardBoxLayout, initial: SharedCardBoxContent) {
+  const container = scene.add.container(x, y);
+  const frame = scene.add.image(0, 0, 'gameUiAtlas', 'shared_card_box_01')
+    .setDisplaySize(layout.width, layout.height);
+  const selection = scene.add.rectangle(0, 0, layout.width - 12, layout.height - 12, 0xfff1b8, 0.001)
+    .setStrokeStyle(3, 0xffd26d, 0)
+    .setOrigin(0.5);
+  const hit = scene.add.rectangle(0, 0, layout.width, layout.height, 0xfff1b8, 0.001)
+    .setOrigin(0.5);
+  const art = scene.add.image(0, layout.artY, initial.art.texture, initial.art.frame)
+    .setDisplaySize(layout.artSize, layout.artSize);
+  const title = scene.add.text(0, layout.titleY, initial.title, uiTextStyle(layout.titleSize, '#5f3b12'))
+    .setOrigin(0.5);
+  const description = scene.add.text(0, layout.descriptionY, initial.description, {
+    ...uiTextStyle(layout.descriptionSize, '#31503b'),
+    align: 'center',
+    wordWrap: { width: layout.width - 42 },
+  }).setOrigin(0.5, 0);
+  const badge = scene.add.container(layout.badgeX, layout.badgeY);
+  const badgeBacking = scene.add.circle(0, 0, layout.badgeSize, 0x316ca8, 0.98)
+    .setStrokeStyle(2, 0xffdb75, 0.96);
+  const badgeText = scene.add.text(0, 0, initial.badgeText ?? '', {
+    ...uiTextStyle(Math.round(layout.badgeSize * 0.7), '#fff5cb'),
+    strokeThickness: 2,
+  }).setOrigin(0.5);
+  badge.add([badgeBacking, badgeText]);
+
+  let selected = Boolean(initial.selected);
+  let hovered = false;
+  let onSelect = initial.onSelect;
+  const applyState = () => {
+    selection.setStrokeStyle(3, 0xffd26d, selected ? 0.98 : 0);
+    hit.setFillStyle(0xfff1b8, selected ? 0.12 : hovered ? 0.08 : 0.001);
+    if (selected) {
+      frame.setTint(0xffedaa);
+    } else if (hovered) {
+      frame.setTint(0xfff3d1);
+    } else {
+      frame.clearTint();
+    }
+  };
+  const setSelected = (value: boolean) => {
+    selected = value;
+    applyState();
+  };
+  const setContent = (content: SharedCardBoxContent) => {
+    art.setTexture(content.art.texture, content.art.frame);
+    title.setText(content.title);
+    description.setText(content.description);
+    badgeText.setText(content.badgeText ?? '');
+    badge.setVisible(Boolean(content.badgeText));
+    if (content.selected !== undefined) {
+      selected = content.selected;
+    }
+    if (content.onSelect !== undefined) {
+      onSelect = content.onSelect;
+    }
+    applyState();
+  };
+
+  if (initial.interactive !== false) {
+    hit.setInteractive({ useHandCursor: true });
+    hit.on('pointerover', () => {
+      hovered = true;
+      applyState();
+    });
+    hit.on('pointerout', () => {
+      hovered = false;
+      applyState();
+    });
+    hit.on('pointerup', () => onSelect?.());
+  }
+  container.add([frame, selection, hit, art, title, description, badge]);
+  setContent(initial);
+  return { container, frame, hit, art, title, description, badge, badgeText, setContent, setSelected };
 }
 
 export function createUiButton(scene, x, y, width, height, label, onPress) {
