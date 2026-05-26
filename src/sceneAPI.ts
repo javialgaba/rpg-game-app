@@ -20,6 +20,7 @@ export interface SceneAPI {
   player: any;
   enemies: any[];
   buildings: any[];
+  playerOccluders: any[];
   projectiles: any[];
   traps: any[];
   guardUntil: number;
@@ -82,6 +83,7 @@ export interface SceneAPI {
   addEnvironmentUniformSprite(layer: any, frame: string, x: number, y: number, uniformScale: number, depth: number, options?: any): any;
   getActiveSceneVariant(): any;
   getGeneratedWorldBounds(tileW: number, tileH: number): any;
+  registerPlayerOccluder(occluder: any): void;
 
   damageEnemy(target: any, power: number, type: string): void;
 

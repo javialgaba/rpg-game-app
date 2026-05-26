@@ -56,6 +56,7 @@ export interface AssetRenderMetadata {
   z?: number;
   terrainFill?: number;
   terrainStroke?: number;
+  occludesPlayer?: boolean;
 }
 
 export interface AssetRegistryEntry {

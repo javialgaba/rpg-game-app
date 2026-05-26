@@ -4,6 +4,7 @@ import {
   STATIC_BUILDING_BASE_ALPHA,
   STATIC_BUILDING_SPRITE_ALPHA,
 } from './gameConfig';
+import { shouldRegisterPlayerOccluder } from './playerOcclusion';
 
 export function drawDiamond(scene, x, y, w, h, fill, stroke, alpha = 1, strokeAlpha = 0.45) {
   scene.tileGraphics.fillStyle(fill, alpha);
@@ -223,12 +224,22 @@ export function renderGeneratedProp(scene, placement) {
     .setDepth((layout?.depth ?? p.y) + 8)
     .setAlpha(render.alpha ?? 0.72);
   scene.entityLayer.add(sprite);
+  if (shouldRegisterPlayerOccluder(render)) {
+    scene.registerPlayerOccluder({
+      label: placement.label,
+      category: placement.token,
+      sprite,
+      baseAlpha: render.alpha ?? 0.72,
+      footprintCells: placement.cells.map((cell) => ({ ...cell })),
+      occluding: false,
+    });
+  }
 }
 
 export function renderGeneratedDecoration(scene, placement) {
   const override = scene.getSceneVariantDecorationTexture(placement);
   if (placement.render?.textureKey || override?.textureKey) {
-    const render = placement.render;
+    const render = placement.render ?? {};
     const p = scene.isoToScreen(placement.iso.x, placement.iso.y, render.z ?? 8);
     const size = scene.scaleGeneratedSize(render.displaySize ?? [36, 36]);
     const sprite = scene.add.image(
@@ -242,6 +253,16 @@ export function renderGeneratedDecoration(scene, placement) {
       .setDepth(p.y + 6)
       .setAlpha(render.alpha ?? 0.76);
     scene.entityLayer.add(sprite);
+    if (shouldRegisterPlayerOccluder(render)) {
+      scene.registerPlayerOccluder({
+        label: placement.label,
+        category: placement.decorationKind ?? 'decoration',
+        sprite,
+        baseAlpha: render.alpha ?? 0.76,
+        footprintCells: placement.cells.map((cell) => ({ ...cell })),
+        occluding: false,
+      });
+    }
     return;
   }
   const p = scene.isoToScreen(placement.iso.x + 0.16, placement.iso.y - 0.12, 8);

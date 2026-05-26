@@ -60,4 +60,17 @@ describe('seasonal scene variant assets', () => {
       });
     });
   });
+
+  it('marks tall foreground scenery for player occlusion without fading ground flowers', () => {
+    expect(ASSET_REGISTRY.tree.render?.occludesPlayer).toBe(true);
+    expect(ASSET_REGISTRY.well.render?.occludesPlayer).toBe(true);
+    expect(ASSET_REGISTRY.decoration.render?.occludesPlayer).not.toBe(true);
+
+    Object.values(SCENE_VARIANTS).forEach((variant) => {
+      const tallAnchors = variant.overlapDecorAnchors.filter((anchor) => anchor.group !== 'flowers');
+      const flowerAnchors = variant.overlapDecorAnchors.filter((anchor) => anchor.group === 'flowers');
+      expect(tallAnchors.every((anchor) => anchor.occludesPlayer)).toBe(true);
+      expect(flowerAnchors.every((anchor) => !anchor.occludesPlayer)).toBe(true);
+    });
+  });
 });

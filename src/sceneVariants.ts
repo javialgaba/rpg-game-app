@@ -35,6 +35,7 @@ export interface SceneVariantOverlapAnchor {
   scale: number;
   depthBias: number;
   alpha?: number;
+  occludesPlayer?: boolean;
 }
 
 export interface SceneVariantConfig {
@@ -75,12 +76,12 @@ export const DEFAULT_PLAYABLE_BOUNDS: PlayableBounds = {
 };
 
 const BASE_OVERLAP_DECOR_ANCHORS: SceneVariantOverlapAnchor[] = [
-  { group: 'bushes', x: -5.1, y: -4.2, scale: 1.02, depthBias: -26, alpha: 0.96 },
-  { group: 'rocks', x: -3.4, y: -4.65, scale: 0.88, depthBias: -24, alpha: 0.98 },
-  { group: 'treeClusters', x: 4.8, y: -4.15, scale: 0.92, depthBias: -25, alpha: 0.96 },
+  { group: 'bushes', x: -5.1, y: -4.2, scale: 1.02, depthBias: -26, alpha: 0.96, occludesPlayer: true },
+  { group: 'rocks', x: -3.4, y: -4.65, scale: 0.88, depthBias: -24, alpha: 0.98, occludesPlayer: true },
+  { group: 'treeClusters', x: 4.8, y: -4.15, scale: 0.92, depthBias: -25, alpha: 0.96, occludesPlayer: true },
   { group: 'flowers', x: -5.8, y: 3.5, scale: 0.92, depthBias: 12, alpha: 0.94 },
-  { group: 'bushes', x: 5.6, y: 3.65, scale: 1, depthBias: 14, alpha: 0.94 },
-  { group: 'treeClusters', x: -4.45, y: 4.55, scale: 0.96, depthBias: 16, alpha: 0.92 },
+  { group: 'bushes', x: 5.6, y: 3.65, scale: 1, depthBias: 14, alpha: 0.94, occludesPlayer: true },
+  { group: 'treeClusters', x: -4.45, y: 4.55, scale: 0.96, depthBias: 16, alpha: 0.92, occludesPlayer: true },
   { group: 'flowers', x: 4.25, y: 4.4, scale: 0.9, depthBias: 14, alpha: 0.9 },
 ];
 

@@ -185,6 +185,9 @@ export function syncDevDiagnostics(scene) {
     : '');
   host.setAttribute('data-player-candidates', JSON.stringify(movementDebug?.movementResult?.candidates ?? []));
   host.setAttribute('data-player-movement-trace', JSON.stringify(scene.playerMovementTrace ?? []));
+  const occlusionDebug = scene.getPlayerOcclusionDebugState?.();
+  host.setAttribute('data-player-occluders', String(occlusionDebug?.registered ?? 0));
+  host.setAttribute('data-player-faded-occluders', occlusionDebug?.activeLabels.join('|') ?? '');
   host.setAttribute('data-debug-enemies-frozen', scene.debugEnemiesFrozen ? '1' : '0');
 }
 

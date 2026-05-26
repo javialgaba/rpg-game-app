@@ -189,6 +189,15 @@ export interface BuildingEntity {
   shield?: { hp: number; expiresAt: number; sprite: Phaser.GameObjects.Arc };
 }
 
+export interface PlayerOccluder {
+  label: string;
+  category: string;
+  sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
+  baseAlpha: number;
+  footprintCells?: GridPoint[];
+  occluding: boolean;
+}
+
 // === 6. Route / spawn helpers ===
 
 export interface RouteScore {

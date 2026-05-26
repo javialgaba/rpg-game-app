@@ -591,6 +591,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 11,
+    occludesPlayer: true,
   };
   const fullTreeRender: AssetRenderMetadata = {
     textureKey: 'worldTilesAtlas',
@@ -599,6 +600,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 12,
+    occludesPlayer: true,
   };
   const oakTreeRender: AssetRenderMetadata = {
     textureKey: 'worldTilesAtlas',
@@ -607,6 +609,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 12,
+    occludesPlayer: true,
   };
   const signRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -615,6 +618,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.86],
     alpha: 1,
     z: 9,
+    occludesPlayer: true,
   };
   const flowerPatchRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -639,6 +643,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 8,
+    occludesPlayer: true,
   };
   const puddleRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -663,6 +668,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 9,
+    occludesPlayer: true,
   };
   const treeClusterRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -671,6 +677,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.86],
     alpha: 1,
     z: 11,
+    occludesPlayer: true,
   };
   const lanternRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -679,6 +686,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.86],
     alpha: 1,
     z: 9,
+    occludesPlayer: true,
   };
   const fenceSegmentRender: AssetRenderMetadata = {
     textureKey: 'environmentFrameAtlas',
@@ -687,6 +695,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     origin: [0.5, 0.84],
     alpha: 1,
     z: 8,
+    occludesPlayer: true,
   };
 
   terrain.forEach((placement) => {

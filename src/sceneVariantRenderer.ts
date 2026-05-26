@@ -218,6 +218,15 @@ export function renderSceneVariantOverlapDecor(scene, config, bounds, tileW, til
       .setDepth(bounds.centerY + anchor.depthBias)
       .setAlpha(anchor.alpha ?? 1);
     scene.edgeLayer.add(sprite);
+    if (anchor.occludesPlayer) {
+      scene.registerPlayerOccluder({
+        label: `Foreground ${anchor.group}`,
+        category: `foreground-${anchor.group}`,
+        sprite,
+        baseAlpha: anchor.alpha ?? 1,
+        occluding: false,
+      });
+    }
   });
 }
 

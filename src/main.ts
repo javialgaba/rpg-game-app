@@ -8,6 +8,7 @@ import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/le
 import { findGridPath, pathCost } from './levels/pathfinding';
 import { findNearestPlayerSafeCell, isPlayerSafeCell } from './levels/playerFootprint';
 import { probeScreenSpaceEscape, resolveScreenSpacePlayerMovement, screenDirectionToIsoMovement, SCREEN_ESCAPE_DIRECTIONS } from './playerMovement';
+import { getPlayerOccluderAlpha, isPlayerOccludedByScenery } from './playerOcclusion';
 
 import { resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
@@ -39,6 +40,7 @@ import type {
   GeneratedSurroundAnchor,
   GeneratedSurroundLayer,
   ScreenFootprintBounds,
+  PlayerOccluder,
   RunResumeBuildingSnapshot,
   RunResumeStateSnapshot,
 } from './gameTypes';
@@ -148,6 +150,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.enemies = [];
     this.projectiles = [];
     this.buildings = [];
+    this.playerOccluders = [] as PlayerOccluder[];
     this.effects = [];
     this.notes = [];
     this.cardTiers = createEmptyCardTiers();
@@ -389,6 +392,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.enemies = [];
     this.projectiles = [];
     this.buildings = [];
+    this.playerOccluders = [] as PlayerOccluder[];
     this.effects = [];
     this.notes = [];
     this.cardTiers = createEmptyCardTiers();
@@ -1425,6 +1429,10 @@ class FairyGuildScene extends Phaser.Scene {
     renderGeneratedDecoration(this, placement);
   }
 
+  registerPlayerOccluder(occluder: PlayerOccluder) {
+    this.playerOccluders.push(occluder);
+  }
+
   getActiveTimeOfDay() {
     return getActiveTimeOfDay(this);
   }
@@ -1784,6 +1792,14 @@ class FairyGuildScene extends Phaser.Scene {
       activeIntent: this.lastPlayerMovementIntent,
       movementResult: this.lastPlayerMovementResult,
       rejectedReason: this.lastRejectedMovementReason,
+    };
+  }
+
+  getPlayerOcclusionDebugState() {
+    const active = this.playerOccluders.filter((occluder) => occluder.occluding);
+    return {
+      registered: this.playerOccluders.length,
+      activeLabels: active.map((occluder) => `${occluder.label} (${occluder.category})`),
     };
   }
 
@@ -2786,6 +2802,20 @@ class FairyGuildScene extends Phaser.Scene {
           ? Math.min(building.baseAlpha ?? STATIC_BUILDING_BASE_ALPHA, OCCLUDED_STATIC_BUILDING_BASE_ALPHA)
           : (building.baseAlpha ?? STATIC_BUILDING_BASE_ALPHA),
       );
+    });
+    const playerBounds = this.player.sprite.getBounds();
+    this.playerOccluders.forEach((occluder) => {
+      const footprintBounds = occluder.footprintCells?.length
+        ? this.getFootprintScreenBounds(occluder.footprintCells)
+        : undefined;
+      occluder.occluding = isPlayerOccludedByScenery({
+        playerBounds,
+        playerDepth: this.player.sprite.depth,
+        occluderBounds: occluder.sprite.getBounds(),
+        occluderDepth: occluder.sprite.depth,
+        footprintBounds,
+      });
+      occluder.sprite.setAlpha(getPlayerOccluderAlpha(occluder.baseAlpha, occluder.occluding));
     });
     this.enemies.forEach((enemy) => {
       enemy.shadow.setDepth(enemy.sprite.y + 5);

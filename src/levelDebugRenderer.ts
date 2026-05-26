@@ -12,6 +12,8 @@ const DEBUG_COLORS = {
   pocket: 0xff2e88,
   attackArea: 0x7dff9a,
   route: 0x60ffb2,
+  occluder: 0xffbc42,
+  activeOccluder: 0xfff15c,
 };
 
 function getIsoMetrics(scene) {
@@ -198,6 +200,18 @@ export function drawGeneratedLevelDebug(scene) {
       addDebugLabel(scene, decoration.grid, labelForDecoration(decoration), decoration.blocksMovement ? '#ff8282' : '#8be9ff');
     }
   });
+  scene.playerOccluders?.forEach((occluder) => {
+    occluder.footprintCells?.forEach((cell) => {
+      drawDebugOutline(
+        gfx,
+        tileW,
+        tileH,
+        isoToScreen(scene, cell.x, cell.y),
+        occluder.occluding ? DEBUG_COLORS.activeOccluder : DEBUG_COLORS.occluder,
+        occluder.occluding ? 0.95 : 0.68,
+      );
+    });
+  });
   const goals = scene.generatedLevel.protectedTargets.flatMap((target) => target.attackCells);
   scene.generatedLevel.spawnPoints.forEach((spawn) => {
     const path = findGridPath(scene.generatedLevel.walkableGrid, spawn, goals);
@@ -263,13 +277,19 @@ export function drawGeneratedLevelDebug(scene) {
     `Sustained exits: ${movementDebug.escapeDirections.join(' / ') || 'NONE'}  dead end: ${movementDebug.runtimeDeadEnd ? 'YES' : 'NO'}`,
     `Selected travel: ${selectedLabel}  rejected: ${movementDebug.rejectedReason ?? 'none'} (red dots)`,
   ] : [];
+  const occlusionDebug = scene.getPlayerOcclusionDebugState?.();
+  const occlusionLines = occlusionDebug ? [
+    `Occluders: ${occlusionDebug.registered}  faded: ${occlusionDebug.activeLabels.join(', ') || 'none'}`,
+  ] : [];
   const legend = scene.add.text(14, 92, [
     'G COLLISION MAP',
     'Yellow: building footprint  Orange: solid prop',
     'Red: blocking decoration  Cyan: visual/non-blocking decor',
     'Blue outline: player clearance  Pink: trapped pocket',
     'Green: attack/route cells',
+    'Gold outline: hero occluder  Bright gold: currently faded',
     ...movementLines,
+    ...occlusionLines,
   ], {
     color: '#ffffff',
     fontFamily: 'Arial, sans-serif',
