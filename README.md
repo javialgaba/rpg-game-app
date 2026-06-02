@@ -167,12 +167,16 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |       |-- monster-pickup-sheet-source.png
 |       |-- repair-tool.png
 |       |-- repair-tool-source.png
+|       |-- sorcerer-hero-sheet.png
+|       |-- sorcerer-hero-sheet-source.png
 |       |-- status-panel-ui.png
 |       |-- touch_controls_atlas.json
 |       |-- touch_controls_atlas.png
 |       |-- ui_atlas.json
 |       |-- ui_atlas.png
 |       |-- village-board.png
+|       |-- warrior-hero-sheet.png
+|       |-- warrior-hero-sheet-source.png
 |       |-- world_edges_atlas.json
 |       |-- world_edges_atlas.png
 |       |-- world_tiles_atlas.json
@@ -206,7 +210,7 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source images are kept alongside processed transparent versions where applicable. The Archer class uses `archer-hero-sheet-source.png`, and the Sorcerer uses the wand-only `sorcerer-hero-sheet-source.png`; `npm run build:class-assets` processes these into their transparent runtime sheets. The legacy `princess-hero-sheet` files remain in the repository but are no longer the normal Sorcerer presentation. Touch controls, effects, and the six common card illustrations are generated as individual padded square sources under `public/assets/atlas-sources/generated/class-ui/`, then chroma-cleaned and validated before atlas packing. The shared class/level-up Card Box shell and the Warrior, Archer, and Sorcerer portrait tiles live under `public/assets/atlas-sources/generated/card-ui/`; the shell is packed into `game_ui_atlas` while the portraits are packed into `ui_atlas`. This avoids contact-sheet cropping and rejects visible backing pixels or art outside the safe margin. The current generated map uses deterministic fixed-cell atlases built from source art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, `hud_bars_atlas`, and `scene_variant_props_atlas`. Seasonal board visuals are built from chroma-key sheets under `public/assets/scene-variants/sources/<theme>/` into `scene_variant_terrain_atlas`, `scene_variant_props_atlas`, and `scene_variant_buildings_atlas`; the runtime themes are `spring`, `summer`, `twilight_autumn`, and `winter`. Directional gate keys now identify their physical village edge directly; each corrected west entrance uses its theme-specific `gate-w-source.png`, while the other named gate inputs retain their validated sheet cells. The existing `night_spring` world key intentionally renders with the `twilight_autumn` library. The older `world-ui-sheet.png` is treated as source art for atlas rebuilding rather than a runtime crop target.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source images are kept alongside processed transparent versions where applicable. Warrior, Archer, and Sorcerer use dedicated `8 x 4` hero source sheets with square `256px` cells; `npm run build:class-assets` processes `warrior-hero-sheet-source.png`, `archer-hero-sheet-source.png`, and the wand-only `sorcerer-hero-sheet-source.png` into transparent runtime sheets. The legacy `princess-hero-sheet` files stay synced to the Sorcerer sheet as a fallback. Touch controls, effects, and the six common card illustrations are generated as individual padded square sources under `public/assets/atlas-sources/generated/class-ui/`, then chroma-cleaned and validated before atlas packing. The shared class/level-up Card Box shell and the Warrior, Archer, and Sorcerer portrait tiles live under `public/assets/atlas-sources/generated/card-ui/`; the shell is packed into `game_ui_atlas` while the portraits are packed into `ui_atlas`. This avoids contact-sheet cropping and rejects visible backing pixels or art outside the safe margin. The current generated map uses deterministic fixed-cell atlases built from source art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, `hud_bars_atlas`, and `scene_variant_props_atlas`. Seasonal board visuals are built from chroma-key sheets under `public/assets/scene-variants/sources/<theme>/` into `scene_variant_terrain_atlas`, `scene_variant_props_atlas`, and `scene_variant_buildings_atlas`; the runtime themes are `spring`, `summer`, `twilight_autumn`, and `winter`. Directional gate keys now identify their physical village edge directly; each corrected west entrance uses its theme-specific `gate-w-source.png`, while the other named gate inputs retain their validated sheet cells. The existing `night_spring` world key intentionally renders with the `twilight_autumn` library. The older `world-ui-sheet.png` is treated as source art for atlas rebuilding rather than a runtime crop target.
 
 Atlas split rules:
 

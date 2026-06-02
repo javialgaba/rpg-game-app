@@ -132,6 +132,7 @@ const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
 const PLAYER_ESCAPE_PROBE_DISTANCE = 0.12;
 const PLAYER_ESCAPE_PROBE_STEPS = 5;
 const PLAYER_MOVEMENT_TRACE_LIMIT = 12;
+const PLAYER_SHADOW_Y_OFFSET = 5;
 const GENERATED_CAMERA_FOLLOW_LERP = 0.075;
 const DEBUG_DOCK_WIDTH = 354;
 const DEBUG_DOCK_COMPACT_LINE_HEIGHT = 15;
@@ -260,6 +261,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.image('villageBoard', '/assets/village-board.png');
     this.load.image('repairTool', '/assets/repair-tool.png');
     this.load.image('heroSheet', '/assets/hero-sheet.png');
+    this.load.image('warriorHeroSheet', '/assets/warrior-hero-sheet.png');
     this.load.image('archerHeroSheet', '/assets/archer-hero-sheet.png');
     this.load.image('sorcererHeroSheet', '/assets/sorcerer-hero-sheet.png');
     this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
@@ -312,6 +314,9 @@ class FairyGuildScene extends Phaser.Scene {
       (window as typeof window & { __fairyGuildScene?: FairyGuildScene }).__fairyGuildScene = this;
     }
     this.registerSheetFrames('heroSheet', 8, 4, 'hero');
+    if (this.textures.exists('warriorHeroSheet')) {
+      this.registerSheetFrames('warriorHeroSheet', 8, 4, 'warrior');
+    }
     if (this.textures.exists('archerHeroSheet')) {
       this.registerSheetFrames('archerHeroSheet', 8, 4, 'archer');
     }
@@ -662,18 +667,20 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   getHeroProfile(heroClass = this.heroClass) {
+    const warrior = heroClass === 'warrior' && this.textures.exists('warriorHeroSheet');
     const archer = heroClass === 'archer' && this.textures.exists('archerHeroSheet');
     const sorcerer = heroClass === 'sorcerer' && this.textures.exists('sorcererHeroSheet');
     const legacySorcerer = heroClass === 'sorcerer' && !sorcerer && this.textures.exists('princessHeroSheet');
+    const dedicatedClassSheet = warrior || archer || sorcerer;
     return {
       heroClass: heroClass as HeroClass,
       label: this.getHeroConfig(heroClass).label,
-      sheetKey: archer ? 'archerHeroSheet' : sorcerer ? 'sorcererHeroSheet' : legacySorcerer ? 'princessHeroSheet' : 'heroSheet',
-      framePrefix: archer ? 'archer' : sorcerer ? 'sorcerer' : legacySorcerer ? 'princess' : 'hero',
+      sheetKey: warrior ? 'warriorHeroSheet' : archer ? 'archerHeroSheet' : sorcerer ? 'sorcererHeroSheet' : legacySorcerer ? 'princessHeroSheet' : 'heroSheet',
+      framePrefix: warrior ? 'warrior' : archer ? 'archer' : sorcerer ? 'sorcerer' : legacySorcerer ? 'princess' : 'hero',
       animPrefix: `${heroClass}-hero`,
       tint: heroClass === 'archer' && !archer ? 0xb6ed9a : legacySorcerer ? 0xcfe7ff : null,
       displaySize: [76, 76] as [number, number],
-      origin: [0.5, 0.76] as [number, number],
+      origin: [0.5, dedicatedClassSheet ? 0.875 : 0.76] as [number, number],
     };
   }
 
@@ -1838,7 +1845,7 @@ class FairyGuildScene extends Phaser.Scene {
       sheetKey: profile.sheetKey,
       framePrefix: profile.framePrefix,
       animPrefix: profile.animPrefix,
-      shadow: this.add.ellipse(start.x, start.y + 13, 44, 18, 0x325631, 0.24),
+      shadow: this.add.ellipse(start.x, start.y + PLAYER_SHADOW_Y_OFFSET, 44, 18, 0x325631, 0.24),
       sprite: this.add.sprite(start.x, start.y, profile.sheetKey, `${profile.framePrefix}-0-0`)
         .setOrigin(profile.origin[0], profile.origin[1])
         .setDisplaySize(profile.displaySize[0], profile.displaySize[1])
@@ -1850,6 +1857,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.player.sprite.play(`${profile.animPrefix}-idle`);
     this.entityLayer.add([this.player.shadow, this.player.sprite]);
     this.recoverPlayerToSafeAnchor(true);
+    this.positionPlayerAtCurrentIso();
   }
 
   createControls() {
@@ -2083,6 +2091,16 @@ class FairyGuildScene extends Phaser.Scene {
     return false;
   }
 
+  positionPlayerAtCurrentIso() {
+    if (!this.player) {
+      return null;
+    }
+    const position = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
+    this.player.sprite.setPosition(position.x, position.y);
+    this.player.shadow.setPosition(position.x, position.y + PLAYER_SHADOW_Y_OFFSET);
+    return position;
+  }
+
   getSustainedPlayerEscapeDirections() {
     if (!this.player) {
       return [];
@@ -2181,9 +2199,7 @@ class FairyGuildScene extends Phaser.Scene {
       this.useClassSkill(time);
     }
 
-    const p = this.isoToGroundedEntityScreen(this.player.iso.x, this.player.iso.y);
-    this.player.sprite.setPosition(p.x, p.y);
-    this.player.shadow.setPosition(p.x, p.y + 15);
+    this.positionPlayerAtCurrentIso();
     this.player.sprite.setFlipX(this.player.facing.x < -0.05);
 
     if (time > this.player.actionLockUntil) {

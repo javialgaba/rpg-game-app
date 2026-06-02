@@ -9,6 +9,7 @@
     "build:atlases": "node tools/build-atlases.mjs",
     "build:hero-ui-assets": "node tools/build-hero-ui-assets.mjs",
     "build:class-assets": "node tools/build-class-assets.mjs",
+    "normalize:hero-sheets": "node tools/normalize-hero-sheet-sources.mjs",
     "build:game-ui": "node tools/build-game-ui-atlas.mjs",
     "build:world-enemies": "node tools/build-world-enemy-sheets.mjs",
     "build:scene-variants": "node tools/build-scene-variants.mjs",

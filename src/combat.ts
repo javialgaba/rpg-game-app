@@ -44,7 +44,7 @@ export function useMainAttack(scene: SceneAPI, time: number, targetIso: { x: num
   scene.player.lastAttack = time;
   scene.player.actionLockUntil = time + 300;
   scene.state.equipped = scene.getHeroConfig().mainAttack;
-  scene.player.sprite.play(`${scene.player.animPrefix}-${scene.heroClass === 'warrior' ? 'melee' : 'special'}`, true);
+  scene.player.sprite.play(`${scene.player.animPrefix}-melee`, true);
   if (scene.heroClass === 'archer') {
     scene.playTone('bow');
     const target = getNearestCombatTarget(scene.enemies, scene.player.iso, scene.playerStats.attackRange);

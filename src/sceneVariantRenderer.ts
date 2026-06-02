@@ -13,6 +13,8 @@ const SEASONAL_BUILDINGS_ATLAS = 'sceneVariantBuildingsAtlas';
 const BUILDING_ROLES = new Set<SeasonalBuildingRole>(['castle', 'house-1', 'house-2', 'market', 'well']);
 const GATE_SIGHTLINE_CELL_WIDTH_RATIO = 0.9;
 const GATE_SIGHTLINE_CELL_HEIGHT_RATIO = 1.8;
+const GATE_VISUAL_Z = 4;
+const GATE_DEPTH_OFFSET = 104;
 const AUTHORED_TERRAIN_FRAME_SUFFIX = {
   grass: 'grass_01',
   flower_grass: 'grass_03',
@@ -231,13 +233,17 @@ export function renderSceneVariantGate(scene, gate: GeneratedGate) {
   if (!texture.has(frameKey)) {
     return;
   }
-  const p = scene.isoToScreen(gate.threshold.x, gate.threshold.y, 4);
+  const p = scene.isoToScreen(gate.threshold.x, gate.threshold.y, GATE_VISUAL_Z);
   const size = scene.scaleGeneratedSize([224, 224]);
   const sprite = scene.add.image(p.x, p.y, SEASONAL_PROPS_ATLAS, frameKey)
     .setOrigin(0.5, 0.84)
     .setDisplaySize(size[0], size[1])
-    .setDepth(p.y + 18);
+    .setDepth(getSceneVariantGateDepth(p.y));
   scene.decorLayer.add(sprite);
+}
+
+export function getSceneVariantGateDepth(screenY: number) {
+  return screenY + GATE_DEPTH_OFFSET;
 }
 
 export function getSceneVariantGateFrameKey(visualTheme: string, direction: GeneratedGate['direction']) {

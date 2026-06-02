@@ -92,7 +92,7 @@ export function addFireflyCluster(scene, x, y, seed) {
       duration: 1500 + i * 230,
       ease: 'Sine.inOut',
     });
-    scene.entityLayer.add(dot);
+    scene.decorLayer.add(dot);
   }
 }
 
@@ -121,7 +121,7 @@ export function createBuildings(scene) {
       p.y + 140,
     );
     const footprintCells = scene.getFootprintCells(data.x, data.y, data.footprint);
-    scene.entityLayer.add([base, sprite, healthBar.container]);
+    scene.buildingLayer.add([base, sprite, healthBar.container]);
     const building = {
       ...data,
       baseMax: data.max,
@@ -151,7 +151,7 @@ export function createProps(scene) {
       .setDisplaySize(w, h)
       .setDepth(p.y + 8)
       .setAlpha(0.7);
-    scene.entityLayer.add(sprite);
+    scene.decorLayer.add(sprite);
   });
 }
 
@@ -178,7 +178,7 @@ export function renderGeneratedBuilding(scene, placement) {
     10,
     layout.depth + 140,
   );
-  scene.entityLayer.add([sprite, healthBar.container]);
+  scene.buildingLayer.add([sprite, healthBar.container]);
   const building = {
     name: override?.label ?? placement.label,
     x: placement.iso.x,
@@ -225,7 +225,7 @@ export function renderGeneratedProp(scene, placement) {
     sprite.destroy();
     return;
   }
-  scene.entityLayer.add(sprite);
+  (layout ? scene.buildingLayer : scene.decorLayer).add(sprite);
   if (!placement.scenicOnly && shouldRegisterPlayerOccluder(render)) {
     scene.registerPlayerOccluder({
       label: placement.label,
@@ -258,7 +258,7 @@ export function renderGeneratedDecoration(scene, placement) {
       sprite.destroy();
       return;
     }
-    scene.entityLayer.add(sprite);
+    scene.decorLayer.add(sprite);
     if (shouldRegisterPlayerOccluder(render)) {
       scene.registerPlayerOccluder({
         label: placement.label,
@@ -289,5 +289,5 @@ export function renderGeneratedDecoration(scene, placement) {
     flowers.fillCircle(p.x + 6, p.y + 2, 3);
   }
   flowers.setDepth(p.y + 5);
-  scene.entityLayer.add(flowers);
+  scene.decorLayer.add(flowers);
 }
