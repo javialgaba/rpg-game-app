@@ -74,6 +74,7 @@ export interface RunResumeStateSnapshot {
   lastSelectedCard?: string | null;
   lastOfferedCards?: string[];
   runStats?: { enemiesDefeated: number };
+  authoredMapId?: string;
   note?: string;
 }
 

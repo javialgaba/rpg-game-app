@@ -11,12 +11,15 @@
 
 - `src/main.ts` owns the main Phaser scene, runtime state, input handling, HUD, and debug overlays.
 - `src/gameConfig.ts` is the source of truth for balance constants, spawn pacing, repair values, and progression. Prefer updating config over scattering new literals through scene code.
+- `src/combat.ts`, `src/projectiles.ts`, and focused helper modules such as `src/combatTargeting.ts` own combat behavior. Keep target-selection rules in pure helpers when they can be tested without Phaser.
 - `src/levels/` contains procedural level generation, validation, catalog selection, pathfinding, and time-of-day logic.
-- `src/sceneVariants.ts` and the asset registries should stay the place where variant- and asset-selection logic lives; prefer extending those registries instead of hardcoding new asset paths in scene code.
+- `src/sceneVariants.ts`, `src/sceneVariantRenderer.ts`, `src/viewportBackdrop.ts`, and the asset registries should stay the place where variant-, surround-, and asset-selection logic lives; prefer extending those registries or helpers instead of hardcoding new asset paths in scene code.
+- Browser gutters around the fixed 16:9 Phaser canvas are intentional presentation space. Preserve Phaser `FIT` scaling unless explicitly asked to crop; use `src/viewportBackdrop.ts` and scene-variant CSS variables to update decorative page backdrops.
 
 ## Assets And Tooling
 
 - Treat built atlas manifests and generated sprite sheets in `public/assets/` as generated outputs when a matching source exists under `public/assets/atlas-sources/` or a builder in `tools/` produces them.
+- Use existing scene-variant background, frame, foreground, terrain, prop, building, and environment-frame assets for visual polish before adding new artwork.
 - Prefer changing source art, manifests, or build scripts over hand-editing generated atlas JSON.
 - Keep Node tooling in `tools/*.mjs` compatible with the existing CLI surface, including validation modes such as `--validate-only`.
 - Do not edit `dist/` unless the task is explicitly about build output.

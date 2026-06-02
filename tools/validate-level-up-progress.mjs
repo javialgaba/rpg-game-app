@@ -33,6 +33,7 @@ const {
   HERO_CLASSES,
   LEVEL_UP_MAX_PIPS,
   SKILL_LEVELS,
+  WAVE_BUDGET_GROWTH_AFTER_TABLE,
   WAVE_BUDGETS,
 } = require(outPath);
 
@@ -43,7 +44,9 @@ assert.equal(HERO_CLASSES.sorcerer.skill, 'Magic Shield');
 assert.equal(CARD_DEFINITIONS.length, 6);
 assert.equal(CARD_DEFINITIONS.filter((card) => card.persistent).length, 5);
 assert.equal(CARD_TIER_PERCENTAGES.swiftBoots.length, LEVEL_UP_MAX_PIPS);
+assert.equal(CARD_TIER_PERCENTAGES.strongerStrikes[0], 22);
 assert.deepEqual(SKILL_LEVELS, [3, 5, 7, 9]);
-assert.deepEqual(WAVE_BUDGETS, [6, 9, 12, 16, 20, 24, 29, 34, 40]);
+assert.deepEqual(WAVE_BUDGETS, [5, 7, 9, 12, 15, 18, 22, 26, 31]);
+assert.equal(WAVE_BUDGET_GROWTH_AFTER_TABLE, 4);
 
 console.log('validated class, card, skill, and wave progression configuration');

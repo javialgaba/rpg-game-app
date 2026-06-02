@@ -116,6 +116,7 @@ const { ASSET_REGISTRY } = require(path.join(outRoot, 'src', 'levels', 'assetReg
 const { DEFAULT_VILLAGE_LEVEL } = require(path.join(outRoot, 'src', 'levels', 'defaultVillageLevel.js'));
 const { generateLevel, validateGeneratedLevel } = require(path.join(outRoot, 'src', 'levels', 'generateLevel.js'));
 const { buildSeasonBoardConfig } = require(path.join(outRoot, 'src', 'levels', 'buildSeasonBoard.js'));
+const { parseAuthoredMapCsv } = require(path.join(outRoot, 'src', 'levels', 'authoredMap.js'));
 const { SCENE_VARIANTS } = require(path.join(outRoot, 'src', 'sceneVariants.js'));
 
 {
@@ -129,6 +130,22 @@ const { SCENE_VARIANTS } = require(path.join(outRoot, 'src', 'sceneVariants.js')
     validation.errors.some((error) => error.includes('must keep 2 clear cells')),
     'crowded buildings should fail validation',
   );
+}
+
+for (const authoredMapId of ['village-crossroads-01', 'village-crossroads-02']) {
+  const csv = await fs.readFile(
+    path.join(repoRoot, 'public', 'levels', 'authored', `${authoredMapId}.csv`),
+    'utf8',
+  );
+  const config = parseAuthoredMapCsv(authoredMapId, csv);
+  assert.deepEqual(config.authoredMap.errors, [], `${authoredMapId} should satisfy its authored CSV contract`);
+  const level = generateLevel(config, ASSET_REGISTRY);
+  const validation = validateGeneratedLevel(level);
+  assert.deepEqual(validation.errors, [], `${authoredMapId} should materialize into a valid runtime village`);
+  assert.equal(level.gates.length, 4, `${authoredMapId} should provide four authored gates`);
+  level.gates.forEach((gate) => {
+    assert.equal(gate.clearCells.length, 15, `${authoredMapId} ${gate.id} should reserve a visible entrance corridor`);
+  });
 }
 
 const blockingDecorationKinds = new Set(['rocks', 'sapling', 'fullTree', 'treeCluster', 'puddle']);
@@ -160,6 +177,16 @@ Object.keys(SCENE_VARIANTS).forEach((worldKey) => {
 
     level.roadGrid.forEach((row, y) => {
       row.forEach((isRoad, x) => {
+        const insidePlayable = x >= level.playableBounds.minX
+          && x <= level.playableBounds.maxX
+          && y >= level.playableBounds.minY
+          && y <= level.playableBounds.maxY;
+        if (!insidePlayable) {
+          assert(level.scenicTerrain.some((placement) => (
+            placement.grid.x === x && placement.grid.y === y
+          )), `scenic terrain should cover out-of-bounds cell at ${x},${y}`);
+          return;
+        }
         if (!isRoad) {
           assert.notEqual(level.config.matrix[y][x], 'path', `orphan path at ${x},${y}`);
           assert.notEqual(level.config.matrix[y][x], 'village-center', `orphan village-center at ${x},${y}`);
@@ -167,6 +194,29 @@ Object.keys(SCENE_VARIANTS).forEach((worldKey) => {
         }
         assert(reachableRoads.has(pointKey({ x, y })), `road at ${x},${y} should connect to player spawn`);
       });
+    });
+
+    assert.equal(level.width, 29, `${worldKey} cycle ${worldCycle} should use the expanded village width`);
+    assert.equal(level.height, 29, `${worldKey} cycle ${worldCycle} should use the expanded village height`);
+    assert.deepEqual(level.playableBounds, { minX: 3, minY: 3, maxX: 25, maxY: 25 }, `${worldKey} cycle ${worldCycle} should use the expanded playable bounds`);
+    assert.equal(level.scenicTerrain.length, (29 * 29) - (23 * 23), `${worldKey} cycle ${worldCycle} should render its scenic boundary`);
+    assert.equal(level.gates.length, 4, `${worldKey} cycle ${worldCycle} should generate four real gates`);
+    assert.equal(
+      level.scenicTerrain.filter((placement) => placement.token === 'path').length,
+      36,
+      `${worldKey} cycle ${worldCycle} should render four three-wide exterior gate approaches`,
+    );
+    level.gates.forEach((gate) => {
+      assert.equal(gate.clearCells.length, 15, `${gate.id} should reserve its entire entrance corridor`);
+      assert(gate.roadCells.length > gate.clearCells.length, `${gate.id} should extend an open avenue into the village`);
+      assert(gate.sightlineCells.length > gate.roadCells.length, `${gate.id} should reserve a wider visual sightline`);
+      assert.equal(
+        [...level.scenicObjects, ...level.decorations].some((placement) => (
+          placement.cells.some((cell) => gate.sightlineCells.some((reserved) => reserved.x === cell.x && reserved.y === cell.y))
+        )),
+        false,
+        `${gate.id} sightline should remain clear of props and decoration`,
+      );
     });
 
     level.decorations.forEach((decoration) => {
@@ -186,4 +236,4 @@ blockingDecorationKinds.forEach((kind) => {
   assert(seenBlockingKinds.has(kind), `expected generated ${kind} decoration coverage`);
 });
 
-console.log('validated generated level constraints');
+console.log('validated generated and authored level constraints');

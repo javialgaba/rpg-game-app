@@ -2,25 +2,28 @@ import * as Phaser from 'phaser';
 import './style.css';
 import { ASSET_REGISTRY } from './levels/assetRegistry';
 import { buildSeasonBoardConfig } from './levels/buildSeasonBoard';
+import { parseAuthoredMapCsv } from './levels/authoredMap';
 import { generateLevel, validateGeneratedLevel } from './levels/generateLevel';
-import { resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
-import type { AssetRenderMetadata, GridPoint, LevelPlacement } from './levels/levelTypes';
+import { getAuthoredLevelEntries, resolveLevelConfigFromParams, shouldRenderGeneratedLevelFromParams } from './levels/levelCatalog';
+import type { AssetRenderMetadata, GeneratedGate, GridPoint, LevelPlacement } from './levels/levelTypes';
 import { findGridPath, pathCost } from './levels/pathfinding';
 import { findNearestPlayerSafeCell, isPlayerSafeCell } from './levels/playerFootprint';
 import { probeScreenSpaceEscape, resolveScreenSpacePlayerMovement, screenDirectionToIsoMovement, SCREEN_ESCAPE_DIRECTIONS } from './playerMovement';
 import { getPlayerOccluderAlpha, isPlayerOccludedByScenery } from './playerOcclusion';
 
-import { resolveSceneVariantFromParams, SCENE_VARIANTS, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
+import { resolveSceneVariantFromParams, SCENE_VARIANTS, selectSeasonalFrame, type SceneVariantConfig, type SeasonPreset } from './sceneVariants';
 import {
   BOSS_CONFIGS,
   BOSS_HEALTH_MULTIPLIER,
   BOSS_PROJECTILE_COOLDOWN,
   BOSS_PROJECTILE_DAMAGE,
+  BOSS_GATE_INGRESS_DURATION,
   BOSS_ROUND_INDEX,
   CARD_DEFINITIONS,
   COLORS,
   HERO_CLASSES,
   GENERATED_BUILDING_SPRITE_ALPHA,
+  ENEMY_GATE_INGRESS_DURATION,
   HEIGHT,
   LEVEL_UP_CARD_XS,
   PLAYER_BASE,
@@ -28,6 +31,7 @@ import {
   REPAIR_COOLDOWN,
   REPAIR_COST,
   REPAIR_RANGE,
+  REINFORCED_WALL_REPAIR_PULSE,
   STATIC_BUILDING_BASE_ALPHA,
   WIDTH,
   WORLD_ENEMY_THEMES,
@@ -50,9 +54,10 @@ import {
 import { createGeneratedTextures } from './generatedTextures';
 import { getWorldFogPieces, getWorldBackdropPieces, getWorldEdgeClusters } from './generatedWorldRenderData';
 import { syncDevDiagnostics, consumeDevCommand, isDebugAutomationEnabled, getDebugAutomationHost, toDebugSlug, getDebugBuildingSummary, setDebugCommandResult, findDebugBuilding, teleportPlayerToDebugTarget, triggerDebugSeasonTransition } from './devCommands';
-import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createSharedCardBox, createUiButton, createUiText, debugTextStyle, uiTextStyle } from './uiFactory';
+import { createUiPanelFrame, createTiledGameUiFrame, getGameUiFrameSize, createHorizontalSlicedFrame, createUiTitleBanner, fitUiTextToWidth, createFittedTitleText, createHudChip, createSharedCardBox, createUiButton, createUiText, uiTextStyle } from './uiFactory';
 import { drawGeneratedLevelDebug, toggleGeneratedLevelDebug, updateGeneratedLevelDebug } from './levelDebugRenderer';
 import { getActiveTimeOfDay, cycleTimeOfDay, getLampGlowIsoPoints, createTimeOfDayLayer } from './timeOfDayRenderer';
+import { createMapEditorGameConfig } from './mapEditor/MapEditorScene';
 import {
   drawMapTiles,
   drawDiamond,
@@ -70,6 +75,7 @@ import {
   getSceneVariantBuildingTexture,
   getSceneVariantPropTexture,
   getSceneVariantDecorationTexture,
+  getSceneVariantTerrainFrameKey,
   addSceneVariantImage,
   registerParallaxSprite,
   hasStaticSceneVariantFrame,
@@ -77,13 +83,16 @@ import {
   renderSceneVariantFrame,
   renderSceneVariantForeground,
   renderSceneVariantOverlapDecor,
+  renderSceneVariantGate,
+  resolveScenicApronTerrainRole,
+  spriteIntersectsGateSightline,
   applySceneVariantAmbient,
   updateCinematicParallax,
 } from './sceneVariantRenderer';
 import { touchControlsCreate, setupMobileViewportHandlers, touchControlsUpdate, updateTouchClassActions } from './touchControls';
 import { updateProjectiles as _updateProjectiles, destroyProjectile as _destroyProjectile, clearProjectiles as _clearProjectiles, fireEnemyProjectile as _fireEnemyProjectile } from './projectiles';
 import { clearLevelTimers as _clearLevelTimers, addLevelTimer as _addLevelTimer, showCountdownLabel as _showCountdownLabel, scheduleLevelSpawns as _scheduleLevelSpawns, resetLevelRoundState as _resetLevelRoundState, buildCountdownSequence as _buildCountdownSequence, checkLevelClearCondition, getCurrentRoundTitle, getNextWorldProgressionState, calculateRoundReward } from './levelFlow';
-import { pickWeighted as _pickWeighted, getEnemyArchetype as _getEnemyArchetype, getEnemyVariant as _getEnemyVariant, getEnemyDisplayName as _getEnemyDisplayName, getEnemyFrameKey as _getEnemyFrameKey, getWorldEliteVisual as _getWorldEliteVisual, getBossVisual as _getBossVisual } from './enemySpawning';
+import { pickWeighted as _pickWeighted, getEnemyArchetype as _getEnemyArchetype, getEnemyVariant as _getEnemyVariant, getEnemyDisplayName as _getEnemyDisplayName, getEnemyFrameKey as _getEnemyFrameKey, getWorldEliteVisual as _getWorldEliteVisual, getBossVisual as _getBossVisual, calculateEnemyStats as _calculateEnemyStats, calculateBossStats as _calculateBossStats } from './enemySpawning';
 import { getNearestForestExit as _getNearestForestExit, getPathProgress as _getPathProgress, isRetreatComplete as _isRetreatComplete } from './enemyAI';
 import { getFootprintCells as _getFootprintCells, getNearestDamagedBuilding as _getNearestDamagedBuilding } from './repairSystem';
 import { isoToGridCell as _isoToGridCell, getGeneratedEdgeSpawnPoints as _getGeneratedEdgeSpawnPoints, getGeneratedFallbackSpawnAnchors as _getGeneratedFallbackSpawnAnchors, getGeneratedPlayableEdgeCells as _getGeneratedPlayableEdgeCells } from './generatedLevelSpawning';
@@ -92,6 +101,7 @@ import { spawnSparkleBurst as _spawnSparkleBurst, spawnSpellBloom as _spawnSpell
 import { useMainAttack as _useMainAttack, useClassSkill as _useClassSkill, updateClassEffects as _updateClassEffects, getClassSkillConfig as _getClassSkillConfig, damageEnemy as _damageEnemy, removeEnemy as _removeEnemy } from './combat';
 import { applyCardStats, chooseCardOffer, createEmptyCardTiers, percentageForTiers } from './progression';
 import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from './audioManager';
+import { applyViewportBackdrop } from './viewportBackdrop';
 import {
   getIsoMetrics as _getIsoMetrics,
   scaleGeneratedSize as _scaleGeneratedSize,
@@ -122,6 +132,17 @@ const SPLASH_START_BUTTON_DISABLED_TEXT_ALPHA = 0.45;
 const PLAYER_ESCAPE_PROBE_DISTANCE = 0.12;
 const PLAYER_ESCAPE_PROBE_STEPS = 5;
 const PLAYER_MOVEMENT_TRACE_LIMIT = 12;
+const GENERATED_CAMERA_FOLLOW_LERP = 0.075;
+const DEBUG_DOCK_WIDTH = 354;
+const DEBUG_DOCK_COMPACT_LINE_HEIGHT = 15;
+const DEBUG_DOCK_TOP = 58;
+const DEBUG_DOCK_MIN_HEIGHT = 62;
+const GENERATED_CAMERA_HORIZONTAL_PADDING_RATIO = 0.2;
+const GENERATED_CAMERA_VERTICAL_PADDING_RATIO = 0.18;
+const GENERATED_TERRAIN_APRON_PADDING_CELLS = 2;
+const GENERATED_SCENIC_APRON_PROP_BAND_CELLS = 5;
+const AMBIENT_MIN_SPAWN_INTERVAL = 150;
+const AMBIENT_BASE_SPAWN_INTERVAL = 360;
 
 class FairyGuildScene extends Phaser.Scene {
   [key: string]: any;
@@ -158,6 +179,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.lastSelectedCard = null as CardKey | null;
     this.lastOfferedCards = [] as CardKey[];
     this.runStats = { enemiesDefeated: 0 };
+    this.heartDropDefeatStreak = 0;
     this.traps = [];
     this.guardUntil = 0;
     this.magicShield = null;
@@ -188,6 +210,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.controlsHint = null;
     this.debugOverlay = null;
     this.debugOverlayVisible = false;
+    this.debugOverlayExpanded = false;
     this.generatedLevel = null;
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
@@ -214,6 +237,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.autoSelectHero = false;
     this.preselectHero = false;
     this.parallaxSprites = [];
+    this.worldCamera = null;
+    this.uiCamera = null;
+    this.cameraParallaxOrigin = null;
+    this.ambientParticles = [];
+    this.ambientParticlePreset = null;
+    this.nextAmbientParticleAt = 0;
     this.audio = createAudioState();
   }
 
@@ -246,6 +275,9 @@ class FairyGuildScene extends Phaser.Scene {
     this.load.atlas('sceneVariantTerrainAtlas', '/assets/scene-variants/scene_variant_terrain_atlas.png', '/assets/scene-variants/scene_variant_terrain_atlas.json');
     this.load.atlas('sceneVariantPropsAtlas', '/assets/scene-variants/scene_variant_props_atlas.png', '/assets/scene-variants/scene_variant_props_atlas.json');
     this.load.atlas('sceneVariantBuildingsAtlas', '/assets/scene-variants/scene_variant_buildings_atlas.png', '/assets/scene-variants/scene_variant_buildings_atlas.json');
+    getAuthoredLevelEntries().forEach((entry) => {
+      this.load.text(entry.cacheKey, entry.csvPath);
+    });
     this.preloadSceneVariantAssets();
     this.preloadWorldEnemyAssets();
   }
@@ -321,6 +353,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.setupMobileViewportHandlers();
     this.createCardProgression();
     this.createPhaseOverlays();
+    this.setupGeneratedWorldCamera();
     if (this.resumeRunState && this.resumeSkipSplash) {
       this.restoreRunStateFromResume();
       this.startLevelCountdown();
@@ -400,6 +433,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.lastSelectedCard = null;
     this.lastOfferedCards = [];
     this.runStats = { enemiesDefeated: 0 };
+    this.heartDropDefeatStreak = 0;
     this.traps = [];
     this.guardUntil = 0;
     this.magicShield = null;
@@ -429,6 +463,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.controlsHint = null;
     this.debugOverlay = null;
     this.debugOverlayVisible = false;
+    this.debugOverlayExpanded = false;
     this.generatedLevel = null;
     this.generatedLevelValidation = null;
     this.generatedLevelActive = false;
@@ -449,6 +484,12 @@ class FairyGuildScene extends Phaser.Scene {
     this.timeOfDayOverride = null;
     this.sceneVariant = null;
     this.parallaxSprites = [];
+    this.worldCamera = null;
+    this.uiCamera = null;
+    this.cameraParallaxOrigin = null;
+    this.ambientParticles = [];
+    this.ambientParticlePreset = null;
+    this.nextAmbientParticleAt = 0;
   }
 
   update(time, delta) {
@@ -471,6 +512,7 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateDebugOverlay();
     this.updateGeneratedLevelDebug(time);
     this.updateCinematicParallax();
+    this.updateSeasonalAmbientEffects(time);
     this.syncDevDiagnostics();
     this.consumeDevCommand();
   }
@@ -558,7 +600,15 @@ class FairyGuildScene extends Phaser.Scene {
     const useGeneratedMap = this.shouldRenderGeneratedLevel();
     const sceneVariant = this.sceneVariant ?? resolveSceneVariantFromParams(new URLSearchParams(window.location.search));
     this.sceneVariant = sceneVariant;
+    applyViewportBackdrop(sceneVariant);
     const bg = this.add.graphics();
+    if (useGeneratedMap) {
+      bg.fillStyle(sceneVariant.scenicFallbackColor, 1);
+      bg.fillRect(-WIDTH, -HEIGHT, WIDTH * 3, HEIGHT * 3);
+      this.backgroundLayer.add(bg);
+      this.renderGeneratedScreenBackdropFill();
+      return;
+    }
     const topColor = useGeneratedMap ? 0xb2d9ec : 0x7fc8f4;
     const bottomColor = useGeneratedMap ? 0xe7f1ef : 0xd6f3ff;
     bg.fillGradientStyle(topColor, topColor, bottomColor, bottomColor, 1);
@@ -566,10 +616,6 @@ class FairyGuildScene extends Phaser.Scene {
     bg.fillStyle(sceneVariant.key === 'night_spring' ? 0x29345a : 0x67c176, useGeneratedMap ? 0.48 : 1);
     bg.fillEllipse(WIDTH / 2, 700, 1320, 316);
     this.backgroundLayer.add(bg);
-    if (useGeneratedMap) {
-      this.renderGeneratedScreenBackdropFill();
-      return;
-    }
     const board = this.add.image(WIDTH / 2, HEIGHT / 2, 'villageBoard')
       .setDisplaySize(WIDTH, HEIGHT)
       .setAlpha(0.88);
@@ -763,6 +809,115 @@ class FairyGuildScene extends Phaser.Scene {
     updateCinematicParallax(this);
   }
 
+  setupGeneratedWorldCamera() {
+    if (!this.generatedLevelActive || !this.generatedLevel || !this.player?.sprite) {
+      return;
+    }
+    const variant = this.getActiveSceneVariant();
+    const bounds = this.getGeneratedCameraBounds();
+    if (!bounds) {
+      return;
+    }
+    this.worldCamera = this.cameras.main;
+    this.worldCamera
+      .setBackgroundColor(variant.scenicFallbackColor)
+      .setZoom(variant.cameraZoom)
+      .setBounds(bounds.x, bounds.y, bounds.width, bounds.height)
+      .centerOn(this.player.sprite.x, this.player.sprite.y)
+      .startFollow(this.player.sprite, true, GENERATED_CAMERA_FOLLOW_LERP, GENERATED_CAMERA_FOLLOW_LERP);
+    this.worldCamera.ignore([this.hudLayer, this.touchLayer]);
+    this.cameraParallaxOrigin = { x: this.player.sprite.x, y: this.player.sprite.y };
+
+    this.uiCamera = this.cameras.add(0, 0, WIDTH, HEIGHT, false, 'ui-camera');
+    this.uiCamera.ignore([
+      this.backgroundLayer,
+      this.shadowLayer,
+      this.terrainBaseLayer,
+      this.edgeLayer,
+      this.waterLayer,
+      this.decorLayer,
+      this.buildingLayer,
+      this.characterLayer,
+      this.effectsLayer,
+      this.levelDebugLayer,
+      this.lightingLayer,
+    ]);
+  }
+
+  updateSeasonalAmbientEffects(time) {
+    if (!this.generatedLevelActive || !this.lightingLayer) {
+      return;
+    }
+    const ambient = this.getActiveSceneVariant().ambientEffect;
+    if (this.ambientParticlePreset !== ambient.preset) {
+      this.ambientParticles.forEach((particle) => particle.destroy());
+      this.ambientParticles = [];
+      this.ambientParticlePreset = ambient.preset;
+      this.nextAmbientParticleAt = 0;
+    }
+    if (this.state.phase !== 'playing' || time < this.nextAmbientParticleAt) {
+      return;
+    }
+    this.ambientParticles = this.ambientParticles.filter((particle) => particle.active);
+    if (this.ambientParticles.length < ambient.maxParticles) {
+      this.spawnSeasonalAmbientParticle(ambient.preset, ambient.intensity);
+    }
+    this.nextAmbientParticleAt = time + Math.max(
+      AMBIENT_MIN_SPAWN_INTERVAL,
+      AMBIENT_BASE_SPAWN_INTERVAL / ambient.intensity,
+    );
+  }
+
+  spawnSeasonalAmbientParticle(preset, intensity) {
+    const particle = this.add.graphics().setDepth(4708).setScrollFactor(0);
+    const startX = Phaser.Math.Between(-30, WIDTH + 30);
+    const startY = Phaser.Math.Between(-30, Math.floor(HEIGHT * 0.42));
+    const travel = { x: 0, y: HEIGHT * 0.7 };
+    let duration = Phaser.Math.Between(4600, 6700);
+    switch (preset) {
+      case 'summer_rain':
+        particle.lineStyle(2, 0xffedc7, 0.2 * intensity);
+        particle.lineBetween(0, 0, -9, 25);
+        travel.x = -110;
+        travel.y = HEIGHT * 0.85;
+        duration = Phaser.Math.Between(1600, 2400);
+        break;
+      case 'autumn_leaves':
+        particle.fillStyle(0xe69a54, 0.46 * intensity);
+        particle.fillEllipse(0, 0, 11, 6);
+        travel.x = Phaser.Math.Between(-68, 48);
+        travel.y = HEIGHT * 0.76;
+        break;
+      case 'winter_snow':
+        particle.fillStyle(0xffffff, 0.48 * intensity);
+        particle.fillCircle(0, 0, Phaser.Math.Between(2, 4));
+        travel.x = Phaser.Math.Between(-22, 22);
+        travel.y = HEIGHT * 0.64;
+        duration = Phaser.Math.Between(5900, 8400);
+        break;
+      case 'spring_petals':
+      default:
+        particle.fillStyle(0xf7c9e0, 0.5 * intensity);
+        particle.fillEllipse(0, 0, 10, 6);
+        travel.x = Phaser.Math.Between(-40, 56);
+        travel.y = HEIGHT * 0.72;
+        break;
+    }
+    particle.setPosition(startX, startY);
+    this.lightingLayer.add(particle);
+    this.ambientParticles.push(particle);
+    this.tweens.add({
+      targets: particle,
+      x: startX + travel.x,
+      y: startY + travel.y,
+      rotation: Phaser.Math.FloatBetween(-1.5, 1.5),
+      alpha: 0,
+      duration,
+      ease: 'Sine.easeInOut',
+      onComplete: () => particle.destroy(),
+    });
+  }
+
   getCurrentWorldTheme() {
     return WORLD_ENEMY_THEMES[this.state.worldKey as SeasonPreset] ?? WORLD_ENEMY_THEMES.day_spring;
   }
@@ -799,6 +954,7 @@ class FairyGuildScene extends Phaser.Scene {
       lastSelectedCard: this.lastSelectedCard,
       lastOfferedCards: [...this.lastOfferedCards],
       runStats: { ...this.runStats },
+      authoredMapId: this.generatedLevelConfigId,
       note,
     };
   }
@@ -852,14 +1008,14 @@ class FairyGuildScene extends Phaser.Scene {
     this.updateVillageSafety();
   }
 
-  applyReinforcedWallHealth() {
+  applyReinforcedWallHealth({ repairPulse = 0 }: { repairPulse?: number } = {}) {
     const multiplier = percentageForTiers('reinforcedWalls', this.cardTiers.reinforcedWalls);
     this.buildings.forEach((building) => {
       building.baseMax = building.baseMax ?? building.max;
       const desiredMax = Math.round(building.baseMax * (1 + multiplier));
       const gained = Math.max(0, desiredMax - building.max);
       building.max = desiredMax;
-      building.hp = Math.min(building.max, building.hp + gained);
+      building.hp = Math.min(building.max, building.hp + gained + repairPulse);
       this.updateBuildingRepairState(building);
     });
   }
@@ -876,7 +1032,7 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.cardTiers[choice.key] += 1;
     if (choice.key === 'reinforcedWalls') {
-      this.applyReinforcedWallHealth();
+      this.applyReinforcedWallHealth({ repairPulse: REINFORCED_WALL_REPAIR_PULSE });
     }
     const previousMaxHealth = this.playerStats.maxHealth;
     this.playerStats = applyCardStats(this.heroClass, this.cardTiers);
@@ -969,18 +1125,30 @@ class FairyGuildScene extends Phaser.Scene {
 
   prepareGeneratedLevel() {
     const params = new URLSearchParams(window.location.search);
-    const selection = resolveLevelConfigFromParams(params);
+    const selection = resolveLevelConfigFromParams(params, this.resumeRunState?.authoredMapId);
     this.generatedLevelConfigId = selection.id;
     this.generatedLevelConfigLabel = selection.label;
     this.generatedLevelSelectionWarnings = selection.warnings;
     this.sceneVariant = this.sceneVariantOverrideKey && SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset]
       ? SCENE_VARIANTS[this.sceneVariantOverrideKey as SeasonPreset]
       : resolveSceneVariantFromParams(params);
-    const worldCycle = Number(this.resumeRunState?.state?.worldCycle ?? this.state.worldCycle ?? 0);
-    selection.config.playableBounds = this.sceneVariant.playableBounds;
-    const boardConfig = buildSeasonBoardConfig(selection.config, this.sceneVariant.key as SeasonPreset, worldCycle);
-    boardConfig.playableBounds = this.sceneVariant.playableBounds;
-    this.generatedLevel = generateLevel(boardConfig, ASSET_REGISTRY);
+    const authoredCsv = this.cache.text.get(selection.cacheKey) as string | undefined;
+    let levelConfig;
+    if (authoredCsv) {
+      levelConfig = parseAuthoredMapCsv(selection.id, authoredCsv, {
+        seed: selection.id,
+        timeOfDay: selection.config.timeOfDay,
+        tileSize: Math.max(selection.config.tileSize, this.sceneVariant.boardTileSizeMin),
+        difficulty: selection.config.difficulty,
+      });
+    } else {
+      const worldCycle = Number(this.resumeRunState?.state?.worldCycle ?? this.state.worldCycle ?? 0);
+      selection.config.playableBounds = this.sceneVariant.playableBounds;
+      levelConfig = buildSeasonBoardConfig(selection.config, this.sceneVariant.key as SeasonPreset, worldCycle);
+      selection.warnings.push(`Authored map "${selection.id}" could not be loaded; using procedural fallback.`);
+    }
+    levelConfig.playableBounds = this.sceneVariant.playableBounds;
+    this.generatedLevel = generateLevel(levelConfig, ASSET_REGISTRY);
     this.generatedLevelValidation = validateGeneratedLevel(this.generatedLevel);
     if (!this.resumeRunState) {
       this.syncWorldStateWithSceneVariant();
@@ -1025,39 +1193,44 @@ class FairyGuildScene extends Phaser.Scene {
     const variant = this.getActiveSceneVariant();
     const { tileW, tileH } = this.getIsoMetrics();
     const bounds = this.getGeneratedWorldBounds(tileW, tileH);
-    const usesStaticSceneFrame = this.hasStaticSceneVariantFrame(variant);
     if (bounds) {
       this.renderSceneVariantBackground(variant, bounds);
-      if (!usesStaticSceneFrame) {
-        this.renderGeneratedWorldEdges();
-      }
+      this.renderGeneratedSceneSurround(bounds, tileW, tileH);
       this.renderSceneVariantFrame(variant, bounds);
     }
-    this.generatedLevel.terrain.forEach((placement) => {
+    this.renderGeneratedTerrainApron(tileW, tileH);
+    const terrainPlacements = [...this.generatedLevel.scenicTerrain, ...this.generatedLevel.terrain];
+    const expectedTerrainPlacements = this.generatedLevel.width * this.generatedLevel.height;
+    if (terrainPlacements.length !== expectedTerrainPlacements) {
+      throw new Error(`Generated terrain rendered ${terrainPlacements.length} tiles; expected ${expectedTerrainPlacements}.`);
+    }
+    if (!this.textures.exists('sceneVariantTerrainAtlas')) {
+      throw new Error('Generated terrain requires sceneVariantTerrainAtlas.');
+    }
+    const terrainAtlas = this.textures.get('sceneVariantTerrainAtlas');
+    terrainPlacements.forEach((placement) => {
       const center = this.isoToScreen(placement.iso.x, placement.iso.y);
       const render = placement.render ?? {};
       const terrainTexture = this.getSceneVariantTerrainTexture(placement);
-      const textureKey = terrainTexture?.textureKey ?? render.textureKey;
-      const frameKey = terrainTexture?.frameKey ?? render.frameKey;
-      const texture = textureKey ? this.textures.get(textureKey) : null;
-      if (textureKey && texture && (!frameKey || texture.has(frameKey))) {
-        const size = this.scaleGeneratedSize(render.displaySize ?? [160, 160]);
-        const sprite = this.add.image(center.x, center.y, textureKey, frameKey)
-          .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.62)
-          .setDisplaySize(size[0], size[1])
-          .setDepth(center.y - tileH)
-          .setAlpha(1);
-        this.terrainBaseLayer.add(sprite);
-        return;
+      const textureKey = terrainTexture?.textureKey;
+      const frameKey = terrainTexture?.frameKey;
+      if (textureKey !== 'sceneVariantTerrainAtlas' || !frameKey || !terrainAtlas.has(frameKey)) {
+        throw new Error(`Missing generated terrain atlas frame "${frameKey ?? render.frameKey ?? placement.token}" for ${placement.id}.`);
       }
-      const fill = render.terrainFill ?? COLORS.grassA;
-      const stroke = render.terrainStroke ?? 0x5dbb65;
-      this.drawDiamond(center.x, center.y, tileW, tileH, fill, stroke, 1, 0);
+      const size = this.scaleGeneratedSize(render.displaySize ?? [160, 160]);
+      const sprite = this.add.image(center.x, center.y, textureKey, frameKey)
+        .setOrigin(render.origin?.[0] ?? 0.5, render.origin?.[1] ?? 0.62)
+        .setDisplaySize(size[0], size[1])
+        .setDepth(center.y - tileH)
+        .setAlpha(1);
+      this.terrainBaseLayer.add(sprite);
     });
     if (bounds) {
       this.renderSceneVariantOverlapDecor(variant, bounds, tileW, tileH);
     }
     this.createPathStones();
+    this.generatedLevel.scenicObjects.forEach((placement) => this.renderGeneratedProp(placement));
+    this.generatedLevel.gates.forEach((gate) => renderSceneVariantGate(this, gate));
     this.generatedLevel.objects.forEach((placement) => {
       if (placement.type === 'building') {
         this.renderGeneratedBuilding(placement);
@@ -1070,6 +1243,137 @@ class FairyGuildScene extends Phaser.Scene {
       this.renderSceneVariantForeground(variant, bounds);
       this.applySceneVariantAmbient(variant);
     }
+  }
+
+  renderGeneratedTerrainApron(tileW, tileH) {
+    if (!this.generatedLevel || !this.textures.exists('sceneVariantTerrainAtlas')) {
+      return;
+    }
+    const variant = this.getActiveSceneVariant();
+    const texture = this.textures.get('sceneVariantTerrainAtlas');
+    const visibleWidth = WIDTH / variant.cameraZoom;
+    const visibleHeight = HEIGHT / variant.cameraZoom;
+    const apronCells = Math.ceil(Math.max(
+      visibleWidth * GENERATED_CAMERA_HORIZONTAL_PADDING_RATIO / (tileW / 2),
+      visibleHeight * GENERATED_CAMERA_VERTICAL_PADDING_RATIO / (tileH / 2),
+    )) + GENERATED_TERRAIN_APRON_PADDING_CELLS;
+    const tileSize = this.scaleGeneratedSize([160, 160]);
+    this.generatedApronDebugCells = [];
+    this.generatedApronDebugStats = {
+      terrainCells: 0,
+      forestCells: 0,
+      gateRoadCells: 0,
+      props: 0,
+    };
+    for (let y = -apronCells; y < this.generatedLevel.height + apronCells; y += 1) {
+      for (let x = -apronCells; x < this.generatedLevel.width + apronCells; x += 1) {
+        if (x >= 0 && y >= 0 && x < this.generatedLevel.width && y < this.generatedLevel.height) {
+          continue;
+        }
+        const terrain = resolveScenicApronTerrainRole(x, y, this.generatedLevel);
+        const frameKey = getSceneVariantTerrainFrameKey(variant.visualTheme, terrain.terrainRole);
+        if (!texture.has(frameKey)) {
+          throw new Error(`Missing scenic apron terrain atlas frame "${frameKey}".`);
+        }
+        const center = this.isoToScreen(x, y);
+        const sprite = this.add.image(center.x, center.y, 'sceneVariantTerrainAtlas', frameKey)
+          .setOrigin(0.5, 0.62)
+          .setDisplaySize(tileSize[0], tileSize[1])
+          .setDepth(center.y - tileH - 1)
+          .setAlpha(1);
+        this.terrainBaseLayer.add(sprite);
+        this.generatedApronDebugStats.terrainCells += 1;
+        if (terrain.reason === 'gate-road') {
+          this.generatedApronDebugStats.gateRoadCells += 1;
+        } else if (terrain.reason === 'forest-buffer') {
+          this.generatedApronDebugStats.forestCells += 1;
+        }
+        const hasProp = terrain.reason === 'forest-buffer'
+          && this.renderGeneratedTerrainApronProp(x, y, apronCells, variant);
+        if (hasProp) {
+          this.generatedApronDebugStats.props += 1;
+        }
+        this.generatedApronDebugCells.push({
+          x,
+          y,
+          terrainRole: terrain.terrainRole,
+          reason: terrain.reason,
+          hasProp,
+        });
+      }
+    }
+  }
+
+  renderGeneratedTerrainApronProp(x, y, apronCells, variant) {
+    if (
+      !this.generatedLevel
+      || !this.textures.exists('sceneVariantPropsAtlas')
+      || this.getGeneratedTerrainApronOutsideDistance(x, y) > Math.min(GENERATED_SCENIC_APRON_PROP_BAND_CELLS, apronCells)
+      || this.isGeneratedTerrainApronGateSightline(x, y)
+    ) {
+      return false;
+    }
+    const texture = this.textures.get('sceneVariantPropsAtlas');
+    const hash = this.getGeneratedTerrainApronHash(x, y);
+    if (hash % 4 === 0) {
+      return false;
+    }
+    const group = hash % 10 < 5
+      ? 'trees'
+      : (hash % 10 < 7 ? 'bushes' : (hash % 10 < 9 ? 'flowers' : 'rocks'));
+    const frame = selectSeasonalFrame(variant.propPalette[group], `${variant.key}:apron:${x}:${y}`);
+    if (!texture.has(frame)) {
+      return false;
+    }
+    const baseSize = group === 'trees'
+      ? [204, 175]
+      : (group === 'bushes' ? [162, 128] : (group === 'flowers' ? [150, 118] : [142, 124]));
+    const size = this.scaleGeneratedSize(baseSize);
+    const p = this.isoToScreen(x, y, group === 'flowers' ? 5 : 10);
+    const sprite = this.add.image(p.x, p.y, 'sceneVariantPropsAtlas', frame)
+      .setOrigin(0.5, group === 'flowers' ? 0.84 : 0.82)
+      .setDisplaySize(size[0], size[1])
+      .setDepth(p.y + (group === 'flowers' ? 6 : 14))
+      .setAlpha(group === 'flowers' ? 0.92 : 0.98);
+    this.edgeLayer.add(sprite);
+    return true;
+  }
+
+  getGeneratedTerrainApronHash(x, y) {
+    const seed = this.generatedLevel?.config.seed ?? 'apron';
+    let hash = 2166136261;
+    `${seed}:${x}:${y}`.split('').forEach((char) => {
+      hash ^= char.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    });
+    return hash >>> 0;
+  }
+
+  getGeneratedTerrainApronOutsideDistance(x, y) {
+    if (!this.generatedLevel) {
+      return Infinity;
+    }
+    const distanceX = x < 0 ? -x : (x >= this.generatedLevel.width ? x - this.generatedLevel.width + 1 : 0);
+    const distanceY = y < 0 ? -y : (y >= this.generatedLevel.height ? y - this.generatedLevel.height + 1 : 0);
+    return Math.max(distanceX, distanceY);
+  }
+
+  isGeneratedTerrainApronGateSightline(x, y) {
+    if (!this.generatedLevel) {
+      return false;
+    }
+    return this.generatedLevel.gates.some((gate) => {
+      if (gate.direction === 'north') {
+        return y < 0 && Math.abs(x - gate.threshold.x) <= 3;
+      }
+      if (gate.direction === 'south') {
+        return y >= this.generatedLevel.height && Math.abs(x - gate.threshold.x) <= 3;
+      }
+      if (gate.direction === 'west') {
+        return x < 0 && Math.abs(y - gate.threshold.y) <= 3;
+      }
+      return x >= this.generatedLevel.width && Math.abs(y - gate.threshold.y) <= 3;
+    });
   }
 
   renderGeneratedWorldEdges() {
@@ -1238,7 +1542,7 @@ class FairyGuildScene extends Phaser.Scene {
       const depth = typeof piece.depth === 'number'
         ? piece.depth
         : (piece.depth.edge === 'top' ? bounds.top.y : bounds.bottom.y) + tileH * piece.depth.tileOffset;
-      this.addEnvironmentUniformSprite(
+      const sprite = this.addEnvironmentUniformSprite(
         this.getGeneratedSurroundLayer(piece.layer),
         piece.frame,
         anchor.x + piece.offsetXUnits * tileW,
@@ -1247,6 +1551,9 @@ class FairyGuildScene extends Phaser.Scene {
         depth,
         { alpha: piece.alpha, originX: piece.originX, originY: piece.originY },
       );
+      if (piece.layer === 'decor' && spriteIntersectsGateSightline(this, sprite)) {
+        sprite?.destroy();
+      }
     });
   }
 
@@ -1258,7 +1565,10 @@ class FairyGuildScene extends Phaser.Scene {
     if (!this.generatedLevel) {
       return null;
     }
-    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const minX = 0;
+    const minY = 0;
+    const maxX = this.generatedLevel.width - 1;
+    const maxY = this.generatedLevel.height - 1;
     const top = this.isoToScreen(minX, minY);
     const right = this.isoToScreen(maxX, minY);
     const bottom = this.isoToScreen(maxX, maxY);
@@ -1273,6 +1583,25 @@ class FairyGuildScene extends Phaser.Scene {
       boardWidth: Math.abs(right.x - left.x) + tileW * 2.55,
       boardHeight: Math.abs(bottom.y - top.y) + tileH * 2.55,
     };
+  }
+
+  getGeneratedCameraBounds() {
+    const { tileW, tileH } = this.getIsoMetrics();
+    const board = this.getGeneratedWorldBounds(tileW, tileH);
+    if (!board) {
+      return null;
+    }
+    const zoom = this.getActiveSceneVariant().cameraZoom;
+    const visibleWidth = WIDTH / zoom;
+    const visibleHeight = HEIGHT / zoom;
+    const horizontalPadding = visibleWidth * GENERATED_CAMERA_HORIZONTAL_PADDING_RATIO;
+    const verticalPadding = visibleHeight * GENERATED_CAMERA_VERTICAL_PADDING_RATIO;
+    return new Phaser.Geom.Rectangle(
+      board.left.x - horizontalPadding,
+      board.top.y - verticalPadding,
+      Math.max(visibleWidth, board.right.x - board.left.x + horizontalPadding * 2),
+      Math.max(visibleHeight, board.bottom.y - board.top.y + verticalPadding * 2),
+    );
   }
 
   renderGeneratedWorldFog(bounds, tileW, tileH, texture) {
@@ -1395,7 +1724,10 @@ class FairyGuildScene extends Phaser.Scene {
     }
     this.generatedTerrainMaskGraphics?.destroy();
     const { tileW, tileH } = this.getIsoMetrics();
-    const { minX, minY, maxX, maxY } = this.generatedLevel.playableBounds;
+    const minX = 0;
+    const minY = 0;
+    const maxX = this.generatedLevel.width - 1;
+    const maxY = this.generatedLevel.height - 1;
     const topCenter = this.isoToScreen(minX, minY);
     const rightCenter = this.isoToScreen(maxX, minY);
     const bottomCenter = this.isoToScreen(maxX, maxY);
@@ -1663,7 +1995,7 @@ class FairyGuildScene extends Phaser.Scene {
     let bestEnemy = null;
     let bestDistance = Infinity;
     this.enemies.forEach((enemy) => {
-      if (enemy.retreating || enemy.defeated) {
+      if (enemy.retreating || enemy.defeated || enemy.entranceState === 'approaching') {
         return;
       }
       const distance = Phaser.Math.Distance.Between(this.player.iso.x, this.player.iso.y, enemy.iso.x, enemy.iso.y);
@@ -1698,7 +2030,11 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updatePointerIso() {
-    this.lastPointerIso = this.clampIso(this.screenToIso(this.input.activePointer.x, this.input.activePointer.y), 0.1);
+    const pointer = this.input.activePointer;
+    const worldPoint = this.generatedLevelActive && this.worldCamera
+      ? this.worldCamera.getWorldPoint(pointer.x, pointer.y)
+      : { x: pointer.x, y: pointer.y };
+    this.lastPointerIso = this.clampIso(this.screenToIso(worldPoint.x, worldPoint.y), 0.1);
   }
 
   isPlayerFootprintWalkable(point) {
@@ -2108,6 +2444,38 @@ class FairyGuildScene extends Phaser.Scene {
     };
   }
 
+  getGeneratedGateForSpawn(spawn: GridPoint): GeneratedGate | null {
+    return this.generatedLevel?.gates.find((gate) => (
+      gate.threshold.x === spawn.x && gate.threshold.y === spawn.y
+    )) ?? null;
+  }
+
+  beginGateIngress(iso, gate: GeneratedGate | null, isBoss = false) {
+    if (!this.generatedLevelActive || !gate) {
+      return {
+        iso,
+        entranceState: 'active',
+        entryGateId: null,
+        entryThreshold: null,
+        entranceSpeed: 0,
+      };
+    }
+    const distance = Phaser.Math.Distance.Between(
+      gate.visualEntry.x,
+      gate.visualEntry.y,
+      iso.x,
+      iso.y,
+    );
+    const duration = isBoss ? BOSS_GATE_INGRESS_DURATION : ENEMY_GATE_INGRESS_DURATION;
+    return {
+      iso: { ...gate.visualEntry },
+      entranceState: 'approaching',
+      entryGateId: gate.id,
+      entryThreshold: { ...iso },
+      entranceSpeed: distance / (duration / 1000),
+    };
+  }
+
   getGeneratedRouteScores(startIso) {
     if (!this.generatedLevel) {
       return [];
@@ -2214,6 +2582,7 @@ class FairyGuildScene extends Phaser.Scene {
     let target = weakestBuilding ?? this.getEnemyTarget();
     if (!target) {return false;}
     let iso;
+    let entryGate: GeneratedGate | null = null;
     if (this.generatedLevelActive) {
       const spawnCandidates = [...(this.generatedValidSpawnPoints?.length ? this.generatedValidSpawnPoints : this.buildGeneratedSpawnCache())];
       for (let i = spawnCandidates.length - 1; i > 0; i -= 1) {
@@ -2224,6 +2593,7 @@ class FairyGuildScene extends Phaser.Scene {
         iso = this.jitterGeneratedSpawnPoint(spawn);
         route = this.selectGeneratedEnemyRoute(iso, weakestBuilding);
         if (route) {
+          entryGate = this.getGeneratedGateForSpawn(spawn);
           break;
         }
       }
@@ -2233,6 +2603,7 @@ class FairyGuildScene extends Phaser.Scene {
           iso = this.jitterGeneratedSpawnPoint(spawn);
           route = this.selectGeneratedEnemyRoute(iso, weakestBuilding);
           if (route) {
+            entryGate = this.getGeneratedGateForSpawn(spawn);
             break;
           }
         }
@@ -2250,16 +2621,14 @@ class FairyGuildScene extends Phaser.Scene {
       else if (side === 2) {iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 13.7 };}
       else {iso = { x: 1.1, y: Phaser.Math.FloatBetween(1.4, 13.3) };}
     }
+    const ingress = this.beginGateIngress(iso, entryGate);
+    iso = ingress.iso;
     const archetype = this.getEnemyArchetype(role);
     const variant = this.getEnemyVariant(level);
     const visual = { frameSheetKey: 'monsterSheet', framePrefix: 'monster', frameRow: archetype.row, tint: variant.tint };
     const p = this.isoToScreen(iso.x, iso.y, 16);
-    const levelBonus = Math.max(0, level - 1);
-    const size = (archetype.size + Math.min(levelBonus, 6) * 1.4) * variant.scale;
-    const maxHp = Math.max(1, Math.round((archetype.hp + Math.floor(levelBonus / 2)) * variant.hp));
-    const speed = Math.min(1.72, (archetype.speed + levelBonus * 0.035) * variant.speed);
-    const buildingDamage = Math.max(1, Math.round((archetype.buildingDamage + Math.floor(levelBonus / 3)) * variant.buildingDamage));
-    const contactDamage = Math.max(1, Math.round(archetype.contactDamage * variant.contactDamage));
+    const enemyStats = _calculateEnemyStats(level, archetype, variant, 1, 1, false);
+    const { size, maxHp, speed, buildingDamage, contactDamage } = enemyStats;
     const displayScaleX = 1;
     const displayScaleY = 1;
     const shadow = this.add.ellipse(p.x, p.y + 13, size * displayScaleX * 0.42, size * displayScaleY * 0.22, 0x315133, 0.2);
@@ -2290,7 +2659,7 @@ class FairyGuildScene extends Phaser.Scene {
       speed,
       buildingDamage,
       contactDamage,
-      rewardGold: archetype.rewardGold.map((value) => Math.round((value + levelBonus) * variant.reward)),
+      rewardGold: enemyStats.rewardGold,
       touchCooldown: 0,
       heroTouchCooldown: 0,
       defeatFrame,
@@ -2307,6 +2676,10 @@ class FairyGuildScene extends Phaser.Scene {
       slowedUntil: 0,
       ward: 0,
       specialCooldown: 0,
+      entranceState: ingress.entranceState,
+      entryGateId: ingress.entryGateId,
+      entryThreshold: ingress.entryThreshold,
+      entranceSpeed: ingress.entranceSpeed,
     };
     this.enemies.push(enemy);
     this.levelSpawnedCount += 1;
@@ -2325,6 +2698,7 @@ class FairyGuildScene extends Phaser.Scene {
     if (!target) {return false;}
     let route = null;
     let iso = null;
+    let entryGate: GeneratedGate | null = null;
     if (this.generatedLevelActive) {
       const spawnCandidates = [...(this.generatedValidSpawnPoints?.length ? this.generatedValidSpawnPoints : this.buildGeneratedSpawnCache())];
       for (let i = spawnCandidates.length - 1; i > 0; i -= 1) {
@@ -2335,6 +2709,7 @@ class FairyGuildScene extends Phaser.Scene {
         iso = this.jitterGeneratedSpawnPoint(spawn);
         route = this.selectGeneratedEnemyRoute(iso);
         if (route) {
+          entryGate = this.getGeneratedGateForSpawn(spawn);
           break;
         }
       }
@@ -2344,6 +2719,7 @@ class FairyGuildScene extends Phaser.Scene {
           iso = this.jitterGeneratedSpawnPoint(spawn);
           route = this.selectGeneratedEnemyRoute(iso);
           if (route) {
+            entryGate = this.getGeneratedGateForSpawn(spawn);
             break;
           }
         }
@@ -2356,15 +2732,26 @@ class FairyGuildScene extends Phaser.Scene {
     } else {
       iso = { x: Phaser.Math.FloatBetween(1.4, 13.3), y: 1.1 };
     }
+    const ingress = this.beginGateIngress(iso, entryGate, true);
+    iso = ingress.iso;
 
     const theme = this.getCurrentWorldTheme();
     const bossConfig = BOSS_CONFIGS[this.state.worldKey as SeasonPreset];
     const visual = this.getBossVisual();
     const p = this.isoToScreen(iso.x, iso.y, 18);
-    const levelBonus = Math.max(0, level - 1);
-    const cycleBonus = this.state.worldCycle * 0.18;
-    const maxHp = Math.round((bossConfig.hp + levelBonus * 3 + this.state.worldIndex * 3 + this.state.worldCycle * 8) * BOSS_HEALTH_MULTIPLIER);
-    const size = bossConfig.size + this.state.worldIndex * 3 + this.state.worldCycle * 4;
+    const bossStats = _calculateBossStats(
+      level,
+      this.state.worldIndex,
+      this.state.worldCycle,
+      bossConfig.hp,
+      bossConfig.size,
+      bossConfig.speed,
+      bossConfig.buildingDamage,
+      bossConfig.contactDamage,
+      bossConfig.rewardGold,
+    );
+    const maxHp = Math.round(bossStats.maxHp * BOSS_HEALTH_MULTIPLIER);
+    const { size } = bossStats;
     const displayScaleX = theme.bossDisplayScaleX;
     const displayScaleY = theme.bossDisplayScaleY;
     const shadow = this.add.ellipse(p.x, p.y + 14, size * displayScaleX * 0.42, size * displayScaleY * 0.24, 0x243829, 0.24);
@@ -2391,13 +2778,10 @@ class FairyGuildScene extends Phaser.Scene {
       target,
       hp: maxHp,
       maxHp,
-      speed: bossConfig.speed + levelBonus * 0.018 + cycleBonus,
-      buildingDamage: bossConfig.buildingDamage + Math.floor(levelBonus / 2) + this.state.worldCycle,
-      contactDamage: bossConfig.contactDamage,
-      rewardGold: [
-        bossConfig.rewardGold[0] + this.state.worldCycle * 4 + this.state.worldIndex * 2,
-        bossConfig.rewardGold[1] + this.state.worldCycle * 6 + this.state.worldIndex * 3,
-      ],
+      speed: bossStats.speed,
+      buildingDamage: bossStats.buildingDamage,
+      contactDamage: bossStats.contactDamage,
+      rewardGold: bossStats.rewardGold,
       touchCooldown: 0,
       heroTouchCooldown: 0,
       defeatFrame: theme.bossDefeatFrame,
@@ -2414,6 +2798,10 @@ class FairyGuildScene extends Phaser.Scene {
       slowedUntil: 0,
       ward: 0,
       specialCooldown: 0,
+      entranceState: ingress.entranceState,
+      entryGateId: ingress.entryGateId,
+      entryThreshold: ingress.entryThreshold,
+      entranceSpeed: ingress.entranceSpeed,
     };
     this.enemies.push(enemy);
     this.levelSpawnedCount += 1;
@@ -2424,6 +2812,31 @@ class FairyGuildScene extends Phaser.Scene {
 
   updateEnemies(dt, time) {
     this.enemies.slice().forEach((enemy) => {
+      if (enemy.entranceState === 'approaching' && enemy.entryThreshold) {
+        const distance = Phaser.Math.Distance.Between(
+          enemy.iso.x,
+          enemy.iso.y,
+          enemy.entryThreshold.x,
+          enemy.entryThreshold.y,
+        );
+        const step = enemy.entranceSpeed * dt;
+        if (distance <= step || distance <= 0.04) {
+          enemy.iso = { ...enemy.entryThreshold };
+          enemy.entranceState = 'active';
+          enemy.sprite.setAlpha(1);
+          this.spawnSparkleBurst(enemy.sprite.x, enemy.sprite.y - 18, 0xf7d27c, 6, 0.42);
+        } else {
+          const vx = (enemy.entryThreshold.x - enemy.iso.x) / distance;
+          const vy = (enemy.entryThreshold.y - enemy.iso.y) / distance;
+          enemy.iso.x += vx * step;
+          enemy.iso.y += vy * step;
+          enemy.sprite.setFlipX(vx < -0.02).setAlpha(0.9);
+        }
+        const entryPosition = this.isoToScreen(enemy.iso.x, enemy.iso.y, 16 + Math.sin(time / 240 + enemy.wobble) * 2);
+        enemy.sprite.setPosition(entryPosition.x, entryPosition.y);
+        enemy.shadow.setPosition(entryPosition.x, entryPosition.y + 14);
+        return;
+      }
       if (enemy.archetype.key === 'leafSneak' && !enemy.retreating) {
         const weakest = this.buildings
           .filter((building) => building.hp > 0)
@@ -2481,6 +2894,7 @@ class FairyGuildScene extends Phaser.Scene {
       if (!enemy.retreating && enemy.archetype.key === 'wispMage' && time >= enemy.specialCooldown) {
         enemy.specialCooldown = time + 4000;
         const ally = this.enemies.find((candidate) => candidate !== enemy && !candidate.defeated && !candidate.retreating
+          && candidate.entranceState !== 'approaching'
           && Phaser.Math.Distance.Between(candidate.iso.x, candidate.iso.y, enemy.iso.x, enemy.iso.y) < 3);
         if (ally) {
           ally.ward = 2;
@@ -3358,28 +3772,37 @@ class FairyGuildScene extends Phaser.Scene {
 
   createDebugOverlay() {
     this.debugOverlayVisible = this.isDebugOverlayRequested();
-    const panel = this.add.container(18, 112).setDepth(8050).setVisible(this.debugOverlayVisible);
-    const bg = this.add.rectangle(0, 0, 404, 264, 0x102238, 0.78)
+    const panel = this.add.container(14, DEBUG_DOCK_TOP).setDepth(8050).setVisible(this.isDebugDockVisible());
+    const bg = this.add.rectangle(0, 0, DEBUG_DOCK_WIDTH, DEBUG_DOCK_MIN_HEIGHT, 0x102238, 0.84)
       .setOrigin(0, 0)
-      .setStrokeStyle(2, 0xffdf7c, 0.72);
-    const title = this.add.text(12, 10, 'Balance Debug (B)', {
-      ...debugTextStyle(14, '#fff2b8'),
-      strokeThickness: 2,
-    });
-    const text = this.add.text(12, 34, '', {
-      ...debugTextStyle(12, '#f7fff0'),
-      lineSpacing: 3,
-      wordWrap: { width: 380 },
+      .setStrokeStyle(1, 0xffdf7c, 0.72);
+    const title = this.createUiText(10, 8, '', {
+      ...this.uiTextStyle(12, '#fff2b8'),
+      strokeThickness: 1,
+    }).setInteractive({ useHandCursor: true });
+    const text = this.createUiText(10, 28, '', {
+      ...this.uiTextStyle(11, '#f7fff0'),
+      strokeThickness: 1,
+      lineSpacing: 2,
+      wordWrap: { width: DEBUG_DOCK_WIDTH - 20 },
     });
     panel.add([bg, title, text]);
     this.uiLayer.add(panel);
-    this.debugOverlay = { panel, text };
+    this.debugOverlay = { panel, bg, title, text };
+    title.on('pointerdown', () => {
+      this.debugOverlayExpanded = !this.debugOverlayExpanded;
+      this.updateDebugOverlay();
+    });
+    this.updateDebugOverlay();
+  }
+
+  isDebugDockVisible() {
+    return this.debugOverlayVisible || this.levelDebugVisible;
   }
 
   toggleDebugOverlay() {
     if (!this.debugOverlay) {return;}
     this.debugOverlayVisible = !this.debugOverlayVisible;
-    this.debugOverlay.panel.setVisible(this.debugOverlayVisible);
     this.updateDebugOverlay();
   }
 
@@ -3418,37 +3841,62 @@ class FairyGuildScene extends Phaser.Scene {
   }
 
   updateDebugOverlay() {
-    if (!this.debugOverlay?.panel.visible) {return;}
+    if (!this.debugOverlay) {return;}
+    this.debugOverlay.panel.setVisible(this.isDebugDockVisible());
+    if (!this.isDebugDockVisible()) {return;}
     const buildingSummary = this.buildings.length
       ? this.buildings.map((building) => `${building.name.slice(0, 1)}:${building.hp}/${building.max}`).join(' ')
       : 'none';
     const activeEnemies = this.enemies.filter((enemy) => !enemy.defeated && !enemy.retreating).length;
     const metrics = this.getIsoMetrics();
-    const levelStatus = this.generatedLevelValidation
-      ? `LevelGen ${this.generatedLevelValidation.valid ? 'valid' : 'errors'} | ${this.generatedLevelActive ? 'rendered' : 'standby'} | Grid ${this.levelDebugVisible ? 'G:on' : 'G:off'}`
-      : 'LevelGen unavailable';
-    const levelNotes = this.generatedLevelValidation
-      ? `Gen notes E${this.generatedLevelValidation.errors.length} W${this.generatedLevelValidation.warnings.length + this.generatedLevelSelectionWarnings.length}`
-      : '';
     const firstIssue = this.generatedLevelValidation?.errors[0]
       ?? this.generatedLevelSelectionWarnings[0]
       ?? this.generatedLevelValidation?.warnings[0]
       ?? '';
-    this.debugOverlay.text.setText([
-      `Phase ${this.state.phase} | L${this.state.level} | ${this.getCurrentWorldTheme().label} R${this.state.worldRound}${this.state.bossRound ? ' Boss' : ''} | Safe ${this.state.villageSafety}%`,
-      `Hero ${this.getHeroConfig().label} ${this.state.health}/${this.playerStats.maxHealth} HP | Gold ${this.state.gold}`,
-      `Resolved ${this.levelDefeatsThisRound}/${this.levelRequiredDefeats} | defeated ${this.runStats.enemiesDefeated} | pending ${this.levelSpawnsPending}`,
-      `Enemies active ${activeEnemies} | remaining ${this.levelEnemiesRemaining}`,
-      `Buildings ${buildingSummary}`,
-      `Targets ${this.getLiveEnemyTargetSummary()}`,
-      `Attack ${this.playerStats.attackDamage.toFixed(2)} | ${Math.round(this.playerStats.attackCooldown)}ms | Skill ${this.getHeroConfig().skill}`,
-      this.generatedLevel ? `Config ${this.generatedLevelConfigId} | Seed ${this.generatedLevel.config.seed}` : '',
-      this.generatedLevel ? `Tile ${this.generatedLevel.config.tileSize}px -> ${Math.round(metrics.tileW)}x${Math.round(metrics.tileH)}` : '',
-      `${levelStatus} | Time ${this.getActiveTimeOfDay()} (N)`,
-      this.generatedLevel ? `Route score ${this.getGeneratedRouteDebugSummary()}` : '',
-      levelNotes,
-      firstIssue ? `First issue: ${this.truncateGuildNote(firstIssue, 52)}` : '',
-    ].join('\n'));
+    const movement = this.levelDebugVisible ? this.getPlayerMovementDebugState() : null;
+    const occlusion = this.levelDebugVisible ? this.getPlayerOcclusionDebugState() : null;
+    const selectedMove = movement?.movementResult?.selectedScreen;
+    const selectedTravel = selectedMove
+      ? `${selectedMove.x.toFixed(2)},${selectedMove.y.toFixed(2)}`
+      : 'none';
+    const mapLabel = this.generatedLevelConfigId || 'no-map';
+    const lines = [];
+    if (this.debugOverlayVisible) {
+      lines.push(
+        `${this.state.phase}  L${this.state.level} ${this.getCurrentWorldTheme().label} R${this.state.worldRound}${this.state.bossRound ? ' boss' : ''}  safe ${this.state.villageSafety}%`,
+        `${this.getHeroConfig().label} ${this.state.health}/${this.playerStats.maxHealth} hp  gold ${this.state.gold}  foes ${activeEnemies}/${this.levelEnemiesRemaining}`,
+        `Resolved ${this.levelDefeatsThisRound}/${this.levelRequiredDefeats}  Buildings ${this.truncateGuildNote(buildingSummary, 28)}`,
+      );
+    }
+    if (this.levelDebugVisible && movement) {
+      const gateStatus = this.generatedLevel?.gates.length === 4 ? '4/4' : `${this.generatedLevel?.gates.length ?? 0}/4 !`;
+      const apron = this.generatedApronDebugStats;
+      lines.push(
+        `Collision ${movement.footprintWalkable ? 'open' : 'blocked'}  anchor ${movement.recoveryAnchor ? 'yes' : 'no'}  gates ${gateStatus}`,
+        `Exits ${this.truncateGuildNote(movement.escapeDirections.join('/') || 'NONE', 34)}`,
+        `Move ${selectedTravel}  reject ${movement.rejectedReason ?? 'none'}`,
+        `Occluders ${occlusion?.registered ?? 0}  faded ${this.truncateGuildNote(occlusion?.activeLabels.join(', ') || 'none', 25)}`,
+        apron ? `Apron forest ${apron.forestCells}  road ${apron.gateRoadCells}  props ${apron.props}` : '',
+      );
+    }
+    if (firstIssue) {
+      lines.push(`Issue ${this.truncateGuildNote(firstIssue, this.debugOverlayExpanded ? 70 : 42)}`);
+    }
+    if (this.debugOverlayExpanded) {
+      lines.push(
+        `Targets ${this.getLiveEnemyTargetSummary()}  defeats ${this.runStats.enemiesDefeated}  queued ${this.levelSpawnsPending}`,
+        `Attack ${this.playerStats.attackDamage.toFixed(2)} / ${Math.round(this.playerStats.attackCooldown)}ms  skill ${this.getHeroConfig().skill}`,
+        this.generatedLevel ? `Seed ${this.generatedLevel.config.seed}  tile ${this.generatedLevel.config.tileSize}->${Math.round(metrics.tileW)}x${Math.round(metrics.tileH)}` : '',
+        this.generatedLevel ? `Route ${this.getGeneratedRouteDebugSummary()}` : '',
+      );
+    }
+    const filteredLines = lines.filter(Boolean);
+    this.debugOverlay.title.setText(`DEBUG B:${this.debugOverlayVisible ? 'on' : 'off'} G:${this.levelDebugVisible ? 'on' : 'off'}  ${mapLabel}  ${this.debugOverlayExpanded ? '[-]' : '[+]'}`);
+    this.debugOverlay.text.setText(filteredLines.join('\n'));
+    this.debugOverlay.bg.setSize(
+      DEBUG_DOCK_WIDTH,
+      Math.max(DEBUG_DOCK_MIN_HEIGHT, 38 + filteredLines.length * DEBUG_DOCK_COMPACT_LINE_HEIGHT),
+    );
   }
 
   isCompactUi() {
@@ -3504,10 +3952,13 @@ class FairyGuildScene extends Phaser.Scene {
   }
 }
 
-const config = {
+const isMapEditorRoute = window.location.pathname.replace(/\/+$/, '') === '/map-editor';
+document.body.classList.toggle('map-editor-route', isMapEditorRoute);
+
+const gameConfig = {
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: '#8bd6ff',
+  backgroundColor: '#a6c993',
   width: WIDTH,
   height: HEIGHT,
   scale: {
@@ -3521,7 +3972,7 @@ const config = {
   scene: FairyGuildScene,
 };
 
-const game = new Phaser.Game(config);
+const game = new Phaser.Game(isMapEditorRoute ? createMapEditorGameConfig() : gameConfig);
 
 if (import.meta.env.DEV) {
   (window as typeof window & { __fairyGuildGame?: Phaser.Game }).__fairyGuildGame = game;

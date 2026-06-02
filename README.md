@@ -14,7 +14,7 @@ A cheerful isometric Phaser minigame where a chosen village defender protects a 
 - Gold-only enemy rewards credited automatically with fading coin feedback
 - Seasonal guardian rounds with building-targeted projectile volleys
 - Game over screen when the castle falls or the hero reaches 0 hearts
-- Designer-authored procedural level system with logical blockers, edge spawns, A* routes, decoration passes, and visual time-of-day profiles
+- Designer-editable CSV village maps with validated blockers, visible gate ingress, A* routes, and seasonal visual profiles
 - Rich procedural Web Audio SFX and a gentle interaction-started village theme
 - Family-friendly effects: sparkles, puffs, dazed reactions, and retreating monsters
 - Generated image assets in a bright cartoon storybook style
@@ -28,6 +28,7 @@ A cheerful isometric Phaser minigame where a chosen village defender protects a 
 | Class skill | `F` |
 | Repair nearest damaged building | `E` |
 | Pick level-up card | `1` or `2` on the level-up screen |
+| Toggle compact balance debug dock | `B` |
 | Toggle level grid debug | `G` |
 | Cycle time-of-day preview | `N` |
 | Start game | Click/tap `START`, `Enter`, or `Space` on the title screen |
@@ -41,7 +42,7 @@ Mobile Safari cannot forcibly hide the browser/navigation chrome for an ordinary
 
 For mobile diagnostics, append `?debugTouch=1` to log touch detection, Phaser touch-control creation, canvas visibility, and safe-area layout details. Append `?touchControls=1` to force the touch overlay while testing in desktop browser emulation.
 
-The PWA shell includes PNG app icons for iOS and installable browsers. Use `?debugGame=1` or press `B` to show a small balance overlay with phase, enemy counts, building HP, hero stats, and current resources.
+The PWA shell includes PNG app icons for iOS and installable browsers. Use `?debugGame=1` or press `B` to show the compact Retina-aware debug dock with balance information. Press `G` to add collision graphics and collision status to the same fixed dock.
 
 ## Progression
 
@@ -60,7 +61,7 @@ Buildings keep their damage between levels. Press `E` near a damaged building to
 
 Early levels use class-specific enemy unlock curves and a first-level repair tip so the player has time to understand the defense loop. Enemy strength, wave budgets, repair values, class skills, cards, and guardian tuning are configured in `src/gameConfig.ts`.
 
-The procedural level foundation lives in `src/levels/`. Procedural maps are the default map on every fresh start. The default village is a larger 19x19 designer-authored matrix with `tileSize: 44`, a two-cell forest buffer, edge-only `SP` spawn cells, and protected buildings placed away from the border. `?generatedLevel=festival-village` renders a second catalog level, while `?staticMap=1` temporarily restores the older painted board for comparison. Designers can preview variants with query overrides such as `?seed=my-seed`, `?density=0.6`, `?difficulty=2`, `?tileSize=64`, and `?timeOfDay=night`. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays the grid, blockers, protected building footprints, spawn points, attack cells, validation routes, decorations, and live enemy paths.
+Village layout loading lives in `src/levels/`. Fresh runs choose one validated authored CSV from `public/levels/authored/`, currently `village-crossroads-01.csv` or `village-crossroads-02.csv`, and preserve that map throughout the run while seasonal art changes around it. Each `29 x 29` map uses playable bounds `3..25`, a blocked scenic forest buffer, four exact directional gates with three-wide paved approaches and protected sightlines, and visible objects whose collision roles match their authored cells. Enemies appear outside a gate and become combat-active only after crossing its threshold. The procedural season-board builder is retained as development/export tooling; run `npm run export:authored-levels` to regenerate starter drafts before manually editing them. Generated scenes use a smoothly following zoomed-in world camera, camera-driven scenic parallax, and lightweight seasonal atmosphere while HUD and touch controls remain screen-fixed. Use `?map=village-crossroads-02` to preview a particular authored layout, while `?staticMap=1` temporarily restores the older painted board for comparison. `N` cycles lighting profiles at runtime. `?debugLevel=1` or `G` overlays collision geometry and routes while reporting compact map, movement, gate, and occlusion status in the screen-fixed debug dock.
 
 ## Getting Started
 
@@ -205,7 +206,7 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 
 ## Asset Notes
 
-The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source images are kept alongside processed transparent versions where applicable. The Archer class uses `archer-hero-sheet-source.png`, and the Sorcerer uses the wand-only `sorcerer-hero-sheet-source.png`; `npm run build:class-assets` processes these into their transparent runtime sheets. The legacy `princess-hero-sheet` files remain in the repository but are no longer the normal Sorcerer presentation. Touch controls, effects, and the six common card illustrations are generated as individual padded square sources under `public/assets/atlas-sources/generated/class-ui/`, then chroma-cleaned and validated before atlas packing. The shared class/level-up Card Box shell and the Warrior, Archer, and Sorcerer portrait tiles live under `public/assets/atlas-sources/generated/card-ui/`; the shell is packed into `game_ui_atlas` while the portraits are packed into `ui_atlas`. This avoids contact-sheet cropping and rejects visible backing pixels or art outside the safe margin. The current generated map uses deterministic fixed-cell atlases built from source art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, and `hud_bars_atlas`. Seasonal board visuals are built from chroma-key sheets under `public/assets/scene-variants/sources/<theme>/` into `scene_variant_terrain_atlas`, `scene_variant_props_atlas`, and `scene_variant_buildings_atlas`; the runtime themes are `spring`, `summer`, `twilight_autumn`, and `winter`. The existing `night_spring` world key intentionally renders with the `twilight_autumn` library. The older `world-ui-sheet.png` is treated as source art for atlas rebuilding rather than a runtime crop target.
+The project-bound assets were generated with Image Gen / GPT Image 2 and copied into `public/assets/`. The source images are kept alongside processed transparent versions where applicable. The Archer class uses `archer-hero-sheet-source.png`, and the Sorcerer uses the wand-only `sorcerer-hero-sheet-source.png`; `npm run build:class-assets` processes these into their transparent runtime sheets. The legacy `princess-hero-sheet` files remain in the repository but are no longer the normal Sorcerer presentation. Touch controls, effects, and the six common card illustrations are generated as individual padded square sources under `public/assets/atlas-sources/generated/class-ui/`, then chroma-cleaned and validated before atlas packing. The shared class/level-up Card Box shell and the Warrior, Archer, and Sorcerer portrait tiles live under `public/assets/atlas-sources/generated/card-ui/`; the shell is packed into `game_ui_atlas` while the portraits are packed into `ui_atlas`. This avoids contact-sheet cropping and rejects visible backing pixels or art outside the safe margin. The current generated map uses deterministic fixed-cell atlases built from source art: `world_tiles_atlas`, `world_edges_atlas`, `buildings_atlas`, `ui_atlas`, `effects_atlas`, `touch_controls_atlas`, `hud_ui_atlas`, `hud_bars_atlas`, and `scene_variant_props_atlas`. Seasonal board visuals are built from chroma-key sheets under `public/assets/scene-variants/sources/<theme>/` into `scene_variant_terrain_atlas`, `scene_variant_props_atlas`, and `scene_variant_buildings_atlas`; the runtime themes are `spring`, `summer`, `twilight_autumn`, and `winter`. Directional gate keys now identify their physical village edge directly; each corrected west entrance uses its theme-specific `gate-w-source.png`, while the other named gate inputs retain their validated sheet cells. The existing `night_spring` world key intentionally renders with the `twilight_autumn` library. The older `world-ui-sheet.png` is treated as source art for atlas rebuilding rather than a runtime crop target.
 
 Atlas split rules:
 

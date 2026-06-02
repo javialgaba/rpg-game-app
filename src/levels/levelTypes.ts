@@ -30,6 +30,68 @@ export interface PlayableBounds {
   maxY: number;
 }
 
+export type GateDirection = 'north' | 'east' | 'south' | 'west';
+
+export type AuthoredTerrainRole =
+  | 'grass'
+  | 'flower_grass'
+  | 'stone_road'
+  | 'plaza'
+  | 'forest_floor'
+  | 'gate_road';
+
+export type AuthoredObjectRole =
+  | 'tree_broadleaf'
+  | 'tree_conifer'
+  | 'rock_large'
+  | 'pond'
+  | 'bush'
+  | 'flowers'
+  | 'grass_tuft'
+  | 'magic_patch'
+  | 'lamp'
+  | 'fence'
+  | 'sign'
+  | 'castle'
+  | 'cottage'
+  | 'bakery'
+  | 'market'
+  | 'well'
+  | 'gate_n'
+  | 'gate_e'
+  | 'gate_s'
+  | 'gate_w';
+
+export type AuthoredMarkerRole =
+  | 'player_spawn'
+  | 'enemy_threshold_n'
+  | 'enemy_threshold_e'
+  | 'enemy_threshold_s'
+  | 'enemy_threshold_w';
+
+export interface AuthoredMapCell {
+  terrain: AuthoredTerrainRole;
+  object?: AuthoredObjectRole;
+  marker?: AuthoredMarkerRole;
+}
+
+export interface AuthoredMapData {
+  id: string;
+  cells: AuthoredMapCell[][];
+  errors: string[];
+}
+
+export interface GeneratedGate {
+  id: string;
+  direction: GateDirection;
+  threshold: GridPoint;
+  visualEntry: GridPoint;
+  approachCells: GridPoint[];
+  clearCells: GridPoint[];
+  roadCells: GridPoint[];
+  sightlineCells: GridPoint[];
+}
+
 export interface Footprint {
   w: number;
   h: number;
@@ -43,6 +105,8 @@ export interface LevelConfig {
   difficulty: number;
   matrix: LevelToken[][];
   playableBounds?: PlayableBounds;
+  gates?: GeneratedGate[];
+  authoredMap?: AuthoredMapData;
 }
 
 export interface AssetRenderMetadata {
@@ -87,6 +151,9 @@ export interface LevelPlacement {
   cells: GridPoint[];
   render?: AssetRenderMetadata;
   blocksMovement: boolean;
+  scenicOnly?: boolean;
+  authoredTerrainRole?: AuthoredTerrainRole;
+  authoredObjectRole?: AuthoredObjectRole;
 }
 
 export interface ProtectedTargetPlacement extends LevelPlacement {
@@ -112,7 +179,10 @@ export interface GeneratedLevel {
   targetGrid: boolean[][];
   roadGrid: boolean[][];
   terrain: LevelPlacement[];
+  scenicTerrain: LevelPlacement[];
   objects: LevelPlacement[];
+  scenicObjects: LevelPlacement[];
+  gates: GeneratedGate[];
   decorations: LevelPlacement[];
   spawnPoints: GridPoint[];
   playerSpawn: GridPoint | null;

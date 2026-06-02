@@ -38,7 +38,7 @@ describe('enemy combat stats', () => {
       1,
       false,
     );
-    expect(stats.maxHp).toBe(4);
+    expect(stats.maxHp).toBe(3);
     expect(stats.buildingDamage).toBe(5);
     expect(stats.rewardGold).toEqual([10, 17]);
     expect(stats).not.toHaveProperty('rewardXp');
@@ -46,8 +46,10 @@ describe('enemy combat stats', () => {
 
   it('scales guardian stats using gold rewards only', () => {
     const stats = calculateBossStats(5, 2, 3, 15, 72, 0.52, 8, 2, [30, 42]);
-    expect(stats.maxHp).toBeGreaterThan(30);
-    expect(stats.rewardGold[0]).toBeGreaterThan(36);
+    expect(stats.maxHp).toBe(47);
+    expect(stats.speed).toBeCloseTo(0.958);
+    expect(stats.buildingDamage).toBe(12);
+    expect(stats.rewardGold[0]).toBe(46);
     expect(stats).not.toHaveProperty('rewardXp');
   });
 });

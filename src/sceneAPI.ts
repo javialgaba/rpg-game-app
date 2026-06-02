@@ -25,6 +25,7 @@ export interface SceneAPI {
   traps: any[];
   guardUntil: number;
   runStats: any;
+  heartDropDefeatStreak: number;
   effects: any[];
   notes: any[];
   keys: Record<string, any>;
@@ -64,6 +65,7 @@ export interface SceneAPI {
   ensureAudio(): void;
   uiTextStyle(size: number, color: string): any;
   addGuildNote(message: string): void;
+  updateHud?(): void;
   playTone(type?: string): void;
   isoToScreen(x: number, y: number, z?: number): { x: number; y: number };
   scaleGeneratedSize(size: [number, number]): [number, number];

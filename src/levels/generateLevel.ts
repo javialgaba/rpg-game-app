@@ -11,6 +11,8 @@ import type {
   LevelValidationResult,
   PlayableBounds,
   ProtectedTargetPlacement,
+  AuthoredMapCell,
+  AuthoredObjectRole,
 } from './levelTypes';
 import { findGridPath, pathCost } from './pathfinding';
 import { buildPlayerReachableGrid, buildPlayerWalkableGrid, getPlayerPocketCells } from './playerFootprint';
@@ -30,6 +32,67 @@ const BLOCKING_DECORATION_KINDS = new Set<NonNullable<LevelPlacement['decoration
   'treeCluster',
   'puddle',
 ]);
+const AUTHORED_DECORATIONS: Partial<Record<AuthoredObjectRole, {
+  kind: NonNullable<LevelPlacement['decorationKind']>;
+  label: string;
+  blocksMovement: boolean;
+  render: AssetRenderMetadata;
+}>> = {
+  rock_large: {
+    kind: 'rocks',
+    label: 'Large Rock',
+    blocksMovement: true,
+    render: { displaySize: [142, 124], origin: [0.5, 0.84], alpha: 1, z: 8, occludesPlayer: true },
+  },
+  pond: {
+    kind: 'puddle',
+    label: 'Pond',
+    blocksMovement: true,
+    render: { displaySize: [138, 110], origin: [0.5, 0.72], alpha: 1, z: 3 },
+  },
+  bush: {
+    kind: 'bush',
+    label: 'Bush',
+    blocksMovement: false,
+    render: { displaySize: [162, 128], origin: [0.5, 0.84], alpha: 1, z: 9, occludesPlayer: true },
+  },
+  flowers: {
+    kind: 'flowers',
+    label: 'Wildflower Patch',
+    blocksMovement: false,
+    render: { displaySize: [150, 118], origin: [0.5, 0.84], alpha: 1, z: 7 },
+  },
+  grass_tuft: {
+    kind: 'grassPatch',
+    label: 'Soft Grass Tuft',
+    blocksMovement: false,
+    render: { displaySize: [148, 114], origin: [0.5, 0.84], alpha: 1, z: 7 },
+  },
+  magic_patch: {
+    kind: 'magicPlant',
+    label: 'Glowing Village Sprout',
+    blocksMovement: false,
+    render: { displaySize: [119, 115], origin: [0.5, 0.86], alpha: 1, z: 8 },
+  },
+  lamp: {
+    kind: 'lamp',
+    label: 'Lamp',
+    blocksMovement: true,
+    render: { displaySize: [108, 158], origin: [0.5, 0.86], alpha: 1, z: 9, occludesPlayer: true },
+  },
+  fence: {
+    kind: 'fence',
+    label: 'Fence',
+    blocksMovement: true,
+    render: { displaySize: [150, 116], origin: [0.5, 0.84], alpha: 1, z: 8, occludesPlayer: true },
+  },
+  sign: {
+    kind: 'sign',
+    label: 'Sign',
+    blocksMovement: true,
+    render: { displaySize: [136, 156], origin: [0.5, 0.86], alpha: 1, z: 9, occludesPlayer: true },
+  },
+};
 
 const clonePoint = (point: GridPoint) => ({ x: point.x, y: point.y });
 
@@ -102,6 +165,9 @@ const getBoundsEdgeDistance = (point: GridPoint, bounds: PlayableBounds) => Math
 );
 
 const pointKey = (point: GridPoint) => `${point.x},${point.y}`;
+const getAuthoredCell = (config: LevelConfig, point: GridPoint): AuthoredMapCell | undefined => (
+  config.authoredMap?.cells[point.y]?.[point.x]
+);
 
 const getCellDistance = (a: GridPoint, b: GridPoint) => Math.max(
   Math.abs(a.x - b.x),
@@ -159,10 +225,11 @@ const canCarveRoadToken = (token: LevelToken | undefined) => (
   || token === 'path'
   || token === 'village-center'
   || token === 'player-spawn'
+  || token === 'monster-spawn'
 );
 
 const isRoadToken = (token: LevelToken | undefined) => (
-  token === 'path' || token === 'village-center' || token === 'player-spawn'
+  token === 'path' || token === 'village-center' || token === 'player-spawn' || token === 'monster-spawn'
 );
 
 const getAttackCells = (
@@ -194,6 +261,7 @@ const createPlacement = (
   token: LevelPlacement['token'],
   entry: AssetRegistryEntry,
   grid: GridPoint,
+  authoredCell?: AuthoredMapCell,
 ) => {
   const footprint = entry.footprint ?? { w: 1, h: 1 };
   const cells = getAnchorFootprintCells(grid, footprint);
@@ -212,6 +280,8 @@ const createPlacement = (
     cells,
     render: entry.render,
     blocksMovement: entry.blocksMovement,
+    authoredTerrainRole: authoredCell?.terrain,
+    authoredObjectRole: authoredCell?.object,
   } satisfies LevelPlacement;
 };
 
@@ -239,10 +309,20 @@ const createRoadPlan = (
   const height = matrix.length;
   const width = matrix[0]?.length ?? 0;
   const playableBounds = resolvePlayableBounds(config);
+  if (config.authoredMap) {
+    return {
+      matrix,
+      roadGrid: matrix.map((row, y) => row.map((token, x) => (
+        isInsidePlayableBounds({ x, y }, playableBounds) && isRoadToken(token)
+      ))),
+      warnings: [],
+    };
+  }
   const blockedGrid = makeGrid(width, height, false);
   const warnings: string[] = [];
   const protectedAnchors: GridPoint[] = [];
   const utilityAnchors: GridPoint[] = [];
+  const spawnAnchors: GridPoint[] = [];
   const villageCenters: GridPoint[] = [];
   const requiredRoadKeys = new Set<string>();
   let playerSpawn: GridPoint | null = null;
@@ -260,6 +340,8 @@ const createRoadPlan = (
         playerSpawn = { x, y };
       } else if (token === 'village-center') {
         villageCenters.push({ x, y });
+      } else if (token === 'monster-spawn') {
+        spawnAnchors.push({ x, y });
       }
       if (entry.protected) {
         protectedAnchors.push({ x, y });
@@ -303,6 +385,12 @@ const createRoadPlan = (
       matrix[point.y][point.x] = 'path';
     }
   };
+
+  config.gates?.flatMap((gate) => gate.roadCells).forEach((cell) => {
+    if (isInsidePlayableBounds(cell, playableBounds)) {
+      markRoadCell(cell);
+    }
+  });
 
   const findConnectionCells = (anchor: GridPoint) => {
     const entry = registry[matrix[anchor.y]?.[anchor.x]];
@@ -353,10 +441,18 @@ const createRoadPlan = (
   [...protectedAnchors, ...utilityAnchors].forEach((anchor) => {
     connectTo(anchor, matrix[anchor.y]?.[anchor.x] ?? 'target');
   });
+  spawnAnchors.forEach((anchor) => {
+    markRoadCell(anchor);
+    connectTo(anchor, 'gate threshold');
+  });
 
   const roadGrid = makeGrid(width, height, false);
   matrix.forEach((row, y) => {
     row.forEach((token, x) => {
+      if (!isInsidePlayableBounds({ x, y }, playableBounds)) {
+        roadGrid[y][x] = false;
+        return;
+      }
       if ((token === 'path' || token === 'village-center') && !requiredRoadKeys.has(pointKey({ x, y }))) {
         matrix[y][x] = 'grass';
       }
@@ -384,7 +480,18 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   const spawnGrid = makeGrid(width, height, false);
   const targetGrid = makeGrid(width, height, false);
   const terrain: LevelPlacement[] = [];
+  const scenicTerrain: LevelPlacement[] = [];
   const objects: LevelPlacement[] = [];
+  const scenicObjects: LevelPlacement[] = [];
+  const gates = (generatedConfig.gates ?? []).map((gate) => ({
+    ...gate,
+    threshold: clonePoint(gate.threshold),
+    visualEntry: clonePoint(gate.visualEntry),
+    approachCells: gate.approachCells.map(clonePoint),
+    clearCells: gate.clearCells.map(clonePoint),
+    roadCells: gate.roadCells.map(clonePoint),
+    sightlineCells: gate.sightlineCells.map(clonePoint),
+  }));
   const decorations: LevelPlacement[] = [];
   const spawnPoints: GridPoint[] = [];
   const protectedTargets: ProtectedTargetPlacement[] = [];
@@ -392,6 +499,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
   const errors: string[] = [];
   let playerSpawn: GridPoint | null = null;
   warnings.push(...roadPlan.warnings);
+  errors.push(...(generatedConfig.authoredMap?.errors ?? []));
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -407,9 +515,6 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       errors.push(`Row ${y} has ${row.length} cells; expected ${width}.`);
     }
     row.forEach((token, x) => {
-      if (!isInsidePlayableBounds({ x, y }, playableBounds)) {
-        return;
-      }
       const entry = registry[token];
       if (!entry) {
         errors.push(`Unknown token ${token} at ${x},${y}.`);
@@ -417,7 +522,20 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
       }
 
       const terrainEntry = getTerrainEntry(entry, registry);
-      terrain.push(createPlacement(`terrain-${x}-${y}`, terrainEntry.token, terrainEntry, { x, y }));
+      if (!isInsidePlayableBounds({ x, y }, playableBounds)) {
+        scenicTerrain.push({
+          ...createPlacement(`scenic-terrain-${x}-${y}`, terrainEntry.token, terrainEntry, { x, y }, getAuthoredCell(generatedConfig, { x, y })),
+          scenicOnly: true,
+        });
+        if (token === 'tree') {
+          scenicObjects.push({
+            ...createPlacement(`scenic-tree-${x}-${y}`, token, entry, { x, y }, getAuthoredCell(generatedConfig, { x, y })),
+            scenicOnly: true,
+          });
+        }
+        return;
+      }
+      terrain.push(createPlacement(`terrain-${x}-${y}`, terrainEntry.token, terrainEntry, { x, y }, getAuthoredCell(generatedConfig, { x, y })));
 
       if (token === 'player-spawn') {
         playerSpawn = { x, y };
@@ -430,7 +548,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         return;
       }
 
-      const placement = createPlacement(`${token.toLowerCase()}-${x}-${y}`, token, entry, { x, y });
+      const placement = createPlacement(`${token.toLowerCase()}-${x}-${y}`, token, entry, { x, y }, getAuthoredCell(generatedConfig, { x, y }));
       const illegalCells = placement.cells.filter((cell) => !isInside(cell, width, height));
       if (illegalCells.length > 0) {
         errors.push(`${entry.label} at ${x},${y} has a footprint outside level bounds.`);
@@ -475,6 +593,35 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     });
   });
 
+  generatedConfig.authoredMap?.cells.forEach((row, y) => row.forEach((cell, x) => {
+    if (!cell.object || !AUTHORED_DECORATIONS[cell.object]) {
+      return;
+    }
+    const authored = AUTHORED_DECORATIONS[cell.object];
+    const placement = {
+      ...createPlacement(
+        `authored-${cell.object}-${x}-${y}`,
+        'decoration',
+        registry.decoration,
+        { x, y },
+        cell,
+      ),
+      label: authored.label,
+      decorationKind: authored.kind,
+      render: authored.render,
+      blocksMovement: authored.blocksMovement,
+    } satisfies LevelPlacement;
+    decorations.push(placement);
+    decorationGrid[y][x] = placement;
+    if (authored.blocksMovement) {
+      if (blockedGrid[y][x]) {
+        errors.push(`${authored.label} at ${x},${y} overlaps another blocker.`);
+      }
+      blockedGrid[y][x] = true;
+      walkableGrid[y][x] = false;
+    }
+  }));
+
   errors.push(...getBuildingClearanceErrors(objects));
 
   protectedTargets.forEach((target) => {
@@ -507,6 +654,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     y: (playableBounds.minY + playableBounds.maxY) / 2,
   };
   const attackCellKeys = new Set(protectedTargets.flatMap((target) => target.attackCells.map(pointKey)));
+  const gateSightlineKeys = new Set(gates.flatMap((gate) => gate.sightlineCells.map(pointKey)));
   const canDecorate = (grid: GridPoint, options?: { allowNearEdge?: boolean; blocksMovement?: boolean }) => {
     if (!isInside(grid, width, height) || !isInsidePlayableBounds(grid, playableBounds)) {
       return false;
@@ -516,6 +664,7 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     const edgeDistance = getBoundsEdgeDistance(grid, playableBounds);
     if (
       blockedGrid[grid.y][grid.x]
+      || gateSightlineKeys.has(pointKey(grid))
       || attackCellKeys.has(pointKey(grid))
       || spawnGrid[grid.y][grid.x]
       || decorationGrid[grid.y][grid.x]
@@ -698,7 +847,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     occludesPlayer: true,
   };
 
-  terrain.forEach((placement) => {
+  if (!generatedConfig.authoredMap) {
+    terrain.forEach((placement) => {
     const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
     if ((token === 'grass' || token === 'decoration') && rng.chance(config.decorationDensity * 0.15)) {
       const roll = rng.next();
@@ -710,9 +860,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         addDecoration(placement.grid, 'rocks', 'Gentle Rock Cluster', rockClusterRender);
       }
     }
-  });
+    });
 
-  protectedTargets.forEach((target) => {
+    protectedTargets.forEach((target) => {
     getNeighborCells(target.grid, 2).forEach((cell) => {
       if (rng.chance(config.decorationDensity * 0.16)) {
         const render = rng.chance(0.68) ? flowerPatchRender : bushRender;
@@ -722,9 +872,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         addDecoration(cell, 'fence', `${target.label} Fence`, fenceSegmentRender);
       }
     });
-  });
+    });
 
-  objects
+    objects
     .filter((placement) => placement.token === 'tree')
     .forEach((tree) => {
       getNeighborCells(tree.grid, 1).forEach((cell) => {
@@ -739,9 +889,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
           isMagicPlant ? magicPlantRender : mushroomPatchRender,
         );
       });
-    });
+      });
 
-  terrain.forEach((placement) => {
+    terrain.forEach((placement) => {
     const token = generatedConfig.matrix[placement.grid.y]?.[placement.grid.x];
     const edgeDistance = getBoundsEdgeDistance(placement.grid, playableBounds);
     const isNearEdge = edgeDistance <= 2;
@@ -793,9 +943,9 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     if (token === 'grass' && rng.chance(config.decorationDensity * 0.035)) {
       addDecoration(placement.grid, 'sparkles', 'Fairy Sparkles');
     }
-  });
+    });
 
-  terrain.forEach((placement) => {
+    terrain.forEach((placement) => {
     if (!roadPlan.roadGrid[placement.grid.y]?.[placement.grid.x]) {
       return;
     }
@@ -808,7 +958,8 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
         addDecoration(cell, 'lamp', 'Path Lamp', lanternRender);
       }
     });
-  });
+    });
+  }
 
   const playerWalkableGrid = buildPlayerWalkableGrid(walkableGrid, playableBounds);
   const playerReachableGrid = buildPlayerReachableGrid(playerWalkableGrid, playerSpawn);
@@ -830,7 +981,10 @@ export const generateLevel = (config: LevelConfig, registry: AssetRegistry) => {
     targetGrid,
     roadGrid: roadPlan.roadGrid,
     terrain,
+    scenicTerrain,
     objects,
+    scenicObjects,
+    gates,
     decorations,
     spawnPoints,
     playerSpawn,
@@ -886,6 +1040,64 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     errors.push('A Castle token is required for this defense mode.');
   }
 
+  const scenicTerrainKeys = new Set(level.scenicTerrain.map((placement) => pointKey(placement.grid)));
+  for (let y = 0; y < level.height; y += 1) {
+    for (let x = 0; x < level.width; x += 1) {
+      const point = { x, y };
+      if (isInsidePlayableBounds(point, level.playableBounds)) {
+        continue;
+      }
+      if (!scenicTerrainKeys.has(pointKey(point))) {
+        errors.push(`Scenic boundary is missing rendered terrain at ${pointKey(point)}.`);
+      }
+      if (!level.blockedGrid[y]?.[x] || level.walkableGrid[y]?.[x]) {
+        errors.push(`Scenic boundary cell ${pointKey(point)} must remain blocked.`);
+      }
+    }
+  }
+  [...level.scenicTerrain, ...level.scenicObjects].forEach((placement) => {
+    if (isInsidePlayableBounds(placement.grid, level.playableBounds)) {
+      errors.push(`${placement.label} scenic placement at ${pointKey(placement.grid)} entered playable bounds.`);
+    }
+    if (!placement.scenicOnly) {
+      errors.push(`${placement.label} scenic placement at ${pointKey(placement.grid)} must be render-only.`);
+    }
+  });
+
+  const gateThresholdKeys = new Set(level.gates.map((gate) => pointKey(gate.threshold)));
+  const sightlineKeys = new Set(level.gates.flatMap((gate) => gate.sightlineCells.map(pointKey)));
+  if (level.gates.length > 0 && level.gates.length !== 4) {
+    errors.push('Generated village gates must contain north, east, south and west entrances.');
+  }
+  level.gates.forEach((gate) => {
+    if (!level.spawnPoints.some((spawn) => pointKey(spawn) === pointKey(gate.threshold))) {
+      errors.push(`${gate.id} threshold ${pointKey(gate.threshold)} is not a monster spawn.`);
+    }
+    if (!isPlayableBoundsEdgeCell(gate.threshold, level.playableBounds)) {
+      errors.push(`${gate.id} threshold ${pointKey(gate.threshold)} is not on the playable boundary.`);
+    }
+    if (gate.clearCells.length === 0) {
+      errors.push(`${gate.id} does not reserve clear cells around its entrance.`);
+    }
+    if (gate.roadCells.length === 0) {
+      errors.push(`${gate.id} does not define a slim entrance centerline.`);
+    }
+    if (gate.sightlineCells.length <= gate.roadCells.length) {
+      errors.push(`${gate.id} does not reserve a visual sightline around its entrance.`);
+    }
+    gate.roadCells.forEach((cell) => {
+      const token = level.config.matrix[cell.y]?.[cell.x];
+      if (token !== 'path' && token !== 'monster-spawn') {
+        errors.push(`${gate.id} centerline is obstructed by ${token ?? 'missing terrain'} at ${pointKey(cell)}.`);
+      }
+    });
+  });
+  [...level.scenicObjects, ...level.decorations].forEach((placement) => {
+    if (placement.cells.some((cell) => sightlineKeys.has(pointKey(cell)))) {
+      errors.push(`${placement.label} obstructs a reserved gate sightline.`);
+    }
+  });
+
   const allAttackCells = level.protectedTargets.flatMap((target) => target.attackCells);
   level.spawnPoints.forEach((spawn) => {
     if (!isInsideLevel(level, spawn)) {
@@ -898,6 +1110,9 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     }
     if (!isPlayableBoundsEdgeCell(spawn, level.playableBounds)) {
       errors.push(`Monster spawn ${spawn.x},${spawn.y} must be on the playable region edge.`);
+    }
+    if (level.gates.length > 0 && !gateThresholdKeys.has(pointKey(spawn))) {
+      errors.push(`Monster spawn ${spawn.x},${spawn.y} does not correspond to a rendered gate threshold.`);
     }
     const path = findGridPath(level.walkableGrid, spawn, allAttackCells);
     if (!path) {
@@ -994,7 +1209,7 @@ export const validateGeneratedLevel = (level: GeneratedLevel): LevelValidationRe
     }
   });
 
-  level.terrain.forEach((placement) => {
+  [...level.terrain, ...level.scenicTerrain].forEach((placement) => {
     const frameKey = placement.render?.frameKey;
     if (frameKey && !VALID_TERRAIN_FRAMES.has(frameKey)) {
       warnings.push(`${placement.label} terrain uses unexpected frame ${frameKey}.`);

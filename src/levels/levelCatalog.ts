@@ -5,6 +5,8 @@ import { isTimeOfDay } from './timeOfDay';
 export interface LevelCatalogEntry {
   id: string;
   label: string;
+  csvPath: string;
+  cacheKey: string;
   config: LevelConfig;
 }
 
@@ -15,7 +17,7 @@ export interface LevelSelection {
   warnings: string[];
 }
 
-export const DEFAULT_LEVEL_ID = 'village-crossroads';
+export const DEFAULT_LEVEL_ID = 'village-crossroads-01';
 
 const FESTIVAL_VILLAGE_LEVEL: LevelConfig = {
   ...DEFAULT_VILLAGE_LEVEL,
@@ -28,12 +30,16 @@ const FESTIVAL_VILLAGE_LEVEL: LevelConfig = {
 export const LEVEL_CATALOG: Record<string, LevelCatalogEntry> = {
   [DEFAULT_LEVEL_ID]: {
     id: DEFAULT_LEVEL_ID,
-    label: 'Village Crossroads',
+    label: 'Village Crossroads I',
+    csvPath: '/levels/authored/village-crossroads-01.csv',
+    cacheKey: 'authoredMap_village-crossroads-01',
     config: DEFAULT_VILLAGE_LEVEL,
   },
-  'festival-village': {
-    id: 'festival-village',
-    label: 'Festival Village',
+  'village-crossroads-02': {
+    id: 'village-crossroads-02',
+    label: 'Village Crossroads II',
+    csvPath: '/levels/authored/village-crossroads-02.csv',
+    cacheKey: 'authoredMap_village-crossroads-02',
     config: FESTIVAL_VILLAGE_LEVEL,
   },
 };
@@ -41,6 +47,15 @@ export const LEVEL_CATALOG: Record<string, LevelCatalogEntry> = {
 const cloneLevelConfig = (config: LevelConfig): LevelConfig => ({
   ...config,
   playableBounds: config.playableBounds ? { ...config.playableBounds } : undefined,
+  gates: config.gates?.map((gate) => ({
+    ...gate,
+    threshold: { ...gate.threshold },
+    visualEntry: { ...gate.visualEntry },
+    approachCells: gate.approachCells.map((cell) => ({ ...cell })),
+    clearCells: gate.clearCells.map((cell) => ({ ...cell })),
+    roadCells: gate.roadCells.map((cell) => ({ ...cell })),
+    sightlineCells: gate.sightlineCells.map((cell) => ({ ...cell })),
+  })),
   matrix: config.matrix.map((row) => [...row]),
 });
 
@@ -55,12 +70,26 @@ const clampNumberParam = (value: string | null, fallback: number, min: number, m
   return Math.min(max, Math.max(min, parsed));
 };
 
-export const getGeneratedLevelIdFromParams = (params: URLSearchParams) => {
-  const raw = params.get('generatedLevel');
-  if (!raw || raw === '1' || raw === 'true') {
-    return DEFAULT_LEVEL_ID;
+export const getAuthoredLevelEntries = () => Object.values(LEVEL_CATALOG);
+
+export const getGeneratedLevelIdFromParams = (
+  params: URLSearchParams,
+  preferredId?: string | null,
+  random: () => number = Math.random,
+) => {
+  const explicit = params.get('map') ?? params.get('authoredMap');
+  if (explicit?.trim()) {
+    return explicit.trim();
   }
-  return raw;
+  const legacy = params.get('generatedLevel');
+  if (legacy && legacy !== '1' && legacy !== 'true' && LEVEL_CATALOG[legacy]) {
+    return legacy;
+  }
+  if (preferredId && LEVEL_CATALOG[preferredId]) {
+    return preferredId;
+  }
+  const entries = getAuthoredLevelEntries();
+  return entries[Math.min(entries.length - 1, Math.floor(random() * entries.length))]?.id ?? DEFAULT_LEVEL_ID;
 };
 
 export const shouldRenderGeneratedLevelFromParams = (params: URLSearchParams) => {
@@ -74,8 +103,12 @@ export const shouldRenderGeneratedLevelFromParams = (params: URLSearchParams) =>
   return raw !== '0' && raw !== 'false' && raw !== 'off' && raw !== 'static';
 };
 
-export const resolveLevelConfigFromParams = (params: URLSearchParams): LevelSelection => {
-  const requestedId = getGeneratedLevelIdFromParams(params);
+export const resolveLevelConfigFromParams = (
+  params: URLSearchParams,
+  preferredId?: string | null,
+  random?: () => number,
+): LevelSelection & Pick<LevelCatalogEntry, 'csvPath' | 'cacheKey'> => {
+  const requestedId = getGeneratedLevelIdFromParams(params, preferredId, random);
   const requestedEntry = LEVEL_CATALOG[requestedId];
   const warnings: string[] = [];
   const entry = requestedEntry ?? LEVEL_CATALOG[DEFAULT_LEVEL_ID];
@@ -104,6 +137,8 @@ export const resolveLevelConfigFromParams = (params: URLSearchParams): LevelSele
   return {
     id: entry.id,
     label: entry.label,
+    csvPath: entry.csvPath,
+    cacheKey: entry.cacheKey,
     config,
     warnings,
   };

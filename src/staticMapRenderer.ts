@@ -5,6 +5,7 @@ import {
   STATIC_BUILDING_SPRITE_ALPHA,
 } from './gameConfig';
 import { shouldRegisterPlayerOccluder } from './playerOcclusion';
+import { spriteIntersectsGateSightline } from './sceneVariantRenderer';
 
 export function drawDiamond(scene, x, y, w, h, fill, stroke, alpha = 1, strokeAlpha = 0.45) {
   scene.tileGraphics.fillStyle(fill, alpha);
@@ -203,9 +204,6 @@ export function renderGeneratedBuilding(scene, placement) {
 }
 
 export function renderGeneratedProp(scene, placement) {
-  if (scene.generatedLevelActive && scene.generatedLevel && placement.token === 'tree' && scene.isGeneratedBoardEdgeCell(placement.grid)) {
-    return;
-  }
   const render = placement.render ?? {};
   const override = scene.getSceneVariantPropTexture(placement);
   const textureKey = override?.textureKey ?? render?.textureKey;
@@ -223,8 +221,12 @@ export function renderGeneratedProp(scene, placement) {
     .setDisplaySize(size[0], size[1])
     .setDepth((layout?.depth ?? p.y) + 8)
     .setAlpha(render.alpha ?? 0.72);
+  if (placement.scenicOnly && !scene.generatedLevel?.config.authoredMap && spriteIntersectsGateSightline(scene, sprite)) {
+    sprite.destroy();
+    return;
+  }
   scene.entityLayer.add(sprite);
-  if (shouldRegisterPlayerOccluder(render)) {
+  if (!placement.scenicOnly && shouldRegisterPlayerOccluder(render)) {
     scene.registerPlayerOccluder({
       label: placement.label,
       category: placement.token,
@@ -252,6 +254,10 @@ export function renderGeneratedDecoration(scene, placement) {
       .setDisplaySize(size[0], size[1])
       .setDepth(p.y + 6)
       .setAlpha(render.alpha ?? 0.76);
+    if (shouldRegisterPlayerOccluder(render) && !scene.generatedLevel?.config.authoredMap && spriteIntersectsGateSightline(scene, sprite)) {
+      sprite.destroy();
+      return;
+    }
     scene.entityLayer.add(sprite);
     if (shouldRegisterPlayerOccluder(render)) {
       scene.registerPlayerOccluder({

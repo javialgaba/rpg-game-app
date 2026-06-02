@@ -81,11 +81,12 @@ export const PLAYER_BASE = {
 export const LEVEL_UP_CARD_XS = [-126, 126];
 export const LEVEL_UP_MAX_PIPS = 5;
 export const CARD_TIER_PERCENTAGES = {
-  swiftBoots: [8, 8, 8, 6, 6],
-  strongerStrikes: [15, 15, 12, 10, 10],
-  quickHands: [10, 10, 8, 8, 6],
-  reinforcedWalls: [15, 15, 12, 10, 10],
+  swiftBoots: [10, 10, 9, 8, 7],
+  strongerStrikes: [22, 18, 16, 14, 12],
+  quickHands: [16, 14, 12, 10, 8],
+  reinforcedWalls: [22, 18, 16, 14, 12],
 } as const;
+export const REINFORCED_WALL_REPAIR_PULSE = 8;
 
 export const SKILL_LEVELS = [3, 5, 7, 9] as const;
 export const SHIELD_GUARD = {
@@ -120,6 +121,8 @@ export const MAGIC_SHIELD = {
 export const BOSS_HEALTH_MULTIPLIER = 1.6;
 export const BOSS_PROJECTILE_DAMAGE = 5;
 export const BOSS_PROJECTILE_COOLDOWN = 2250;
+export const ENEMY_GATE_INGRESS_DURATION = 650;
+export const BOSS_GATE_INGRESS_DURATION = 900;
 
 export const REPAIR_COST = 5;
 export const REPAIR_AMOUNT = 16;
@@ -137,11 +140,46 @@ export const REPAIR_OUTLINE_FILL_ALPHA = 0.12;
 
 export const LEVEL_FIRST_SPAWN_DELAY = 740;
 export const LEVEL_SPAWN_INTERVAL_BASE = 820;
-export const LEVEL_SPAWN_INTERVAL_STEP = 28;
-export const LEVEL_SPAWN_INTERVAL_MIN = 300;
-export const WAVE_BUDGETS = [6, 9, 12, 16, 20, 24, 29, 34, 40] as const;
+export const LEVEL_SPAWN_INTERVAL_STEP = 20;
+export const LEVEL_SPAWN_INTERVAL_MIN = 380;
+export const WAVE_BUDGETS = [5, 7, 9, 12, 15, 18, 22, 26, 31] as const;
+export const WAVE_BUDGET_GROWTH_AFTER_TABLE = 4;
 export const ROUNDS_PER_WORLD = 4;
 export const BOSS_ROUND_INDEX = 4;
+export const HEART_DROP_REWARD = {
+  normalChance: 0.08,
+  priorityChance: 0.12,
+  lowHealthPityDefeats: 12,
+  healAmount: 1,
+} as const;
+export const HEART_DROP_PRIORITY_ENEMIES: readonly EnemyRoleKey[] = [
+  'mushroomBrute',
+  'spitter',
+  'leafSneak',
+  'wispMage',
+  'bombBud',
+];
+
+export const ENEMY_LEVEL_SCALING = {
+  sizeLevelCap: 6,
+  sizePerLevel: 1.1,
+  hpLevelsPerBonus: 3,
+  speedPerLevel: 0.025,
+  maxSpeed: 1.58,
+  buildingDamageLevelsPerBonus: 4,
+} as const;
+
+export const BOSS_LEVEL_SCALING = {
+  hpPerLevel: 2,
+  hpPerWorld: 3,
+  hpPerCycle: 6,
+  speedPerLevel: 0.012,
+  speedPerCycle: 0.13,
+  buildingDamageLevelsPerBonus: 3,
+  buildingDamagePerCycle: 1,
+  sizePerWorld: 3,
+  sizePerCycle: 4,
+} as const;
 
 export const COMPACT_NOTES_MAX_VISIBLE = 2;
 export const DESKTOP_NOTES_MAX_VISIBLE = 3;
@@ -270,18 +308,18 @@ export const ENEMY_UNLOCK_LEVELS: Record<HeroClass, Record<EnemyRoleKey, number>
     thornRunner: 2,
     mushroomBrute: 4,
     spitter: 5,
-    leafSneak: 3,
-    wispMage: 7,
-    bombBud: 8,
+    leafSneak: 4,
+    wispMage: 8,
+    bombBud: 9,
   },
   sorcerer: {
     sproutling: 1,
     thornRunner: 3,
     mushroomBrute: 2,
     spitter: 4,
-    leafSneak: 6,
-    wispMage: 7,
-    bombBud: 8,
+    leafSneak: 7,
+    wispMage: 8,
+    bombBud: 9,
   },
 };
 

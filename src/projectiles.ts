@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser';
 import type { SceneAPI } from './sceneAPI';
 import { getDirectionalProjectileRotation } from './projectilePresentation';
+import { getNearestCombatTarget } from './combatTargeting';
 
 interface CombatProjectile {
   owner: 'player' | 'enemy';
@@ -75,9 +76,7 @@ export function updateProjectiles(scene: SceneAPI, dt: number) {
     const p = scene.isoToScreen(projectile.iso.x, projectile.iso.y, 24);
     projectile.sprite.setPosition(p.x, p.y - 8);
     if (projectile.owner === 'player') {
-      const target = scene.enemies.find((enemy: any) => !enemy.defeated && Phaser.Math.Distance.Between(
-        projectile.iso.x, projectile.iso.y, enemy.iso.x, enemy.iso.y,
-      ) < 0.54);
+      const target = getNearestCombatTarget(scene.enemies, projectile.iso, 0.54);
       if (target) {
         scene.damageEnemy(target, projectile.power, projectile.type);
         destroyProjectile(scene, projectile);
@@ -144,4 +143,32 @@ export function awardGold(scene: SceneAPI, x: number, y: number, amount: number)
       label.destroy();
     },
   });
+}
+
+export function awardHeart(scene: SceneAPI, x: number, y: number, amount: number) {
+  const previousHealth = scene.state.health;
+  scene.state.health = Math.min(scene.playerStats.maxHealth, scene.state.health + amount);
+  const healed = scene.state.health - previousHealth;
+  if (healed <= 0) {
+    return 0;
+  }
+  const p = scene.isoToScreen(x, y, 20);
+  const heart = scene.add.image(p.x, p.y - 30, 'gameUiAtlas', 'health_full_01')
+    .setDisplaySize(28, 28)
+    .setDepth(p.y + 152);
+  const label = scene.add.text(p.x + 22, p.y - 36, `+${healed}`, scene.uiTextStyle(15, '#9c3556')).setOrigin(0.5);
+  scene.fxLayer.add([heart, label]);
+  scene.tweens.add({
+    targets: [heart, label],
+    y: '-=34',
+    alpha: 0,
+    duration: 720,
+    ease: 'Cubic.easeOut',
+    onComplete: () => {
+      heart.destroy();
+      label.destroy();
+    },
+  });
+  scene.updateHud?.();
+  return healed;
 }
