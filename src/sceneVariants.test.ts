@@ -8,7 +8,13 @@ import {
   selectSeasonalFrame,
   type SeasonalBuildingRole,
 } from './sceneVariants';
-import { getSceneVariantGateFrameKey, resolveScenicApronTerrainRole, spriteIntersectsGateSightline } from './sceneVariantRenderer';
+import {
+  getSceneVariantGateDepth,
+  getSceneVariantGateFrameKey,
+  renderSceneVariantGate,
+  resolveScenicApronTerrainRole,
+  spriteIntersectsGateSightline,
+} from './sceneVariantRenderer';
 
 const BUILDING_ROLES: SeasonalBuildingRole[] = ['castle', 'house-1', 'house-2', 'market', 'well'];
 const TERRAIN_ATLAS_IMAGE = 'public/assets/scene-variants/scene_variant_terrain_atlas.png';
@@ -141,6 +147,52 @@ describe('seasonal scene variant assets', () => {
     expect(getSceneVariantGateFrameKey('spring', 'east')).toBe('spring_gate_e_01');
     expect(getSceneVariantGateFrameKey('spring', 'south')).toBe('spring_gate_s_01');
     expect(getSceneVariantGateFrameKey('spring', 'west')).toBe('spring_gate_w_01');
+  });
+
+  it('keeps gate sprites above nearby decorative tree sprites', () => {
+    const gateScreenY = 320;
+    const nearbyTreeScreenY = gateScreenY + 46;
+    const treeDecorationDepth = nearbyTreeScreenY + 6;
+
+    expect(getSceneVariantGateDepth(gateScreenY)).toBeGreaterThan(treeDecorationDepth);
+  });
+
+  it('renders gates in the scenery layer below actors and buildings', () => {
+    const addedToDecor: unknown[] = [];
+    const sprite: any = {
+      depth: 0,
+      setOrigin: () => sprite,
+      setDisplaySize: () => sprite,
+      setDepth: (depth: number) => {
+        sprite.depth = depth;
+        return sprite;
+      },
+    };
+    const scene = {
+      textures: {
+        exists: () => true,
+        get: () => ({ has: () => true }),
+      },
+      getActiveSceneVariant: () => ({ visualTheme: 'spring' }),
+      isoToScreen: () => ({ x: 120, y: 320 }),
+      scaleGeneratedSize: (size: [number, number]) => size,
+      add: {
+        image: () => sprite,
+      },
+      decorLayer: {
+        add: (entry: unknown) => addedToDecor.push(entry),
+      },
+      entityLayer: {
+        add: () => {
+          throw new Error('Gates should not render in the actor layer.');
+        },
+      },
+    };
+
+    renderSceneVariantGate(scene as any, { direction: 'west', threshold: { x: 3, y: 14 } } as any);
+
+    expect(addedToDecor).toEqual([sprite]);
+    expect(sprite.depth).toBe(getSceneVariantGateDepth(320));
   });
 
   it('resolves scenic apron terrain without leaking plain grass beyond the authored board', () => {

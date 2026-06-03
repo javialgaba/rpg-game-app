@@ -96,9 +96,7 @@ export function teleportPlayerToDebugTarget(scene, query) {
   scene.recoverPlayerToSafeAnchor(true);
   scene.rememberPlayerSafePosition();
   scene.lastPointerIso = { x: scene.player.iso.x, y: scene.player.iso.y };
-  const position = scene.isoToGroundedEntityScreen(scene.player.iso.x, scene.player.iso.y);
-  scene.player.sprite.setPosition(position.x, position.y);
-  scene.player.shadow.setPosition(position.x, position.y + 15);
+  scene.positionPlayerAtCurrentIso();
   return true;
 }
 
@@ -117,9 +115,7 @@ export function teleportPlayerToDebugIso(scene, rawX, rawY) {
     scene.rememberPlayerSafePosition();
   }
   scene.lastPointerIso = { x: scene.player.iso.x, y: scene.player.iso.y };
-  const position = scene.isoToGroundedEntityScreen(scene.player.iso.x, scene.player.iso.y);
-  scene.player.sprite.setPosition(position.x, position.y);
-  scene.player.shadow.setPosition(position.x, position.y + 15);
+  scene.positionPlayerAtCurrentIso();
   return true;
 }
 
