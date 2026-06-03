@@ -55,6 +55,10 @@ export default defineConfig(({ command }) => {
     },
     test: {
       include: ['src/**/*.test.ts'],
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'html', 'lcov'],
+      },
     },
   };
 });

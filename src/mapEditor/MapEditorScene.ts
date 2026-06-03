@@ -38,81 +38,28 @@ import {
   type EditorChangeResult,
   type MovableEditorLayer,
 } from './serialization';
-
-const DEFAULT_CSV_KEY = 'mapEditorDefaultCsv';
-const EDITOR_LEVEL_ID = 'map-editor-draft';
-const EDITOR_TILE_SIZE = 60;
-const CAMERA_MIN_ZOOM = 0.45;
-const CAMERA_MAX_ZOOM = 1.45;
-const CAMERA_WHEEL_STEP = 0.0012;
-const BOARD_PADDING = 360;
-const MARKER_COLOR = 0x22324a;
-const MARKER_FILL_ALPHA = 0.84;
-const HOVER_COLOR = 0xffffff;
-const DRAG_HOVER_COLOR = 0x66fff0;
-const SELECTED_FOOTPRINT_COLOR = 0xffd166;
-const VALID_DROP_FOOTPRINT_COLOR = 0x66fff0;
-const INVALID_DROP_FOOTPRINT_COLOR = 0xff6b6b;
-const MARKER_LABELS: Record<AuthoredMarkerRole, string> = {
-  player_spawn: 'P',
-  enemy_threshold_n: 'N',
-  enemy_threshold_e: 'E',
-  enemy_threshold_s: 'S',
-  enemy_threshold_w: 'W',
-};
-const BUILDING_ROLE_BY_OBJECT: Partial<Record<AuthoredObjectRole, 'castle' | 'house-1' | 'house-2' | 'market' | 'well'>> = {
-  castle: 'castle',
-  cottage: 'house-1',
-  bakery: 'house-2',
-  market: 'market',
-  well: 'well',
-};
-const PROP_FRAME_SUFFIX: Partial<Record<AuthoredObjectRole, string>> = {
-  tree_broadleaf: 'broadleaf_01',
-  tree_conifer: 'conifer_01',
-  rock_large: 'rocks_large_01',
-  pond: 'pond_01',
-  bush: 'bush_01',
-  flowers: 'flowers_01',
-  grass_tuft: 'grass_tuft_01',
-  magic_patch: 'magic_patch_01',
-  lamp: 'lamp_01',
-  fence: 'fence_01',
-  sign: 'sign_01',
-};
-const GATE_SUFFIX: Partial<Record<AuthoredObjectRole, string>> = {
-  gate_n: 'gate_n_01',
-  gate_e: 'gate_e_01',
-  gate_s: 'gate_s_01',
-  gate_w: 'gate_w_01',
-};
-const OBJECT_RENDERING: Partial<Record<AuthoredObjectRole, {
-  size: [number, number];
-  origin: [number, number];
-  z: number;
-  atlas: 'sceneVariantPropsAtlas' | 'sceneVariantBuildingsAtlas';
-}>> = {
-  castle: { size: [310, 260], origin: [0.5, 1], z: 18, atlas: 'sceneVariantBuildingsAtlas' },
-  cottage: { size: [230, 190], origin: [0.5, 1], z: 18, atlas: 'sceneVariantBuildingsAtlas' },
-  bakery: { size: [230, 190], origin: [0.5, 1], z: 18, atlas: 'sceneVariantBuildingsAtlas' },
-  market: { size: [238, 184], origin: [0.5, 1], z: 18, atlas: 'sceneVariantBuildingsAtlas' },
-  well: { size: [164, 142], origin: [0.5, 1], z: 8, atlas: 'sceneVariantBuildingsAtlas' },
-  gate_n: { size: [166, 144], origin: [0.5, 0.86], z: 9, atlas: 'sceneVariantPropsAtlas' },
-  gate_e: { size: [166, 144], origin: [0.5, 0.86], z: 9, atlas: 'sceneVariantPropsAtlas' },
-  gate_s: { size: [166, 144], origin: [0.5, 0.86], z: 9, atlas: 'sceneVariantPropsAtlas' },
-  gate_w: { size: [166, 144], origin: [0.5, 0.86], z: 9, atlas: 'sceneVariantPropsAtlas' },
-  tree_broadleaf: { size: [204, 175], origin: [0.5, 0.84], z: 12, atlas: 'sceneVariantPropsAtlas' },
-  tree_conifer: { size: [204, 175], origin: [0.5, 0.84], z: 12, atlas: 'sceneVariantPropsAtlas' },
-  rock_large: { size: [142, 124], origin: [0.5, 0.84], z: 8, atlas: 'sceneVariantPropsAtlas' },
-  pond: { size: [138, 110], origin: [0.5, 0.72], z: 3, atlas: 'sceneVariantPropsAtlas' },
-  bush: { size: [162, 128], origin: [0.5, 0.84], z: 9, atlas: 'sceneVariantPropsAtlas' },
-  flowers: { size: [150, 118], origin: [0.5, 0.84], z: 7, atlas: 'sceneVariantPropsAtlas' },
-  grass_tuft: { size: [148, 114], origin: [0.5, 0.84], z: 7, atlas: 'sceneVariantPropsAtlas' },
-  magic_patch: { size: [119, 115], origin: [0.5, 0.86], z: 8, atlas: 'sceneVariantPropsAtlas' },
-  lamp: { size: [108, 158], origin: [0.5, 0.86], z: 9, atlas: 'sceneVariantPropsAtlas' },
-  fence: { size: [150, 116], origin: [0.5, 0.84], z: 8, atlas: 'sceneVariantPropsAtlas' },
-  sign: { size: [136, 156], origin: [0.5, 0.86], z: 9, atlas: 'sceneVariantPropsAtlas' },
-};
+import {
+  BOARD_PADDING,
+  BUILDING_ROLE_BY_OBJECT,
+  CAMERA_MAX_ZOOM,
+  CAMERA_MIN_ZOOM,
+  CAMERA_WHEEL_STEP,
+  DEFAULT_CSV_KEY,
+  DRAG_HOVER_COLOR,
+  EDITOR_LEVEL_ID,
+  EDITOR_TILE_SIZE,
+  GATE_SUFFIX,
+  HOVER_COLOR,
+  INVALID_DROP_FOOTPRINT_COLOR,
+  MARKER_COLOR,
+  MARKER_FILL_ALPHA,
+  MARKER_LABELS,
+  OBJECT_RENDERING,
+  PROP_FRAME_SUFFIX,
+  SELECTED_FOOTPRINT_COLOR,
+  VALID_DROP_FOOTPRINT_COLOR,
+} from './editorConfig';
+import { calculateEditorBoardBounds } from './camera';
 
 interface LightweightEditorLevel {
   config: { tileSize: number };
@@ -911,27 +858,10 @@ export class MapEditorScene extends Phaser.Scene {
   }
 
   private getBoardBounds() {
-    const { tileW, tileH } = getIsoMetrics(true, this.editorLevel);
-    const points = [
-      isoToScreen(0, 0, 0, true, this.editorLevel),
-      isoToScreen(AUTHORED_MAP_SIZE - 1, 0, 0, true, this.editorLevel),
-      isoToScreen(0, AUTHORED_MAP_SIZE - 1, 0, true, this.editorLevel),
-      isoToScreen(AUTHORED_MAP_SIZE - 1, AUTHORED_MAP_SIZE - 1, 0, true, this.editorLevel),
-    ];
-    const left = Math.min(...points.map((point) => point.x)) - tileW;
-    const right = Math.max(...points.map((point) => point.x)) + tileW;
-    const top = Math.min(...points.map((point) => point.y)) - tileH * 2;
-    const bottom = Math.max(...points.map((point) => point.y)) + tileH * 3;
-    return {
-      left,
-      right,
-      top,
-      bottom,
-      width: right - left,
-      height: bottom - top,
-      centerX: (left + right) / 2,
-      centerY: (top + bottom) / 2,
-    };
+    return calculateEditorBoardBounds(this.editorLevel, {
+      getIsoMetrics,
+      isoToScreen,
+    });
   }
 
   private handleResize() {

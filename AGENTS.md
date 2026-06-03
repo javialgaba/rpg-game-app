@@ -9,12 +9,16 @@
 
 ## Architecture
 
-- `src/main.ts` owns the main Phaser scene, runtime state, input handling, HUD, and debug overlays.
+- `src/main.ts` is the browser bootstrap only: import CSS, choose the app route, configure Phaser, and create the game instance.
+- `src/scenes/FairyGuildScene.ts` owns the main Phaser scene lifecycle and high-level orchestration. Keep it as an adapter over smaller systems instead of adding new feature logic directly to the scene.
+- `src/systems/` contains scene-adapter modules and testable helpers for HUD, overlays, input, player flow, debug text, and generated-world rendering. Prefer adding focused system helpers there when behavior needs Phaser scene state but can still be isolated.
 - `src/gameConfig.ts` is the source of truth for balance constants, spawn pacing, repair values, and progression. Prefer updating config over scattering new literals through scene code.
-- `src/combat.ts`, `src/projectiles.ts`, and focused helper modules such as `src/combatTargeting.ts` own combat behavior. Keep target-selection rules in pure helpers when they can be tested without Phaser.
+- `src/combat.ts`, `src/projectiles.ts`, and focused helper modules such as `src/combatTargeting.ts` own combat behavior. Keep target-selection rules and other gameplay decisions in pure helpers when they can be tested without Phaser.
 - `src/levels/` contains procedural level generation, validation, catalog selection, pathfinding, and time-of-day logic.
+- `src/mapEditor/` contains the authored-map editor scene plus extracted editor serialization, config, rendering metadata, and camera helpers.
 - `src/sceneVariants.ts`, `src/sceneVariantRenderer.ts`, `src/viewportBackdrop.ts`, and the asset registries should stay the place where variant-, surround-, and asset-selection logic lives; prefer extending those registries or helpers instead of hardcoding new asset paths in scene code.
 - Browser gutters around the fixed 16:9 Phaser canvas are intentional presentation space. Preserve Phaser `FIT` scaling unless explicitly asked to crop; use `src/viewportBackdrop.ts` and scene-variant CSS variables to update decorative page backdrops.
+- New features should first look for a pure domain module or `src/systems/` boundary before adding methods or state to `FairyGuildScene`.
 
 ## Assets And Tooling
 
@@ -36,6 +40,8 @@
 
 - Install dependencies with `npm install`.
 - Use the narrowest relevant validation first: `npm run typecheck`, `npm run lint`, or `npm run build`.
+- Run `npm run test:coverage` when refactoring or extracting modules. Coverage is reported with V8 reporters but is not threshold-gated yet.
+- Add colocated Vitest coverage for pure behavior in new or extracted modules, especially helpers in `src/systems/`, `src/levels/`, and `src/mapEditor/`.
 - Run `npm test` before handoff when a change affects gameplay, assets, or build tooling. The test script validates world-enemy assets, typechecks, lints, and builds.
 - For asset-pipeline changes, run the relevant script as needed: `npm run build:atlases`, `npm run validate:atlases`, `npm run build:world-enemies`, `npm run validate:world-enemies`, or `npm run build:scene-variants`.
 - Use `npm run dev` for manual verification. The README documents useful debug flags such as `?debugGame=1`, `?debugLevel=1`, `?debugTouch=1`, and `?touchControls=1`.

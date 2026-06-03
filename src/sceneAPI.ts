@@ -111,12 +111,16 @@ export interface SceneAPI {
   playerStats: any;
   levelTimers: any[];
   levelUpOverlay: any;
+  countdownOverlay?: any;
+  countdownLevelText: any;
+  countdownNumberText: any;
 
   // Combat state
   roundEnemyQueue: any[];
+  levelSpawnsPending: number;
   levelDefeatsThisRound: number;
   levelEnemiesRemaining: number;
   levelRequiredDefeats: number;
-
-  [key: string]: any;
+  levelSpawnFailures: number;
+  levelSpawnedCount: number;
 }

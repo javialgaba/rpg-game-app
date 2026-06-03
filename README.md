@@ -101,7 +101,13 @@ Run the full smoke check:
 npm test
 ```
 
-Or run TypeScript, ESLint, and production build checks separately:
+Run unit tests with coverage reporting:
+
+```bash
+npm run test:coverage
+```
+
+Coverage uses Vitest's V8 provider and reports current gaps without enforcing a threshold. `npm test` remains the full smoke check for gameplay, assets, typechecking, linting, and production build validation. Or run TypeScript, ESLint, and production build checks separately:
 
 ```bash
 npm run typecheck
@@ -187,14 +193,34 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |   |-- levels/
 |   |   |-- assetRegistry.ts
 |   |   |-- defaultVillageLevel.ts
+|   |   |-- generationGeometry.ts
 |   |   |-- generateLevel.ts
 |   |   |-- levelCatalog.ts
 |   |   |-- levelTypes.ts
 |   |   |-- pathfinding.ts
 |   |   |-- seededRandom.ts
 |   |   `-- timeOfDay.ts
+|   |-- mapEditor/
+|   |   |-- MapEditorScene.ts
+|   |   |-- camera.ts
+|   |   |-- editorConfig.ts
+|   |   |-- palettes.ts
+|   |   `-- serialization.ts
+|   |-- scenes/
+|   |   `-- FairyGuildScene.ts
+|   |-- systems/
+|   |   |-- debugSystem.ts
+|   |   |-- hudSystem.ts
+|   |   |-- inputSystem.ts
+|   |   |-- overlaySystem.ts
+|   |   |-- playerSystem.ts
+|   |   `-- worldRenderSystem.ts
+|   |-- combat.ts
+|   |-- combatTargeting.ts
 |   |-- gameConfig.ts
+|   |-- gameTypes.ts
 |   |-- main.ts
+|   |-- projectiles.ts
 |   `-- style.css
 |-- index.html
 |-- package.json
@@ -207,6 +233,8 @@ To deploy from the Vercel dashboard, import the repository and keep the detected
 |-- vercel.json
 `-- README.md
 ```
+
+`src/main.ts` is intentionally small and only bootstraps Phaser or the map-editor route. Runtime orchestration lives in `src/scenes/FairyGuildScene.ts`, with reusable scene-adapter helpers in `src/systems/`. Pure gameplay and generation rules should stay in focused domain modules with colocated Vitest tests.
 
 ## Asset Notes
 

@@ -26,6 +26,7 @@
     "validate:levels": "node tools/validate-level-generation.mjs",
     "validate:level-up": "node tools/validate-level-up-progress.mjs",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:unit:watch": "vitest",
     "test": "npm run validate:levels && npm run validate:level-up && npm run validate:class-assets && npm run validate:world-enemies && npm run validate:game-ui && npm run validate:scene-variants && npm run test:unit && npm run typecheck && npm run lint && npm run build"
   },
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@vitest/coverage-v8": "^4.1.8",
     "eslint": "^10.4.0",
     "sharp": "^0.34.5",
     "typescript": "^6.0.3",

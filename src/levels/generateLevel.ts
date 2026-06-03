@@ -2,14 +2,12 @@ import type {
   AssetRegistry,
   AssetRegistryEntry,
   AssetRenderMetadata,
-  Footprint,
   GeneratedLevel,
   GridPoint,
   LevelConfig,
   LevelToken,
   LevelPlacement,
   LevelValidationResult,
-  PlayableBounds,
   ProtectedTargetPlacement,
   AuthoredMapCell,
   AuthoredObjectRole,
@@ -17,11 +15,27 @@ import type {
 import { findGridPath, pathCost } from './pathfinding';
 import { buildPlayerReachableGrid, buildPlayerWalkableGrid, getPlayerPocketCells } from './playerFootprint';
 import { SeededRandom } from './seededRandom';
+import {
+  clonePoint,
+  getAnchorFootprintCells,
+  getAuthoredCell,
+  getBoundsEdgeDistance,
+  getBuildingClearanceErrors,
+  getCardinalNeighborCells,
+  getCellDistance,
+  getEdgeDistance,
+  getNeighborCells,
+  isInside,
+  isInsideLevel,
+  isInsidePlayableBounds,
+  isPlayableBoundsEdgeCell,
+  makeGrid,
+  pointKey,
+  resolvePlayableBounds,
+} from './generationGeometry';
 
 const PROTECTED_EDGE_PADDING = 4;
 const MIN_SPAWN_TARGET_PATH = 10;
-const MIN_BUILDING_FOOTPRINT_DISTANCE = 3;
-const BUILDING_CLEARANCE_TOKENS = new Set<LevelToken>(['castle', 'house-1', 'house-2', 'market', 'well']);
 const FULL_TREE_FRAMES = new Set(['pine_tree_01', 'oak_tree_01']);
 const PARTIAL_TREE_FRAMES = new Set(['world-forest-cluster', 'world-pine']);
 const VALID_TERRAIN_FRAMES = new Set(['grass_01', 'grass_02', 'stone_path_01', 'flower_bed_01']);
@@ -93,131 +107,6 @@ const AUTHORED_DECORATIONS: Partial<Record<AuthoredObjectRole, {
     render: { displaySize: [136, 156], origin: [0.5, 0.86], alpha: 1, z: 9, occludesPlayer: true },
   },
 };
-
-const clonePoint = (point: GridPoint) => ({ x: point.x, y: point.y });
-
-const makeGrid = <T>(width: number, height: number, value: T) => (
-  Array.from({ length: height }, () => Array.from({ length: width }, () => value))
-);
-
-const getAnchorFootprintCells = (anchor: GridPoint, footprint: Footprint) => {
-  const offsetX = Math.floor(footprint.w / 2);
-  const offsetY = Math.floor(footprint.h / 2);
-  return Array.from({ length: footprint.h }, (_, row) => (
-    Array.from({ length: footprint.w }, (__, col) => ({
-      x: anchor.x - offsetX + col,
-      y: anchor.y - offsetY + row,
-    }))
-  )).flat();
-};
-
-const isInside = (point: GridPoint, width: number, height: number) => (
-  point.x >= 0 && point.y >= 0 && point.x < width && point.y < height
-);
-
-const isInsideLevel = (level: GeneratedLevel, point: GridPoint) => isInside(point, level.width, level.height);
-
-const resolvePlayableBounds = (config: LevelConfig): PlayableBounds => {
-  const height = config.matrix.length;
-  const width = config.matrix[0]?.length ?? 0;
-  if (!config.playableBounds) {
-    return {
-      minX: 0,
-      minY: 0,
-      maxX: Math.max(0, width - 1),
-      maxY: Math.max(0, height - 1),
-    };
-  }
-  return {
-    minX: Math.max(0, Math.min(width - 1, config.playableBounds.minX)),
-    minY: Math.max(0, Math.min(height - 1, config.playableBounds.minY)),
-    maxX: Math.max(0, Math.min(width - 1, config.playableBounds.maxX)),
-    maxY: Math.max(0, Math.min(height - 1, config.playableBounds.maxY)),
-  };
-};
-
-const isInsidePlayableBounds = (point: GridPoint, bounds: PlayableBounds) => (
-  point.x >= bounds.minX
-  && point.y >= bounds.minY
-  && point.x <= bounds.maxX
-  && point.y <= bounds.maxY
-);
-
-const isPlayableBoundsEdgeCell = (point: GridPoint, bounds: PlayableBounds) => (
-  point.x === bounds.minX
-  || point.y === bounds.minY
-  || point.x === bounds.maxX
-  || point.y === bounds.maxY
-);
-
-const getEdgeDistance = (point: GridPoint, width: number, height: number) => Math.min(
-  point.x,
-  point.y,
-  width - 1 - point.x,
-  height - 1 - point.y,
-);
-
-const getBoundsEdgeDistance = (point: GridPoint, bounds: PlayableBounds) => Math.min(
-  point.x - bounds.minX,
-  point.y - bounds.minY,
-  bounds.maxX - point.x,
-  bounds.maxY - point.y,
-);
-
-const pointKey = (point: GridPoint) => `${point.x},${point.y}`;
-const getAuthoredCell = (config: LevelConfig, point: GridPoint): AuthoredMapCell | undefined => (
-  config.authoredMap?.cells[point.y]?.[point.x]
-);
-
-const getCellDistance = (a: GridPoint, b: GridPoint) => Math.max(
-  Math.abs(a.x - b.x),
-  Math.abs(a.y - b.y),
-);
-
-const getFootprintDistance = (a: GridPoint[], b: GridPoint[]) => (
-  a.reduce((best, aCell) => Math.min(
-    best,
-    b.reduce((cellBest, bCell) => Math.min(cellBest, getCellDistance(aCell, bCell)), Infinity),
-  ), Infinity)
-);
-
-const shouldEnforceBuildingClearance = (placement: LevelPlacement) => (
-  BUILDING_CLEARANCE_TOKENS.has(placement.token)
-);
-
-const getBuildingClearanceErrors = (placements: LevelPlacement[]) => {
-  const clearanced = placements.filter(shouldEnforceBuildingClearance);
-  const errors: string[] = [];
-  clearanced.forEach((placement, index) => {
-    clearanced.slice(index + 1).forEach((other) => {
-      const distance = getFootprintDistance(placement.cells, other.cells);
-      if (distance < MIN_BUILDING_FOOTPRINT_DISTANCE) {
-        errors.push(`${placement.label} at ${pointKey(placement.grid)} and ${other.label} at ${pointKey(other.grid)} must keep 2 clear cells between building footprints.`);
-      }
-    });
-  });
-  return errors;
-};
-
-const getNeighborCells = (point: GridPoint, radius = 1) => {
-  const cells: GridPoint[] = [];
-  for (let y = point.y - radius; y <= point.y + radius; y += 1) {
-    for (let x = point.x - radius; x <= point.x + radius; x += 1) {
-      if (x === point.x && y === point.y) {
-        continue;
-      }
-      cells.push({ x, y });
-    }
-  }
-  return cells;
-};
-
-const getCardinalNeighborCells = (point: GridPoint) => [
-  { x: point.x + 1, y: point.y },
-  { x: point.x - 1, y: point.y },
-  { x: point.x, y: point.y + 1 },
-  { x: point.x, y: point.y - 1 },
-];
 
 const canCarveRoadToken = (token: LevelToken | undefined) => (
   token === 'grass'
