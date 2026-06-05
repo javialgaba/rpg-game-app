@@ -98,7 +98,7 @@ import { getBuildingHealthColor as _getBuildingHealthColor, computeVillageSafety
 import { spawnSparkleBurst as _spawnSparkleBurst, spawnSpellBloom as _spawnSpellBloom, spawnShieldGlow as _spawnShieldGlow, spawnRepairToolEffect as _spawnRepairToolEffect, updateEffects as _updateEffects } from '../effects';
 import { useMainAttack as _useMainAttack, useClassSkill as _useClassSkill, updateClassEffects as _updateClassEffects, getClassSkillConfig as _getClassSkillConfig, damageEnemy as _damageEnemy, removeEnemy as _removeEnemy } from '../combat';
 import { applyCardStats, chooseCardOffer, createEmptyCardTiers, percentageForTiers } from '../progression';
-import { createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from '../audioManager';
+import { BACKGROUND_MUSIC_KEY, createAudioState, ensureAudio, playTone, playAudioNote, setMusicSoftened } from '../audioManager';
 import { applyViewportBackdrop } from '../viewportBackdrop';
 import { getBuildingDebugSummary, countActiveEnemies, getLiveEnemyTargetSummary as getLiveEnemyTargetSummaryText, formatGeneratedRouteDebugSummary } from '../systems/debugSystem';
 import { getScreenMovementVector as getScreenMovementVectorFromInput } from '../systems/inputSystem';
@@ -387,6 +387,7 @@ export class FairyGuildScene extends Phaser.Scene {
     this.load.image('sorcererHeroSheet', '/assets/sorcerer-hero-sheet.png');
     this.load.image('princessHeroSheet', '/assets/princess-hero-sheet.png');
     this.load.image('monsterSheet', '/assets/monster-pickup-sheet.png');
+    this.load.audio(BACKGROUND_MUSIC_KEY, '/assets/game-background-audio.mp3');
     this.load.atlas('worldTilesAtlas', '/assets/world_tiles_atlas.png', '/assets/world_tiles_atlas.json');
     this.load.atlas('buildingsAtlas', '/assets/buildings_atlas.png', '/assets/buildings_atlas.json');
     this.load.atlas('uiAtlas', '/assets/ui_atlas.png', '/assets/ui_atlas.json');

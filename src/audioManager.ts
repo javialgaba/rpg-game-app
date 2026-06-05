@@ -1,5 +1,7 @@
 import * as Phaser from 'phaser';
 
+type BackgroundMusicSound = Phaser.Sound.NoAudioSound | Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound;
+
 export interface AudioState {
   context: AudioContext | null;
   ready: boolean;
@@ -9,7 +11,12 @@ export interface AudioState {
   musicTimer: Phaser.Time.TimerEvent | null;
   musicStep: number;
   musicSoftened: boolean;
+  backgroundMusic: BackgroundMusicSound | null;
 }
+
+export const BACKGROUND_MUSIC_KEY = 'gameBackgroundMusic';
+const BACKGROUND_MUSIC_VOLUME = 0.34;
+const SOFTENED_BACKGROUND_MUSIC_VOLUME = 0.16;
 
 export function createAudioState(): AudioState {
   return {
@@ -21,6 +28,7 @@ export function createAudioState(): AudioState {
     musicTimer: null,
     musicStep: 0,
     musicSoftened: false,
+    backgroundMusic: null,
   };
 }
 
@@ -120,42 +128,28 @@ export function playAudioNote(audio: AudioState, note: AudioNote, baseTime: numb
 }
 
 export function startVillageTheme(audio: AudioState, scene: Phaser.Scene) {
-  if (!audio.ready || audio.musicTimer) { return; }
-  scheduleVillageTheme(audio);
-  audio.musicTimer = scene.time.addEvent({
-    delay: 3200,
+  if (!audio.ready || audio.backgroundMusic?.isPlaying) { return; }
+  if (!scene.cache.audio.exists(BACKGROUND_MUSIC_KEY)) { return; }
+  if (!audio.backgroundMusic) {
+    audio.backgroundMusic = scene.sound.add(BACKGROUND_MUSIC_KEY, {
+      loop: true,
+      volume: audio.musicSoftened ? SOFTENED_BACKGROUND_MUSIC_VOLUME : BACKGROUND_MUSIC_VOLUME,
+    }) as BackgroundMusicSound;
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      audio.backgroundMusic?.stop();
+      audio.backgroundMusic?.destroy();
+      audio.backgroundMusic = null;
+    });
+  }
+  audio.backgroundMusic.play({
     loop: true,
-    callback: () => scheduleVillageTheme(audio),
+    volume: audio.musicSoftened ? SOFTENED_BACKGROUND_MUSIC_VOLUME : BACKGROUND_MUSIC_VOLUME,
   });
-}
-
-function scheduleVillageTheme(audio: AudioState) {
-  if (!audio.ready || !audio.context || !audio.musicGain) { return; }
-  const ctx = audio.context;
-  const now = ctx.currentTime;
-  const chords = [
-    [392, 523, 659],
-    [440, 554, 659],
-    [349, 523, 698],
-    [392, 494, 659],
-  ];
-  const chord = chords[audio.musicStep % chords.length];
-  const baseGain = audio.musicSoftened ? 0.008 : 0.018;
-  chord.forEach((freq, index) => {
-    playAudioNote(audio, {
-      freq,
-      endFreq: freq * 1.005,
-      delay: index * 0.42,
-      duration: 1.05,
-      wave: index === 0 ? 'sine' : 'triangle',
-      gain: baseGain * (index === 0 ? 0.78 : 1),
-    }, now, audio.musicGain);
-  });
-  audio.musicStep += 1;
 }
 
 export function setMusicSoftened(audio: AudioState, softened: boolean) {
   audio.musicSoftened = softened;
+  audio.backgroundMusic?.setVolume(softened ? SOFTENED_BACKGROUND_MUSIC_VOLUME : BACKGROUND_MUSIC_VOLUME);
   if (!audio.musicGain || !audio.context) { return; }
   const target = softened ? 0.012 : 0.028;
   audio.musicGain.gain.setTargetAtTime(target, audio.context.currentTime, 0.18);
